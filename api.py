@@ -357,6 +357,7 @@ allowed_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    "https://glasgow-bengali-fc.vercel.app",  # Production frontend
 ]
 if FRONTEND_ORIGIN not in allowed_origins:
     allowed_origins.append(FRONTEND_ORIGIN)
