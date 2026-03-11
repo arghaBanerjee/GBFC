@@ -31,6 +31,9 @@ else:
     UPLOAD_DIR = "uploads"
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# SQL placeholder - PostgreSQL uses %s, SQLite uses ?
+PLACEHOLDER = "%s" if USE_POSTGRES else "?"
+
 # Cloudinary configuration
 CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL")
 if CLOUDINARY_URL:
@@ -375,13 +378,21 @@ def signup(user: UserCreate):
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO users (email, full_name, password) VALUES (?, ?, ?)",
+                f"INSERT INTO users (email, full_name, password) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
                 (user.email, user.full_name, hash_password(user.password)),
             )
             conn.commit()
-            return UserOut(id=cur.lastrowid, email=user.email, full_name=user.full_name)
-    except sqlite3.IntegrityError as e:
-        raise HTTPException(status_code=400, detail=f"Email already registered or constraint failed: {e}")
+            if USE_POSTGRES:
+                # PostgreSQL doesn't support lastrowid, need to fetch the inserted row
+                cur.execute(f"SELECT id FROM users WHERE email = {PLACEHOLDER}", (user.email,))
+                user_id = cur.fetchone()['id']
+            else:
+                user_id = cur.lastrowid
+            return UserOut(id=user_id, email=user.email, full_name=user.full_name)
+    except (sqlite3.IntegrityError if not USE_POSTGRES else Exception) as e:
+        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+            raise HTTPException(status_code=400, detail=f"Email already registered")
+        raise HTTPException(status_code=400, detail=f"Database constraint failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
@@ -389,7 +400,7 @@ def signup(user: UserCreate):
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE email = ?", (form_data.username,))
+        cur.execute(f"SELECT * FROM users WHERE email = {PLACEHOLDER}", (form_data.username,))
         user = cur.fetchone()
         if not user:
             print(f"Login failed: no user found for email {form_data.username}")
