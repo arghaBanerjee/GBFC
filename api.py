@@ -46,7 +46,7 @@ if CLOUDINARY_URL:
 @contextmanager
 def get_connection():
     if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
         try:
             yield conn
         finally:
