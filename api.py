@@ -446,11 +446,11 @@ def get_events():
         for row in cur.fetchall():
             event = dict(row)
             # likes
-            cur.execute("SELECT user_email FROM event_likes WHERE event_id = ?", (event["id"],))
+            cur.execute(f"SELECT user_email FROM event_likes WHERE event_id = {PLACEHOLDER}", (event["id"],))
             event["likes"] = [dict(r) for r in cur.fetchall()]
             # comments
             cur.execute(
-                "SELECT ec.*, u.full_name FROM event_comments ec JOIN users u ON ec.user_email = u.email WHERE ec.event_id = ? ORDER BY ec.created_at ASC",
+                f"SELECT ec.*, u.full_name FROM event_comments ec JOIN users u ON ec.user_email = u.email WHERE ec.event_id = {PLACEHOLDER} ORDER BY ec.created_at ASC",
                 (event["id"],),
             )
             event["comments"] = [dict(r) for r in cur.fetchall()]
@@ -461,7 +461,7 @@ def get_events():
 def get_event(event_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM events WHERE id = ?", (event_id,))
+        cur.execute(f"SELECT * FROM events WHERE id = {PLACEHOLDER}", (event_id,))
         event = cur.fetchone()
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
@@ -472,7 +472,7 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO events (name, date, time, location, type, description, image_url, youtube_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO events (name, date, time, location, type, description, image_url, youtube_url) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
             (event.name, event.date, event.time, event.location, event.type, event.description, event.image_url, event.youtube_url),
         )
         conn.commit()
@@ -486,7 +486,7 @@ def update_event(event_id: int, event: EventCreate, current_user: dict = Depends
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "UPDATE events SET name=?, date=?, time=?, location=?, type=?, description=?, image_url=?, youtube_url=? WHERE id=?",
+            f"UPDATE events SET name={PLACEHOLDER}, date={PLACEHOLDER}, time={PLACEHOLDER}, location={PLACEHOLDER}, type={PLACEHOLDER}, description={PLACEHOLDER}, image_url={PLACEHOLDER}, youtube_url={PLACEHOLDER} WHERE id={PLACEHOLDER}",
             (event.name, event.date, event.time, event.location, event.type, event.description, event.image_url, event.youtube_url, event_id),
         )
         conn.commit()
@@ -501,7 +501,7 @@ def delete_event(event_id: int, current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("DELETE FROM events WHERE id=?", (event_id,))
+        cur.execute(f"DELETE FROM events WHERE id={PLACEHOLDER}", (event_id,))
         conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Event not found")
@@ -573,7 +573,7 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT OR REPLACE INTO practice_sessions (date, time, location) VALUES (?, ?, ?)",
+            f"INSERT INTO practice_sessions (date, time, location) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date) DO UPDATE SET time = EXCLUDED.time, location = EXCLUDED.location",
             (session.date, session.time, session.location),
         )
         conn.commit()
@@ -586,7 +586,7 @@ def update_practice_session(date_str: str, session: PracticeSessionCreate, curre
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "UPDATE practice_sessions SET time = ?, location = ? WHERE date = ?",
+            f"UPDATE practice_sessions SET time = {PLACEHOLDER}, location = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
             (session.time, session.location, date_str),
         )
         conn.commit()
@@ -600,7 +600,7 @@ def like_event(event_id: int, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT OR IGNORE INTO event_likes (event_id, user_email) VALUES (?, ?)",
+            f"INSERT INTO event_likes (event_id, user_email) VALUES ({PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT DO NOTHING",
             (event_id, current_user["email"]),
         )
         conn.commit()
@@ -611,7 +611,7 @@ def unlike_event(event_id: int, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "DELETE FROM event_likes WHERE event_id = ? AND user_email = ?",
+            f"DELETE FROM event_likes WHERE event_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
             (event_id, current_user["email"]),
         )
         conn.commit()
@@ -622,7 +622,7 @@ def get_event_comments(event_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT * FROM event_comments WHERE event_id = ? ORDER BY created_at ASC",
+            f"SELECT * FROM event_comments WHERE event_id = {PLACEHOLDER} ORDER BY created_at ASC",
             (event_id,),
         )
         return [EventComment(**dict(row)) for row in cur.fetchall()]
@@ -632,7 +632,7 @@ def create_event_comment(event_id: int, comment: dict, current_user: dict = Depe
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO event_comments (event_id, user_email, comment) VALUES (?, ?, ?)",
+            f"INSERT INTO event_comments (event_id, user_email, comment) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
             (event_id, current_user["email"], comment["comment"]),
         )
         conn.commit()
@@ -647,21 +647,21 @@ def get_forum_posts():
         posts = []
         for row in cur.fetchall():
             post = dict(row)
-            cur.execute("SELECT full_name FROM users WHERE email = ?", (post["user_email"],))
+            cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (post["user_email"],))
             user_row = cur.fetchone()
             post_full_name = user_row["full_name"] if user_row else post["user_email"]
             # likes count
-            cur.execute("SELECT COUNT(*) as cnt FROM forum_likes WHERE post_id = ?", (post["id"],))
+            cur.execute(f"SELECT COUNT(*) as cnt FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post["id"],))
             likes = cur.fetchone()["cnt"]
             # comments
             cur.execute(
-                "SELECT * FROM forum_comments WHERE post_id = ? ORDER BY created_at ASC",
+                f"SELECT * FROM forum_comments WHERE post_id = {PLACEHOLDER} ORDER BY created_at ASC",
                 (post["id"],),
             )
             comments = []
             for c in cur.fetchall():
                 cd = dict(c)
-                cur.execute("SELECT full_name FROM users WHERE email = ?", (cd["user_email"],))
+                cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (cd["user_email"],))
                 cu = cur.fetchone()
                 c_full_name = cu["full_name"] if cu else cd["user_email"]
                 comments.append(
@@ -689,7 +689,7 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO forum_posts (user_email, content) VALUES (?, ?)",
+            f"INSERT INTO forum_posts (user_email, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER})",
             (current_user["email"], post.content),
         )
         conn.commit()
@@ -713,32 +713,32 @@ def admin_update_forum_post(
 
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM forum_posts WHERE id = ?", (post_id,))
+        cur.execute(f"SELECT * FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Post not found")
 
-        cur.execute("UPDATE forum_posts SET content = ? WHERE id = ?", (payload.content, post_id))
+        cur.execute(f"UPDATE forum_posts SET content = {PLACEHOLDER} WHERE id = {PLACEHOLDER}", (payload.content, post_id))
         conn.commit()
 
         post = dict(row)
         post["content"] = payload.content
 
-        cur.execute("SELECT full_name FROM users WHERE email = ?", (post["user_email"],))
+        cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (post["user_email"],))
         user_row = cur.fetchone()
         post_full_name = user_row["full_name"] if user_row else post["user_email"]
 
-        cur.execute("SELECT COUNT(*) as cnt FROM forum_likes WHERE post_id = ?", (post_id,))
+        cur.execute(f"SELECT COUNT(*) as cnt FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post_id,))
         likes = cur.fetchone()["cnt"]
 
         cur.execute(
-            "SELECT * FROM forum_comments WHERE post_id = ? ORDER BY created_at ASC",
+            f"SELECT * FROM forum_comments WHERE post_id = {PLACEHOLDER} ORDER BY created_at ASC",
             (post_id,),
         )
         comments = []
         for c in cur.fetchall():
             cd = dict(c)
-            cur.execute("SELECT full_name FROM users WHERE email = ?", (cd["user_email"],))
+            cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (cd["user_email"],))
             cu = cur.fetchone()
             c_full_name = cu["full_name"] if cu else cd["user_email"]
             comments.append(
@@ -767,13 +767,13 @@ def admin_delete_forum_post(post_id: int, current_user: dict = Depends(get_curre
 
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id FROM forum_posts WHERE id = ?", (post_id,))
+        cur.execute(f"SELECT id FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
         if not cur.fetchone():
             raise HTTPException(status_code=404, detail="Post not found")
 
-        cur.execute("DELETE FROM forum_likes WHERE post_id = ?", (post_id,))
-        cur.execute("DELETE FROM forum_comments WHERE post_id = ?", (post_id,))
-        cur.execute("DELETE FROM forum_posts WHERE id = ?", (post_id,))
+        cur.execute(f"DELETE FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post_id,))
+        cur.execute(f"DELETE FROM forum_comments WHERE post_id = {PLACEHOLDER}", (post_id,))
+        cur.execute(f"DELETE FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
         conn.commit()
         return {"message": "Post deleted"}
 
@@ -782,7 +782,7 @@ def like_forum_post(post_id: int, current_user: dict = Depends(get_current_user)
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT OR IGNORE INTO forum_likes (post_id, user_email) VALUES (?, ?)",
+            f"INSERT INTO forum_likes (post_id, user_email) VALUES ({PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT DO NOTHING",
             (post_id, current_user["email"]),
         )
         conn.commit()
@@ -793,7 +793,7 @@ def unlike_forum_post(post_id: int, current_user: dict = Depends(get_current_use
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "DELETE FROM forum_likes WHERE post_id = ? AND user_email = ?",
+            f"DELETE FROM forum_likes WHERE post_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
             (post_id, current_user["email"]),
         )
         conn.commit()
@@ -804,7 +804,7 @@ def get_my_forum_likes(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT post_id FROM forum_likes WHERE user_email = ?",
+            f"SELECT post_id FROM forum_likes WHERE user_email = {PLACEHOLDER}",
             (current_user["email"],),
         )
         return [row["post_id"] for row in cur.fetchall()]
@@ -814,7 +814,7 @@ def create_forum_comment(post_id: int, comment: ForumComment, current_user: dict
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO forum_comments (post_id, user_email, comment) VALUES (?, ?, ?)",
+            f"INSERT INTO forum_comments (post_id, user_email, comment) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
             (post_id, current_user["email"], comment.comment),
         )
         conn.commit()
@@ -827,7 +827,7 @@ def delete_practice(date_str: str, current_user: dict = Depends(get_current_user
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("DELETE FROM practice_sessions WHERE date = ?", (date_str,))
+        cur.execute(f"DELETE FROM practice_sessions WHERE date = {PLACEHOLDER}", (date_str,))
         conn.commit()
         return {"message": "Practice session deleted"}
 
@@ -837,7 +837,7 @@ def get_my_practice_availability(current_user: dict = Depends(get_current_user))
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT date, status FROM practice_availability WHERE user_email = ?",
+            f"SELECT date, status FROM practice_availability WHERE user_email = {PLACEHOLDER}",
             (current_user["email"],),
         )
         return {row["date"]: row["status"] for row in cur.fetchall()}
@@ -847,7 +847,7 @@ def set_my_practice_availability(avail: PracticeAvailability, current_user: dict
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "INSERT OR REPLACE INTO practice_availability (date, user_email, status) VALUES (?, ?, ?)",
+            f"INSERT INTO practice_availability (date, user_email, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET status = EXCLUDED.status",
             (avail.date, current_user["email"], avail.status),
         )
         conn.commit()
@@ -863,7 +863,7 @@ def get_practice_availability_summary(date_str: str):
         all_emails = [u["email"] for u in users]
 
         cur.execute(
-            "SELECT user_email, status FROM practice_availability WHERE date = ?",
+            f"SELECT user_email, status FROM practice_availability WHERE date = {PLACEHOLDER}",
             (date_str,),
         )
         rows = [dict(r) for r in cur.fetchall()]
