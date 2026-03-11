@@ -150,7 +150,7 @@ export default function Forum({ user }) {
       `}</style>
       <h2>Forum</h2>
       {user && (
-        <button className="nav-btn" onClick={() => setShowCreate(true)} style={{ marginBottom: '1rem' }}>
+        <button className="nav-btn active" onClick={() => setShowCreate(true)} style={{ marginBottom: '1rem' }}>
           Create Post
         </button>
       )}

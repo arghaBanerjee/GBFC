@@ -192,11 +192,25 @@ export default function Practice({ user }) {
         <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}>
           <h4>{selectedDate.toLocaleDateString()}</h4>
           {selectedSession ? (
-            <p>
-              <strong>Practice Session</strong><br />
-              Time: {selectedSession.time || 'TBD'}<br />
-              Location: {selectedSession.location || 'TBD'}
-            </p>
+            <div>
+              <p style={{ marginBottom: '0.75rem' }}>
+                <strong>Practice Session</strong>
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+                <span>Time: {selectedSession.time || 'TBD'}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>
+                <span>Location: {selectedSession.location || 'TBD'}</span>
+              </div>
+            </div>
           ) : (
             <p>
               <strong>No practice session</strong><br />
@@ -210,14 +224,14 @@ export default function Practice({ user }) {
                 <div style={{ marginTop: '0.5rem' }}>
                   <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user}>Available</button>
                   <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user}>Tentative</button>
-                  <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user}>Not Available</button>
+                  <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user}>Unavailable</button>
                 </div>
                 {!user && <p style={{ marginTop: '0.5rem', opacity: 0.8 }}>Log in to vote your availability.</p>}
               </div>
 
               <div style={{ marginTop: '1rem' }}>
                 <strong>Member Availability</strong>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginTop: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '0.75rem' }}>
                   <div style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem', background: '#f0fdf4' }}>
                     <div style={{ fontWeight: 'bold' }}>Available</div>
                     <div style={{ marginTop: '0.5rem' }}>
@@ -235,17 +249,9 @@ export default function Practice({ user }) {
                     </div>
                   </div>
                   <div style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem', background: '#fef2f2' }}>
-                    <div style={{ fontWeight: 'bold' }}>Not Available</div>
+                    <div style={{ fontWeight: 'bold' }}>Unavailable</div>
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.not_available || []).map((n) => (
-                        <div key={n}>{n}</div>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem', background: '#f9fafb' }}>
-                    <div style={{ fontWeight: 'bold' }}>No Vote</div>
-                    <div style={{ marginTop: '0.5rem' }}>
-                      {(voteSummary?.no_vote || []).map((n) => (
                         <div key={n}>{n}</div>
                       ))}
                     </div>
