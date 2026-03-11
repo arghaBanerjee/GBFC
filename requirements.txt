@@ -1,0 +1,7 @@
+streamlit
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic[email]
+psycopg2-binary
+cloudinary
