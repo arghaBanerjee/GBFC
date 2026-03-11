@@ -625,7 +625,14 @@ def get_event_comments(event_id: int):
             f"SELECT * FROM event_comments WHERE event_id = {PLACEHOLDER} ORDER BY created_at ASC",
             (event_id,),
         )
-        return [EventComment(**dict(row)) for row in cur.fetchall()]
+        comments = []
+        for row in cur.fetchall():
+            comment_dict = dict(row)
+            # Convert datetime to ISO string if needed
+            if hasattr(comment_dict.get("created_at"), 'isoformat'):
+                comment_dict["created_at"] = comment_dict["created_at"].isoformat()
+            comments.append(EventComment(**comment_dict))
+        return comments
 
 @app.post("/api/events/{event_id}/comments", response_model=EventComment)
 def create_event_comment(event_id: int, comment: dict, current_user: dict = Depends(get_current_user)):
@@ -664,20 +671,24 @@ def get_forum_posts():
                 cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (cd["user_email"],))
                 cu = cur.fetchone()
                 c_full_name = cu["full_name"] if cu else cd["user_email"]
+                # Convert datetime to ISO string if needed
+                created_at_str = cd["created_at"].isoformat() if hasattr(cd["created_at"], 'isoformat') else cd["created_at"]
                 comments.append(
                     ForumCommentOut(
                         id=cd["id"],
                         user_full_name=c_full_name,
                         comment=cd["comment"],
-                        created_at=cd["created_at"],
+                        created_at=created_at_str,
                     )
                 )
+            # Convert datetime to ISO string if needed
+            post_created_at = post["created_at"].isoformat() if hasattr(post["created_at"], 'isoformat') else post["created_at"]
             posts.append(
                 ForumPostOut(
                     id=post["id"],
                     user_full_name=post_full_name,
                     content=post["content"],
-                    created_at=post["created_at"],
+                    created_at=post_created_at,
                     likes_count=likes,
                     comments=comments,
                 )
@@ -741,20 +752,24 @@ def admin_update_forum_post(
             cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (cd["user_email"],))
             cu = cur.fetchone()
             c_full_name = cu["full_name"] if cu else cd["user_email"]
+            # Convert datetime to ISO string if needed
+            created_at_str = cd["created_at"].isoformat() if hasattr(cd["created_at"], 'isoformat') else cd["created_at"]
             comments.append(
                 ForumCommentOut(
                     id=cd["id"],
                     user_full_name=c_full_name,
                     comment=cd["comment"],
-                    created_at=cd["created_at"],
+                    created_at=created_at_str,
                 )
             )
 
+        # Convert datetime to ISO string if needed
+        post_created_at = post["created_at"].isoformat() if hasattr(post["created_at"], 'isoformat') else post["created_at"]
         return ForumPostOut(
             id=post_id,
             user_full_name=post_full_name,
             content=payload.content,
-            created_at=post["created_at"],
+            created_at=post_created_at,
             likes_count=likes,
             comments=comments,
         )
