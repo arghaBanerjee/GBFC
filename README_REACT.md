@@ -13,9 +13,10 @@ A modern web app for the Glasgow Bengali Football Club with a React frontend and
 
 ## Tech Stack
 
-- **Backend**: FastAPI + SQLite
+- **Backend**: FastAPI + PostgreSQL (production) / SQLite (local dev)
 - **Frontend**: React 18 + Vite + React Router
-- **Styling**: Plain CSS (matches previous Streamlit design)
+- **Image Storage**: Cloudinary (production) / Local (dev)
+- **Styling**: Plain CSS with modern responsive design
 
 ## Quick Start
 
@@ -49,14 +50,22 @@ Visit `http://localhost:5173` in your browser.
 
 ## Development Notes
 
-- The backend reuses the original SQLite database schema from the Streamlit version.
-- Authentication uses simple bearer tokens stored in `localStorage` (for demo purposes only).
-- The frontend includes all pages: Home, Events, Practice, Forum, About Us, Login, Signup.
-- To stop both servers: `Ctrl+C` in each terminal.
+- Backend automatically uses SQLite for local development
+- Production deployment uses PostgreSQL for data persistence
+- Authentication uses simple bearer tokens stored in `localStorage`
+- The frontend includes all pages: Home, Events, Practice, Forum, About Us, Login, Signup
+- To stop both servers: `Ctrl+C` in each terminal
 
-## Production Considerations
+## Deployment
 
-- Replace in‑memory session store with proper JWT or database-backed sessions.
-- Use HTTPS and secure cookies.
-- Add more robust validation and error handling.
-- Set up a proper build/deploy pipeline for the React app.
+This app is deployment-ready for Vercel (frontend) + Render (backend).
+
+See:
+- **`QUICKSTART_DEPLOY.md`** - 15-minute deployment guide
+- **`DEPLOYMENT.md`** - Detailed step-by-step instructions
+
+**Features for production:**
+- PostgreSQL database with persistent storage
+- Cloudinary for image uploads
+- Dynamic CORS configuration
+- Environment-based configuration
