@@ -344,6 +344,12 @@ class PracticeSessionOut(BaseModel):
 # --- FastAPI app ---
 app = FastAPI(title="Glasgow Bengali FC API", version="1.0")
 
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    init_db()
+    print("Database initialized successfully")
+
 # CORS configuration
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
 allowed_origins = [
