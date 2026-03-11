@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
+import { apiUrl } from '../api'
 
 export default function About() {
   const [about, setAbout] = useState(null)
 
   useEffect(() => {
-    fetch('/api/about')
+    fetch(apiUrl('/api/about'))
       .then((r) => r.json())
       .then(setAbout)
   }, [])

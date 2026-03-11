@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { apiUrl } from '../api'
 
 export default function Admin({ user }) {
   const navigate = useNavigate()
@@ -40,17 +41,17 @@ export default function Admin({ user }) {
   }, [user, navigate, isAdmin])
 
   const loadEvents = async () => {
-    const res = await fetch('/api/events')
+    const res = await fetch(apiUrl('/api/events'))
     if (res.ok) setEvents(await res.json())
   }
 
   const loadPracticeSessions = async () => {
-    const res = await fetch('/api/practice/sessions')
+    const res = await fetch(apiUrl('/api/practice/sessions'))
     if (res.ok) setPracticeSessions(await res.json())
   }
 
   const loadForumPosts = async () => {
-    const res = await fetch('/api/forum')
+    const res = await fetch(apiUrl('/api/forum'))
     if (res.ok) setForumPosts(await res.json())
   }
 
@@ -91,7 +92,7 @@ export default function Admin({ user }) {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const res = await fetch('/api/upload-image', {
+      const res = await fetch(apiUrl('/api/upload-image'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -118,7 +119,7 @@ export default function Admin({ user }) {
       image_url: eventImageUrl,
       youtube_url: eventYoutubeUrl,
     }
-    const res = await fetch(editingEventId ? `/api/events/${editingEventId}` : '/api/events', {
+    const res = await fetch(apiUrl(editingEventId ? `/api/events/${editingEventId}` : '/api/events'), {
       method: editingEventId ? 'PUT' : 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -150,7 +151,7 @@ export default function Admin({ user }) {
 
   const handleDeleteEvent = async (id) => {
     if (!confirm('Delete this event?')) return
-    const res = await fetch(`/api/events/${id}`, {
+    const res = await fetch(apiUrl(`/api/events/${id}`), {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -171,7 +172,7 @@ export default function Admin({ user }) {
     let res
     // If admin changes the date while editing, treat it as delete old + create new
     if (editingPracticeDate && editingPracticeDate !== practiceDate) {
-      const del = await fetch(`/api/practice/${editingPracticeDate}`, {
+      const del = await fetch(apiUrl(`/api/practice/${editingPracticeDate}`), {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -180,7 +181,7 @@ export default function Admin({ user }) {
         setMessage(delData?.detail || 'Failed to update practice (delete old)')
         return
       }
-      res = await fetch('/api/practice/sessions', {
+      res = await fetch(apiUrl('/api/practice/sessions'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -189,7 +190,7 @@ export default function Admin({ user }) {
         body: JSON.stringify(payload),
       })
     } else if (editingPracticeDate) {
-      res = await fetch(`/api/practice/sessions/${editingPracticeDate}`, {
+      res = await fetch(apiUrl(`/api/practice/sessions/${editingPracticeDate}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -198,7 +199,7 @@ export default function Admin({ user }) {
         body: JSON.stringify(payload),
       })
     } else {
-      res = await fetch('/api/practice/sessions', {
+      res = await fetch(apiUrl('/api/practice/sessions'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -228,7 +229,7 @@ export default function Admin({ user }) {
 
   const handleDeletePractice = async (dateStr) => {
     if (!confirm('Delete this practice session?')) return
-    const res = await fetch(`/api/practice/${dateStr}`, {
+    const res = await fetch(apiUrl(`/api/practice/${dateStr}`), {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -251,7 +252,7 @@ export default function Admin({ user }) {
     e.preventDefault()
     if (!editingForumPostId) return
 
-    const res = await fetch(`/api/forum/${editingForumPostId}`, {
+    const res = await fetch(apiUrl(`/api/forum/${editingForumPostId}`), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -271,7 +272,7 @@ export default function Admin({ user }) {
 
   const handleDeleteForumPost = async (postId) => {
     if (!confirm('Delete this post?')) return
-    const res = await fetch(`/api/forum/${postId}`, {
+    const res = await fetch(apiUrl(`/api/forum/${postId}`), {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })

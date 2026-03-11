@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { apiUrl } from '../api'
 
 export default function Login({ setUser }) {
   const [email, setEmail] = useState('')
@@ -13,11 +14,11 @@ export default function Login({ setUser }) {
     form.append('username', email)
     form.append('password', password)
 
-    const res = await fetch('/api/token', { method: 'POST', body: form })
+    const res = await fetch(apiUrl('/api/token'), { method: 'POST', body: form })
     if (res.ok) {
       const { access_token } = await res.json()
       localStorage.setItem('token', access_token)
-      const userRes = await fetch('/api/me', { headers: { Authorization: `Bearer ${access_token}` } })
+      const userRes = await fetch(apiUrl('/api/me'), { headers: { Authorization: `Bearer ${access_token}` } })
       const userData = await userRes.json()
       setUser(userData)
       navigate('/')

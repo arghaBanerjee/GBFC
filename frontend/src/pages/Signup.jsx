@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { apiUrl } from '../api'
 
 export default function Signup({ setUser }) {
   const [email, setEmail] = useState('')
@@ -10,7 +11,7 @@ export default function Signup({ setUser }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const res = await fetch('/api/signup', {
+    const res = await fetch(apiUrl('/api/signup'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, full_name: fullName, password }),
@@ -20,11 +21,11 @@ export default function Signup({ setUser }) {
       const form = new FormData()
       form.append('username', email)
       form.append('password', password)
-      const tokenRes = await fetch('/api/token', { method: 'POST', body: form })
+      const tokenRes = await fetch(apiUrl('/api/token'), { method: 'POST', body: form })
       if (tokenRes.ok) {
         const { access_token } = await tokenRes.json()
         localStorage.setItem('token', access_token)
-        const userRes = await fetch('/api/me', { headers: { Authorization: `Bearer ${access_token}` } })
+        const userRes = await fetch(apiUrl('/api/me'), { headers: { Authorization: `Bearer ${access_token}` } })
         const userData = await userRes.json()
         setUser(userData)
         navigate('/')

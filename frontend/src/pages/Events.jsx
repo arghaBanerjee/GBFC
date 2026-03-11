@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiUrl } from '../api'
 
 const pastelColors = ['#FFE4E1', '#E6E6FA', '#E0FFF4', '#FFF8DC', '#F0FFF0']
 const upcomingPastelColors = ['#E0FFFF', '#FFF0F5', '#F0FFF0', '#FFF5EE', '#F5F5DC']
@@ -52,7 +53,7 @@ export default function Events({ user }) {
   const token = localStorage.getItem('token')
 
   useEffect(() => {
-    fetch('/api/events')
+    fetch(apiUrl('/api/events'))
       .then((r) => r.json())
       .then(setEvents)
   }, [])
@@ -61,19 +62,19 @@ export default function Events({ user }) {
 
   const handleLike = async (eventId) => {
     if (!user) return alert('Please log in to like')
-    await fetch(`/api/events/${eventId}/like`, {
+    await fetch(apiUrl(`/api/events/${eventId}/like`), {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     })
     // Refetch events to get updated like counts
-    const updated = await fetch('/api/events')
+    const updated = await fetch(apiUrl('/api/events'))
     setEvents(await updated.json())
   }
 
   const handleComment = async () => {
     if (!user) return alert('Please log in to comment')
     if (!commentText.trim()) return
-    await fetch(`/api/events/${commentingEventId}/comments`, {
+    await fetch(apiUrl(`/api/events/${commentingEventId}/comments`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -83,7 +84,7 @@ export default function Events({ user }) {
     })
     setCommentText('')
     // Refetch events to get updated comments
-    const updated = await fetch('/api/events')
+    const updated = await fetch(apiUrl('/api/events'))
     setEvents(await updated.json())
   }
 

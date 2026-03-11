@@ -8,6 +8,7 @@ import About from './pages/About'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Admin from './pages/Admin'
+import { apiUrl } from './api'
 import './index.css'
 
 function App() {
@@ -18,7 +19,7 @@ function App() {
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (token) {
-      fetch('/api/me', {
+      fetch(apiUrl('/api/me'), {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((r) => {

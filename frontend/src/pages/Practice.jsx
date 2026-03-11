@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { apiUrl } from '../api'
 
 export default function Practice({ user }) {
   const navigate = useNavigate()
@@ -43,12 +44,12 @@ export default function Practice({ user }) {
 
   useEffect(() => {
     // Fetch admin-created practice sessions
-    fetch('/api/practice/sessions')
+    fetch(apiUrl('/api/practice/sessions'))
       .then(r => r.json())
       .then(data => setAdminSessions(data || []))
     // Fetch user availability
     if (user && token) {
-      fetch('/api/practice/availability', {
+      fetch(apiUrl('/api/practice/availability'), {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -88,7 +89,7 @@ export default function Practice({ user }) {
 
   const handleAvailability = (status) => {
     if (!user) return
-    fetch(`/api/practice/availability`, {
+    fetch(apiUrl(`/api/practice/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -100,7 +101,7 @@ export default function Practice({ user }) {
       .then(data => {
         setAvailability(prev => ({ ...prev, [selectedDate.toISOString().split('T')[0]]: status }))
         // Refresh vote summary so UI table updates immediately
-        return fetch(`/api/practice/availability/${selectedDate.toISOString().split('T')[0]}`)
+        return fetch(apiUrl(`/api/practice/availability/${selectedDate.toISOString().split('T')[0]}`))
           .then(r => r.json())
           .then(setVoteSummary)
       })
@@ -165,7 +166,7 @@ export default function Practice({ user }) {
       setVoteSummary(null)
       return
     }
-    fetch(`/api/practice/availability/${selectedDateStr}`)
+    fetch(apiUrl(`/api/practice/availability/${selectedDateStr}`))
       .then(r => r.json())
       .then(setVoteSummary)
       .catch(() => setVoteSummary(null))

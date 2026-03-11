@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { apiUrl } from '../api'
 
 export default function Forum({ user }) {
   const [posts, setPosts] = useState([])
@@ -25,7 +26,7 @@ export default function Forum({ user }) {
   )
 
   useEffect(() => {
-    fetch('/api/forum')
+    fetch(apiUrl('/api/forum'))
       .then((r) => r.json())
       .then(setPosts)
   }, [])
@@ -35,7 +36,7 @@ export default function Forum({ user }) {
       setMyLikedPostIds(new Set())
       return
     }
-    fetch('/api/forum/likes/me', {
+    fetch(apiUrl('/api/forum/likes/me'), {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -47,7 +48,7 @@ export default function Forum({ user }) {
 
   const handleCreate = async () => {
     if (!user) return alert('Please log in to post')
-    await fetch('/api/forum', {
+    await fetch(apiUrl('/api/forum'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -58,7 +59,7 @@ export default function Forum({ user }) {
     setNewContent('')
     if (editorRef.current) editorRef.current.innerHTML = ''
     setShowCreate(false)
-    const updated = await fetch('/api/forum')
+    const updated = await fetch(apiUrl('/api/forum'))
     setPosts(await updated.json())
   }
 
@@ -76,7 +77,7 @@ export default function Forum({ user }) {
 
     const formData = new FormData()
     formData.append('file', file)
-    const res = await fetch('/api/forum/upload-image', {
+    const res = await fetch(apiUrl('/api/forum/upload-image'), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -97,10 +98,10 @@ export default function Forum({ user }) {
   }
 
   const refreshPostsAndLikes = async () => {
-    const updated = await fetch('/api/forum')
+    const updated = await fetch(apiUrl('/api/forum'))
     setPosts(await updated.json())
     if (user && token) {
-      const likesRes = await fetch('/api/forum/likes/me', {
+      const likesRes = await fetch(apiUrl('/api/forum/likes/me'), {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (likesRes.ok) setMyLikedPostIds(new Set(await likesRes.json()))
@@ -111,7 +112,7 @@ export default function Forum({ user }) {
     if (!user) return alert('Please log in to like')
 
     const alreadyLiked = myLikedPostIds.has(postId)
-    await fetch(`/api/forum/${postId}/like`, {
+    await fetch(apiUrl(`/api/forum/${postId}/like`), {
       method: alreadyLiked ? 'DELETE' : 'POST',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -121,7 +122,7 @@ export default function Forum({ user }) {
   const handleComment = async () => {
     if (!user) return alert('Please log in to comment')
     if (!commentText.trim()) return
-    await fetch(`/api/forum/${commentingPostId}/comments`, {
+    await fetch(apiUrl(`/api/forum/${commentingPostId}/comments`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
