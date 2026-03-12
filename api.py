@@ -501,6 +501,9 @@ def delete_event(event_id: int, current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
+        # Delete related records first to avoid foreign key constraint violations
+        cur.execute(f"DELETE FROM event_likes WHERE event_id={PLACEHOLDER}", (event_id,))
+        cur.execute(f"DELETE FROM event_comments WHERE event_id={PLACEHOLDER}", (event_id,))
         cur.execute(f"DELETE FROM events WHERE id={PLACEHOLDER}", (event_id,))
         conn.commit()
         if cur.rowcount == 0:
