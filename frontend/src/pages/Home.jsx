@@ -14,15 +14,15 @@ export default function Home({ user }) {
             Check upcoming fixtures, training sessions, and relive our best moments.
           </p>
           <div className="hero-grid">
-            <div className="hero-card" onClick={() => navigate('/events')}>
+            <div className="hero-card" onClick={() => navigate('/matches')}>
               <h4>Match Centre</h4>
               <p>See past and upcoming fixtures, results, and match highlights.</p>
             </div>
-            <div className="hero-card" onClick={() => navigate('/practice')}>
+            <div className="hero-card" onClick={() => navigate('/book-practice')}>
               <h4>Training Schedule</h4>
               <p>Track Thursday practice sessions and share your availability.</p>
             </div>
-            <div className="hero-card" onClick={() => navigate('/forum')}>
+            <div className="hero-card" onClick={() => navigate('/club-forum')}>
               <h4>Club Community</h4>
               <p>Meet the Glasgow Bengali football community, volunteers, and committee behind the club.</p>
             </div>

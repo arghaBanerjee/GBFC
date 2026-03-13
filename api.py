@@ -316,6 +316,7 @@ class ForumPostOut(BaseModel):
     content: str
     created_at: str
     likes_count: int
+    likes: List[dict] = []
     comments: List[ForumCommentOut]
 
 class ForumPostCreate(BaseModel):
@@ -445,8 +446,11 @@ def get_events():
         events = []
         for row in cur.fetchall():
             event = dict(row)
-            # likes
-            cur.execute(f"SELECT user_email FROM event_likes WHERE event_id = {PLACEHOLDER}", (event["id"],))
+            # likes with full names
+            cur.execute(
+                f"SELECT el.user_email, u.full_name FROM event_likes el JOIN users u ON el.user_email = u.email WHERE el.event_id = {PLACEHOLDER}",
+                (event["id"],)
+            )
             event["likes"] = [dict(r) for r in cur.fetchall()]
             # comments
             cur.execute(
@@ -620,6 +624,16 @@ def unlike_event(event_id: int, current_user: dict = Depends(get_current_user)):
         conn.commit()
         return {"message": "Unliked"}
 
+@app.get("/api/events/likes/me")
+def get_my_event_likes(current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT event_id FROM event_likes WHERE user_email = {PLACEHOLDER}",
+            (current_user["email"],),
+        )
+        return [row["event_id"] for row in cur.fetchall()]
+
 @app.get("/api/events/{event_id}/comments", response_model=List[EventComment])
 def get_event_comments(event_id: int):
     with get_connection() as conn:
@@ -660,9 +674,13 @@ def get_forum_posts():
             cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (post["user_email"],))
             user_row = cur.fetchone()
             post_full_name = user_row["full_name"] if user_row else post["user_email"]
-            # likes count
-            cur.execute(f"SELECT COUNT(*) as cnt FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post["id"],))
-            likes = cur.fetchone()["cnt"]
+            # likes with full names
+            cur.execute(
+                f"SELECT fl.user_email, u.full_name FROM forum_likes fl JOIN users u ON fl.user_email = u.email WHERE fl.post_id = {PLACEHOLDER}",
+                (post["id"],)
+            )
+            likes_list = [dict(r) for r in cur.fetchall()]
+            likes_count = len(likes_list)
             # comments
             cur.execute(
                 f"SELECT * FROM forum_comments WHERE post_id = {PLACEHOLDER} ORDER BY created_at ASC",
@@ -692,7 +710,8 @@ def get_forum_posts():
                     user_full_name=post_full_name,
                     content=post["content"],
                     created_at=post_created_at,
-                    likes_count=likes,
+                    likes_count=likes_count,
+                    likes=likes_list,
                     comments=comments,
                 )
             )

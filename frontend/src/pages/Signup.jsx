@@ -37,7 +37,7 @@ export default function Signup({ setUser }) {
   }
 
   return (
-    <div className="container" style={{ maxWidth: '400px', margin: '2rem auto' }}>
+    <div className="container" style={{ maxWidth: '350px', margin: '2rem auto', padding: '0 1rem' }}>
       <h2>Sign up</h2>
       <form onSubmit={handleSubmit}>
         <input
@@ -46,7 +46,7 @@ export default function Signup({ setUser }) {
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           required
-          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db' }}
+          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', boxSizing: 'border-box' }}
         />
         <input
           type="email"
@@ -54,7 +54,7 @@ export default function Signup({ setUser }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db' }}
+          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', boxSizing: 'border-box' }}
         />
         <input
           type="password"
@@ -62,7 +62,7 @@ export default function Signup({ setUser }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db' }}
+          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', boxSizing: 'border-box' }}
         />
         {error && <p style={{ color: 'red' }}>{error}</p>}
         <button type="submit" className="nav-btn" style={{ width: '100%' }}>Create account</button>

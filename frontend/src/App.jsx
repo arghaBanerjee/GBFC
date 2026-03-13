@@ -38,7 +38,7 @@ function App() {
     navigate('/')
   }
 
-  const navItems = ['Home', 'Events', 'Practice', 'Forum']
+  const navItems = ['Home', 'Matches', 'Book Practice', 'Club Forum']
   const isActive = (path) => location.pathname === path
 
   // Simple admin check (email-based)
@@ -53,6 +53,7 @@ function App() {
           <div className="logo">
             <Link to="/" className="logo-link">
               <span className="logo-icon">⚽</span>
+              <span className="logo-club-name">GBFC</span>
               <span className="logo-text">Glasgow Bengali FC</span>
             </Link>
             <div className="social-icons">
@@ -172,7 +173,7 @@ function App() {
                     className="mobile-nav-link"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <button className={`mobile-nav-btn ${isActive(path) ? 'active' : ''}`}>
+                    <button className={`nav-btn ${isActive(path) ? 'active' : ''}`}>
                       {item}
                     </button>
                   </Link>
@@ -184,7 +185,7 @@ function App() {
                   className="mobile-nav-link"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <button className={`mobile-nav-btn ${isActive('/admin') ? 'active' : ''}`}>Admin</button>
+                  <button className={`nav-btn ${isActive('/admin') ? 'active' : ''}`}>Admin</button>
                 </Link>
               )}
             </div>
@@ -192,19 +193,19 @@ function App() {
               {user ? (
                 <>
                   <div className="mobile-user-info">
-                    <span className="mobile-user-name">{user.full_name}</span>
+                    <span className="user-name" style={{ textAlign: 'center', display: 'block', marginBottom: '0.5rem' }}>{user.full_name}</span>
                   </div>
-                  <button className="mobile-nav-btn logout-btn" onClick={() => { logout(); setMobileMenuOpen(false); }}>
+                  <button className="nav-btn logout-btn" onClick={() => { logout(); setMobileMenuOpen(false); }}>
                     Logout
                   </button>
                 </>
               ) : (
                 <>
                   <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
-                    <button className="mobile-nav-btn login-btn">Login</button>
+                    <button className="nav-btn login-btn">Login</button>
                   </Link>
                   <Link to="/signup" onClick={() => setMobileMenuOpen(false)}>
-                    <button className="mobile-nav-btn signup-btn">Sign Up</button>
+                    <button className="nav-btn signup-btn">Sign Up</button>
                   </Link>
                 </>
               )}
@@ -216,9 +217,9 @@ function App() {
       {/* Page Content */}
       <Routes>
         <Route path="/" element={<Home user={user} />} />
-        <Route path="/events" element={<Events user={user} />} />
-        <Route path="/practice" element={<Practice user={user} />} />
-        <Route path="/forum" element={<Forum user={user} />} />
+        <Route path="/matches" element={<Events user={user} />} />
+        <Route path="/book-practice" element={<Practice user={user} />} />
+        <Route path="/club-forum" element={<Forum user={user} />} />
         <Route path="/about-us" element={<About />} />
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/signup" element={<Signup setUser={setUser} />} />

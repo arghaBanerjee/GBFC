@@ -78,7 +78,7 @@ export default function Practice({ user }) {
   }
 
   const handleDateClick = (day) => {
-    const clicked = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
+    const clicked = new Date(Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), day))
     setSelectedDate(clicked)
 
     const dateStr = formatDateStr(clicked)
@@ -126,7 +126,7 @@ export default function Practice({ user }) {
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
     const calendar = [...blanks, ...days]
 
-    return calendar.map(day => {
+    return calendar.map((day, index) => {
       const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const isThursday = day && new Date(currentDate.getFullYear(), currentDate.getMonth(), day).getDay() === 4
       const isAdminSession = adminSessions.some(s => s.date === dateStr)
@@ -139,7 +139,7 @@ export default function Practice({ user }) {
 
       return (
         <div
-          key={day}
+          key={`cal-${index}`}
           onClick={() => day && handleDateClick(day)}
           style={{
             border: '1px solid #e5e7eb',
@@ -174,7 +174,8 @@ export default function Practice({ user }) {
 
   return (
     <div className="container">
-      <h2>Practice</h2>
+      <h2>Book Practice</h2>
+      <p style={{ marginBottom: '1rem', color: '#6b7280' }}>Click on a date to select your availability</p>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <button onClick={handlePrevMonth}>&lt;</button>
         <h3>{currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h3>
@@ -213,8 +214,9 @@ export default function Practice({ user }) {
             </div>
           ) : (
             <p>
-              <strong>No practice session</strong><br />
-              {user && selectedStatus ? `Your status: ${selectedStatus}` : 'Log in to set your availability'}
+              No practice session on this date. Please select a date highlighted in green to book your practice.<br />
+              {user && selectedStatus && `Your status: ${selectedStatus}`}
+              {!user && 'Log in to set your availability'}
             </p>
           )}
           {selectedSession && (
@@ -226,7 +228,7 @@ export default function Practice({ user }) {
                   <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user}>Tentative</button>
                   <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user}>Unavailable</button>
                 </div>
-                {!user && <p style={{ marginTop: '0.5rem', opacity: 0.8 }}>Log in to vote your availability.</p>}
+                {!user && <p style={{ marginTop: '0.5rem', color: '#dc2626' }}>Log in to vote your availability.</p>}
               </div>
 
               <div style={{ marginTop: '1rem' }}>

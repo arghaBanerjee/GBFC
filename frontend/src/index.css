@@ -54,6 +54,24 @@ body {
   line-height: 1;
 }
 
+.logo-club-name {
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: #16a34a;
+  margin-right: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-radius: 0.375rem;
+  border: 2px solid #16a34a;
+  box-shadow: 0 2px 4px rgba(22, 163, 74, 0.2);
+  transition: all 0.2s ease;
+}
+
+.logo-club-name:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(22, 163, 74, 0.3);
+}
+
 .logo-text {
   font-weight: 700;
   font-size: 1.125rem;
