@@ -106,8 +106,8 @@ function App() {
   const navItems = ['Home', 'Matches', 'Book Practice', 'Club Forum']
   const isActive = (path) => location.pathname === path
 
-  // Simple admin check (email-based)
-  const isAdmin = user && user.email === 'admin@example.com'
+  // Admin check: user_type is 'admin' OR email is 'super@admin.com'
+  const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
 
   return (
     <div>

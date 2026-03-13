@@ -6,7 +6,8 @@ export default function Admin({ user }) {
   const navigate = useNavigate()
   const token = localStorage.getItem('token')
 
-  const isAdmin = user && user.email === 'admin@example.com'
+  // Admin check: user_type is 'admin' OR email is 'super@admin.com'
+  const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
 
   const [activeTab, setActiveTab] = useState('event')
   const [message, setMessage] = useState('')
@@ -35,6 +36,9 @@ export default function Admin({ user }) {
   const [editingForumPostId, setEditingForumPostId] = useState(null)
   const [forumPostContent, setForumPostContent] = useState('')
 
+  // Users
+  const [users, setUsers] = useState([])
+
   useEffect(() => {
     if (!user) navigate('/login')
     else if (!isAdmin) setMessage('Access denied: Admins only')
@@ -55,11 +59,32 @@ export default function Admin({ user }) {
     if (res.ok) setForumPosts(await res.json())
   }
 
+  const loadUsers = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/users'), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        console.log('Users loaded:', data)
+        setUsers(data)
+      } else {
+        const error = await res.json().catch(() => ({}))
+        console.error('Failed to load users:', error)
+        setMessage(error?.detail || 'Failed to load users')
+      }
+    } catch (err) {
+      console.error('Error loading users:', err)
+      setMessage('Error loading users')
+    }
+  }
+
   useEffect(() => {
     if (!isAdmin) return
     loadEvents()
     loadPracticeSessions()
     loadForumPosts()
+    loadUsers()
   }, [isAdmin])
 
   const resetEventForm = () => {
@@ -286,6 +311,40 @@ export default function Admin({ user }) {
     loadForumPosts()
   }
 
+  const handleUpdateUserType = async (email, userType) => {
+    const res = await fetch(apiUrl(`/api/users/${encodeURIComponent(email)}/type`), {
+      method: 'PATCH',
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ user_type: userType })
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMessage(data?.detail || 'Failed to update user type')
+      return
+    }
+    setMessage(`User type updated to ${userType}.`)
+    loadUsers()
+  }
+
+  const handleDeleteUser = async (email) => {
+    if (!confirm(`Delete user ${email}? This will also delete all their posts, comments, and likes.`)) return
+    const res = await fetch(apiUrl(`/api/users/${encodeURIComponent(email)}`), {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMessage(data?.detail || 'Failed to delete user')
+      return
+    }
+    setMessage('User deleted.')
+    loadUsers()
+    loadForumPosts()
+  }
+
   if (!isAdmin) {
     return (
       <div className="container">
@@ -300,21 +359,72 @@ export default function Admin({ user }) {
       <h2>Admin</h2>
       {message && <p>{message}</p>}
 
-      <div style={{ marginBottom: '1rem' }}>
-        <button className={`nav-btn ${activeTab === 'event' ? 'active' : ''}`} onClick={() => setActiveTab('event')}>
-          Create Event
+      <div style={{ 
+        marginBottom: '1.5rem',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+        gap: '0.75rem',
+        maxWidth: '600px'
+      }}>
+        <button 
+          className={`nav-btn ${activeTab === 'event' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('event')}
+          style={{
+            width: '100%',
+            padding: '0.75rem 1rem',
+            fontSize: '0.95rem'
+          }}
+        >
+          Add Match
         </button>
-        <button className={`nav-btn ${activeTab === 'practice' ? 'active' : ''}`} onClick={() => setActiveTab('practice')}>
-          Create Practice
+        <button 
+          className={`nav-btn ${activeTab === 'practice' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('practice')}
+          style={{
+            width: '100%',
+            padding: '0.75rem 1rem',
+            fontSize: '0.95rem'
+          }}
+        >
+          Add Practice
         </button>
-        <button className={`nav-btn ${activeTab === 'forum' ? 'active' : ''}`} onClick={() => setActiveTab('forum')}>
+        <button 
+          className={`nav-btn ${activeTab === 'forum' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('forum')}
+          style={{
+            width: '100%',
+            padding: '0.75rem 1rem',
+            fontSize: '0.95rem'
+          }}
+        >
           Forum Posts
+        </button>
+        <button 
+          className={`nav-btn ${activeTab === 'users' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('users')}
+          style={{
+            width: '100%',
+            padding: '0.75rem 1rem',
+            fontSize: '0.95rem'
+          }}
+        >
+          Users
         </button>
       </div>
 
       {activeTab === 'event' && (
         <>
-          <form onSubmit={handleSubmitEvent} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: 600 }}>
+          <form onSubmit={handleSubmitEvent} style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '1rem', 
+            maxWidth: 600,
+            border: '1px solid #d1d5db',
+            borderRadius: '0.5rem',
+            padding: '1.5rem',
+            background: 'white',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+          }}>
             <div>
               <label>Event Name</label>
               <input value={eventName} onChange={(e) => setEventName(e.target.value)} required style={{ width: '100%' }} />
@@ -345,31 +455,31 @@ export default function Admin({ user }) {
               <textarea rows={6} value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="nav-btn" type="submit">{editingEventId ? 'Update Event' : 'Create Event'}</button>
+              <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>{editingEventId ? 'Update Match' : 'Add Match'}</button>
               {editingEventId && (
-                <button className="nav-btn" type="button" onClick={resetEventForm}>
+                <button className="nav-btn" type="button" onClick={resetEventForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
                   Cancel
                 </button>
               )}
             </div>
           </form>
 
-          <h3 style={{ marginTop: '2rem' }}>Existing Events</h3>
+          <h3 style={{ marginTop: '2rem' }}>Matches</h3>
           <div style={{ display: 'grid', gap: '1rem' }}>
-            {events.map((ev) => (
+            {events.sort((a, b) => new Date(b.date) - new Date(a.date)).map((ev) => (
               <div key={ev.id} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                  <strong>{ev.name}</strong>
-                  <div>
-                    <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ marginRight: 8 }}>
-                      Edit
-                    </button>
-                    <button className="nav-btn" onClick={() => handleDeleteEvent(ev.id)} style={{ background: '#ef4444', color: 'white', border: '#ef4444' }}>
-                      Delete
-                    </button>
-                  </div>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <strong style={{ fontSize: '1.05rem' }}>{ev.name}</strong>
                 </div>
-                <div style={{ opacity: 0.8, marginTop: 6 }}>{ev.date} {ev.time || ''}</div>
+                <div style={{ opacity: 0.8, marginBottom: '0.75rem', fontSize: '0.9rem' }}>{ev.date} {ev.time || ''}</div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ flex: '1', minWidth: '100px' }}>
+                    Edit
+                  </button>
+                  <button className="nav-btn" onClick={() => handleDeleteEvent(ev.id)} style={{ flex: '1', minWidth: '100px', background: '#ef4444', color: 'white', border: '#ef4444' }}>
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -378,7 +488,17 @@ export default function Admin({ user }) {
 
       {activeTab === 'practice' && (
         <>
-          <form onSubmit={handleSubmitPractice} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: 600 }}>
+          <form onSubmit={handleSubmitPractice} style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '1rem', 
+            maxWidth: 600,
+            border: '1px solid #d1d5db',
+            borderRadius: '0.5rem',
+            padding: '1.5rem',
+            background: 'white',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+          }}>
             <div>
               <label>Practice Date</label>
               <input type="date" value={practiceDate} onChange={(e) => setPracticeDate(e.target.value)} required style={{ width: '100%' }} />
@@ -392,18 +512,21 @@ export default function Admin({ user }) {
               <input value={practiceLocation} onChange={(e) => setPracticeLocation(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="nav-btn" type="submit">{editingPracticeDate ? 'Update Practice' : 'Create Practice'}</button>
+              <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>{editingPracticeDate ? 'Update Practice' : 'Add Practice'}</button>
               {(editingPracticeDate || practiceDate || practiceTime || practiceLocation) && (
-                <button className="nav-btn" type="button" onClick={resetPracticeForm}>
+                <button className="nav-btn" type="button" onClick={resetPracticeForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
                   Clear
                 </button>
               )}
             </div>
           </form>
 
-          <h3 style={{ marginTop: '2rem' }}>Existing Practice Sessions</h3>
+          <h3 style={{ marginTop: '2rem' }}>Upcoming practice sessions</h3>
           <div style={{ display: 'grid', gap: '1rem' }}>
-            {practiceSessions.map((s) => (
+            {practiceSessions
+              .filter(s => new Date(s.date) >= new Date(new Date().setHours(0, 0, 0, 0)))
+              .sort((a, b) => new Date(a.date) - new Date(b.date))
+              .map((s) => (
               <div key={s.date} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <strong>{s.date}</strong>
@@ -474,6 +597,123 @@ export default function Admin({ user }) {
               </div>
             ))}
             {forumPosts.length === 0 && <p>No posts yet.</p>}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'users' && (
+        <>
+          <h3>Registered Users</h3>
+          <div style={{ marginTop: '1rem' }}>
+            {users.map((u) => (
+              <div 
+                key={u.email} 
+                style={{ 
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                  marginBottom: '1rem',
+                  background: 'white'
+                }}
+              >
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                  marginBottom: '0.75rem'
+                }}>
+                  <div style={{ flex: '1', minWidth: '200px' }}>
+                    <div style={{ fontWeight: '600', fontSize: '1.1rem', marginBottom: '0.25rem' }}>
+                      {u.full_name}
+                    </div>
+                    <div style={{ color: '#6b7280', fontSize: '0.875rem', wordBreak: 'break-word' }}>
+                      {u.email}
+                    </div>
+                  </div>
+                  {u.email === user?.email ? (
+                    // Current logged-in user - show only their current role (non-clickable)
+                    <span style={{ 
+                      padding: '0.25rem 0.75rem', 
+                      borderRadius: '0.25rem', 
+                      fontSize: '0.875rem',
+                      background: '#10b981',
+                      color: 'white',
+                      fontWeight: '600',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {u.user_type === 'admin' ? 'Admin' : 'Member'}
+                    </span>
+                  ) : (
+                    // Other users - show toggle buttons
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => handleUpdateUserType(u.email, 'member')}
+                        style={{
+                          padding: '0.25rem 0.75rem',
+                          borderRadius: '0.25rem',
+                          fontSize: '0.875rem',
+                          background: u.user_type === 'member' ? '#10b981' : '#f3f4f6',
+                          color: u.user_type === 'member' ? 'white' : '#374151',
+                          border: u.user_type === 'member' ? '1px solid #10b981' : '1px solid #d1d5db',
+                          cursor: 'pointer',
+                          fontWeight: u.user_type === 'member' ? '600' : '400',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        Member
+                      </button>
+                      <button
+                        onClick={() => handleUpdateUserType(u.email, 'admin')}
+                        style={{
+                          padding: '0.25rem 0.75rem',
+                          borderRadius: '0.25rem',
+                          fontSize: '0.875rem',
+                          background: u.user_type === 'admin' ? '#10b981' : '#f3f4f6',
+                          color: u.user_type === 'admin' ? 'white' : '#374151',
+                          border: u.user_type === 'admin' ? '1px solid #10b981' : '1px solid #d1d5db',
+                          cursor: 'pointer',
+                          fontWeight: u.user_type === 'admin' ? '600' : '400',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        Admin
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid #e5e7eb'
+                }}>
+                  <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                    <strong>Registered:</strong> {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
+                  </div>
+                  {u.email !== user?.email && (
+                    <button 
+                      className="nav-btn" 
+                      onClick={() => handleDeleteUser(u.email)}
+                      style={{ 
+                        background: '#ef4444', 
+                        color: 'white', 
+                        border: '1px solid #ef4444',
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.875rem'
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {users.length === 0 && <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>No users found.</p>}
           </div>
         </>
       )}

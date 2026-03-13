@@ -78,9 +78,46 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 email VARCHAR(255) UNIQUE NOT NULL,
                 full_name VARCHAR(255) NOT NULL,
-                password VARCHAR(255) NOT NULL
+                password VARCHAR(255) NOT NULL,
+                user_type VARCHAR(50) DEFAULT 'member',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
+            # Add user_type column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='user_type'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN user_type VARCHAR(50) DEFAULT 'member';
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add user_type column: {e}")
+                conn.rollback()
+            
+            # Add created_at column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='created_at'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add created_at column: {e}")
+                conn.rollback()
             cur.execute("""
             CREATE TABLE IF NOT EXISTS events (
                 id SERIAL PRIMARY KEY,
@@ -181,11 +218,30 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
                 full_name TEXT NOT NULL,
-                password TEXT NOT NULL
+                password TEXT NOT NULL,
+                user_type TEXT DEFAULT 'member',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
             try:
                 cur.execute("ALTER TABLE users ADD COLUMN password TEXT")
+            except sqlite3.OperationalError:
+                pass
+            # Add user_type column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN user_type TEXT DEFAULT 'member'")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add user_type column: {e}")
+            # Add created_at column if it doesn't exist (without default due to SQLite limitation)
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN created_at TIMESTAMP")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add created_at column: {e}")
+            # Update NULL created_at values for existing users
+            try:
+                cur.execute("UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
             except sqlite3.OperationalError:
                 pass
             cur.executescript("""
@@ -288,6 +344,8 @@ class UserOut(BaseModel):
     id: int
     email: str
     full_name: str
+    user_type: str = "member"
+    created_at: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -360,6 +418,23 @@ class PracticeSessionOut(BaseModel):
     date: str
     time: Optional[str] = None
     location: Optional[str] = None
+
+# --- Helper Functions ---
+def is_admin(current_user: dict) -> bool:
+    """Check if user is admin based on user_type or super admin email"""
+    # Fetch user_type from database
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT user_type FROM users WHERE email = {PLACEHOLDER}", (current_user["email"],))
+        row = cur.fetchone()
+        if row:
+            row_dict = dict(row)
+            user_type = row_dict.get("user_type") or "member"
+        else:
+            user_type = "member"
+    
+    # Check if user_type is 'admin' OR email is 'super@admin.com'
+    return user_type == "admin" or current_user.get("email") == "super@admin.com"
 
 # --- FastAPI app ---
 app = FastAPI(title="Glasgow Bengali FC API", version="1.0")
@@ -449,12 +524,131 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 @app.get("/api/me", response_model=UserOut)
 def me(current_user: dict = Depends(get_current_user)):
-    return UserOut(id=current_user["id"], email=current_user["email"], full_name=current_user["full_name"])
+    # Fetch user_type from database
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT user_type FROM users WHERE email = {PLACEHOLDER}", (current_user["email"],))
+        row = cur.fetchone()
+        if row:
+            row_dict = dict(row)
+            user_type = row_dict.get("user_type") or "member"
+        else:
+            user_type = "member"
+    
+    return UserOut(
+        id=current_user["id"], 
+        email=current_user["email"], 
+        full_name=current_user["full_name"],
+        user_type=user_type
+    )
 
 @app.post("/api/logout")
 def logout(current_user: dict = Depends(get_current_user), token: str = Depends(oauth2_scheme)):
     SESSIONS.pop(token, None)
     return {"message": "Logged out"}
+
+@app.get("/api/users", response_model=List[UserOut])
+def get_all_users(current_user: dict = Depends(get_current_user)):
+    # Admin only
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, email, full_name, user_type, created_at FROM users ORDER BY id DESC")
+        users = []
+        for row in cur.fetchall():
+            user_dict = dict(row)
+            # Convert datetime to ISO string if needed, or set to None
+            if user_dict.get("created_at"):
+                if hasattr(user_dict["created_at"], 'isoformat'):
+                    user_dict["created_at"] = user_dict["created_at"].isoformat()
+                else:
+                    user_dict["created_at"] = str(user_dict["created_at"])
+            else:
+                user_dict["created_at"] = None
+            # Ensure user_type has a default
+            if not user_dict.get("user_type"):
+                user_dict["user_type"] = "member"
+            users.append(UserOut(**user_dict))
+        return users
+
+@app.patch("/api/users/{email}/type")
+def update_user_type(email: str, data: dict, current_user: dict = Depends(get_current_user)):
+    # Admin only
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    user_type = data.get("user_type")
+    if user_type not in ["member", "admin"]:
+        raise HTTPException(status_code=400, detail="Invalid user type. Must be 'member' or 'admin'")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if user exists
+        cur.execute(f"SELECT id FROM users WHERE email = {PLACEHOLDER}", (email,))
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Update user type
+        cur.execute(f"UPDATE users SET user_type = {PLACEHOLDER} WHERE email = {PLACEHOLDER}", (user_type, email))
+        conn.commit()
+        
+        return {"message": f"User type updated to {user_type}"}
+
+@app.delete("/api/users/{email}")
+def delete_user(email: str, current_user: dict = Depends(get_current_user)):
+    # Admin only
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    # Prevent deleting super admin account
+    if email == "super@admin.com":
+        raise HTTPException(status_code=403, detail="Cannot delete super admin account")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if user exists
+        cur.execute(f"SELECT id FROM users WHERE email = {PLACEHOLDER}", (email,))
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Cascade delete: Remove all user's data
+        # Delete forum post likes
+        cur.execute(f"DELETE FROM forum_likes WHERE user_email = {PLACEHOLDER}", (email,))
+        
+        # Delete forum comments
+        cur.execute(f"DELETE FROM forum_comments WHERE user_email = {PLACEHOLDER}", (email,))
+        
+        # Delete forum posts (and their associated likes and comments)
+        cur.execute(f"SELECT id FROM forum_posts WHERE user_email = {PLACEHOLDER}", (email,))
+        post_ids = [row["id"] for row in cur.fetchall()]
+        for post_id in post_ids:
+            cur.execute(f"DELETE FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post_id,))
+            cur.execute(f"DELETE FROM forum_comments WHERE post_id = {PLACEHOLDER}", (post_id,))
+        cur.execute(f"DELETE FROM forum_posts WHERE user_email = {PLACEHOLDER}", (email,))
+        
+        # Delete event likes
+        cur.execute(f"DELETE FROM event_likes WHERE user_email = {PLACEHOLDER}", (email,))
+        
+        # Delete event comments
+        cur.execute(f"DELETE FROM event_comments WHERE user_email = {PLACEHOLDER}", (email,))
+        
+        # Delete practice availability
+        cur.execute(f"DELETE FROM practice_availability WHERE user_email = {PLACEHOLDER}", (email,))
+        
+        # Delete notifications
+        cur.execute(f"DELETE FROM notifications WHERE user_email = {PLACEHOLDER}", (email,))
+        
+        # Finally, delete the user
+        cur.execute(f"DELETE FROM users WHERE email = {PLACEHOLDER}", (email,))
+        
+        conn.commit()
+        return {"message": "User and all associated data deleted"}
 
 # --- Events endpoints ---
 @app.get("/api/events", response_model=List[EventOut])
@@ -513,8 +707,8 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
 
 @app.put("/api/events/{event_id}", response_model=EventOut)
 def update_event(event_id: int, event: EventCreate, current_user: dict = Depends(get_current_user)):
-    # Simple admin check (email-based)
-    if current_user.get("email") != "admin@example.com":
+    # Admin only
+    if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
@@ -529,8 +723,8 @@ def update_event(event_id: int, event: EventCreate, current_user: dict = Depends
 
 @app.delete("/api/events/{event_id}")
 def delete_event(event_id: int, current_user: dict = Depends(get_current_user)):
-    # Simple admin check (email-based)
-    if current_user.get("email") != "admin@example.com":
+    # Admin only
+    if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
@@ -545,8 +739,8 @@ def delete_event(event_id: int, current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/upload-image")
 async def upload_image(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
-    # Simple admin check (email-based)
-    if current_user.get("email") != "admin@example.com":
+    # Admin only
+    if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     # Validate file type
     if not file.content_type.startswith("image/"):
@@ -604,7 +798,7 @@ def list_practice_sessions():
 
 @app.post("/api/practice/sessions", response_model=PracticeSessionOut)
 def create_practice_session(session: PracticeSessionCreate, current_user: dict = Depends(get_current_user)):
-    if current_user.get("email") != "admin@example.com":
+    if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
@@ -627,7 +821,7 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
 
 @app.put("/api/practice/sessions/{date_str}", response_model=PracticeSessionOut)
 def update_practice_session(date_str: str, session: PracticeSessionCreate, current_user: dict = Depends(get_current_user)):
-    if current_user.get("email") != "admin@example.com":
+    if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
@@ -798,7 +992,7 @@ def admin_update_forum_post(
     payload: ForumPostUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    if current_user.get("email") != "admin@example.com":
+    if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
 
     with get_connection() as conn:
@@ -865,7 +1059,7 @@ def delete_forum_post(post_id: int, current_user: dict = Depends(get_current_use
             raise HTTPException(status_code=404, detail="Post not found")
         
         # Allow deletion if user owns the post OR is admin
-        if post["user_email"] != current_user["email"] and current_user.get("email") != "admin@example.com":
+        if post["user_email"] != current_user["email"] and not is_admin(current_user):
             raise HTTPException(status_code=403, detail="You can only delete your own posts")
 
         cur.execute(f"DELETE FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post_id,))
@@ -923,8 +1117,8 @@ def create_forum_comment(post_id: int, comment: ForumComment, current_user: dict
 
 @app.delete("/api/practice/{date_str}")
 def delete_practice(date_str: str, current_user: dict = Depends(get_current_user)):
-    # Simple admin check (email-based)
-    if current_user.get("email") != "admin@example.com":
+    # Admin only
+    if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
