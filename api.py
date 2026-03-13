@@ -331,6 +331,7 @@ class ForumCommentOut(BaseModel):
 class ForumPostOut(BaseModel):
     id: int
     user_full_name: str
+    user_email: str
     content: str
     created_at: str
     likes_count: int
@@ -691,6 +692,10 @@ def get_event_comments(event_id: int):
 
 @app.post("/api/events/{event_id}/comments", response_model=EventComment)
 def create_event_comment(event_id: int, comment: dict, current_user: dict = Depends(get_current_user)):
+    # Validate comment length (max 100 characters for security)
+    if len(comment["comment"]) > 100:
+        raise HTTPException(status_code=400, detail="Comment must be 100 characters or less")
+    
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -746,6 +751,7 @@ def get_forum_posts():
                 ForumPostOut(
                     id=post["id"],
                     user_full_name=post_full_name,
+                    user_email=post["user_email"],
                     content=post["content"],
                     created_at=post_created_at,
                     likes_count=likes_count,
@@ -757,6 +763,10 @@ def get_forum_posts():
 
 @app.post("/api/forum", response_model=ForumPostOut)
 def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_current_user)):
+    # Validate content length (max 500 characters for security)
+    if len(post.content) > 500:
+        raise HTTPException(status_code=400, detail="Post content must be 500 characters or less")
+    
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -775,6 +785,7 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
         return ForumPostOut(
             id=cur.lastrowid,
             user_full_name=current_user["full_name"],
+            user_email=current_user["email"],
             content=post.content,
             created_at=datetime.utcnow().isoformat(),
             likes_count=0,
@@ -836,6 +847,7 @@ def admin_update_forum_post(
         return ForumPostOut(
             id=post_id,
             user_full_name=post_full_name,
+            user_email=post["user_email"],
             content=payload.content,
             created_at=post_created_at,
             likes_count=likes,
@@ -844,15 +856,17 @@ def admin_update_forum_post(
 
 
 @app.delete("/api/forum/{post_id}")
-def admin_delete_forum_post(post_id: int, current_user: dict = Depends(get_current_user)):
-    if current_user.get("email") != "admin@example.com":
-        raise HTTPException(status_code=403, detail="Admins only")
-
+def delete_forum_post(post_id: int, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT id FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
-        if not cur.fetchone():
+        cur.execute(f"SELECT user_email FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
+        post = cur.fetchone()
+        if not post:
             raise HTTPException(status_code=404, detail="Post not found")
+        
+        # Allow deletion if user owns the post OR is admin
+        if post["user_email"] != current_user["email"] and current_user.get("email") != "admin@example.com":
+            raise HTTPException(status_code=403, detail="You can only delete your own posts")
 
         cur.execute(f"DELETE FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post_id,))
         cur.execute(f"DELETE FROM forum_comments WHERE post_id = {PLACEHOLDER}", (post_id,))
@@ -894,6 +908,10 @@ def get_my_forum_likes(current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/forum/{post_id}/comments", response_model=ForumCommentOut)
 def create_forum_comment(post_id: int, comment: ForumComment, current_user: dict = Depends(get_current_user)):
+    # Validate comment length (max 100 characters for security)
+    if len(comment.comment) > 100:
+        raise HTTPException(status_code=400, detail="Comment must be 100 characters or less")
+    
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(

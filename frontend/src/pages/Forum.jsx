@@ -65,10 +65,52 @@ export default function Forum({ user }) {
     })
   }
 
+  const sanitizeInput = (text) => {
+    // Basic XSS prevention - escape HTML special characters
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#x27;')
+      .replace(/\//g, '&#x2F;')
+  }
+
+  const renderCommentWithLinks = (text) => {
+    // Detect URLs and convert to clickable links
+    const urlRegex = /(https?:\/\/[^\s]+)/g
+    const parts = text.split(urlRegex)
+    
+    return parts.map((part, idx) => {
+      // Check if this part is a URL by testing against the regex
+      if (part.match(/^https?:\/\//)) {
+        return (
+          <a 
+            key={idx} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            style={{ color: '#2563eb', textDecoration: 'underline' }}
+          >
+            {part}
+          </a>
+        )
+      }
+      // For non-URL text, return as plain text (React automatically escapes it)
+      return <span key={idx}>{part}</span>
+    })
+  }
+
   const handleCreate = async () => {
     if (!user) return alert('Please log in to post')
     if (!newContent.trim() && !imagePreview) return
     
+    // Limit post content to 500 characters
+    if (newContent.length > 500) {
+      return alert('Post content must be 500 characters or less')
+    }
+    
+    // Convert URLs to links and YouTube embeds (convertUrlsToLinks handles safe rendering)
     let finalContent = convertUrlsToLinks(newContent.replace(/\n/g, '<br>'))
     if (imagePreview) {
       finalContent += `<br><img src="${imagePreview}" style="max-width: 600px; width: 100%; height: auto; display: block; margin-top: 0.5rem; border-radius: 0.5rem;" />`
@@ -136,6 +178,13 @@ export default function Forum({ user }) {
   const handleComment = async () => {
     if (!user) return alert('Please log in to comment')
     if (!commentText.trim()) return
+    
+    // Limit comment to 100 characters
+    if (commentText.length > 100) {
+      return alert('Comment must be 100 characters or less')
+    }
+    
+    // Send comment without sanitization - renderCommentWithLinks handles safe rendering
     await fetch(apiUrl(`/api/forum/${commentingPostId}/comments`), {
       method: 'POST',
       headers: {
@@ -149,9 +198,31 @@ export default function Forum({ user }) {
     await refreshPostsAndLikes()
   }
 
+  const handleDeletePost = async (postId) => {
+    if (!user) return alert('Please log in to delete')
+    if (!confirm('Are you sure you want to delete this post?')) return
+    
+    const res = await fetch(apiUrl(`/api/forum/${postId}`), {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    
+    if (res.ok) {
+      await refreshPostsAndLikes()
+    } else {
+      const data = await res.json().catch(() => ({}))
+      alert(data?.detail || 'Failed to delete post')
+    }
+  }
+
   return (
     <div className="container">
       <style>{`
+        .forum-post-content {
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+          word-break: break-word;
+        }
         .forum-post-content img {
           max-width: 600px;
           width: auto;
@@ -203,25 +274,30 @@ export default function Forum({ user }) {
       {showCreate && (
         <div style={{ border: '1px solid #ddd', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', background: '#f9fafb' }}>
           <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.1rem', color: '#374151' }}>What's on your mind?</h3>
-          <textarea
-            value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
-            placeholder="Share your thoughts, paste links, or attach media..."
-            rows={5}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              borderRadius: '0.375rem',
-              border: '1px solid #d1d5db',
-              background: 'white',
-              outline: 'none',
-              fontSize: '1rem',
-              fontFamily: 'inherit',
-              resize: 'vertical',
-              boxSizing: 'border-box',
-              marginBottom: '0.75rem'
-            }}
-          />
+          <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
+            <textarea
+              value={newContent}
+              onChange={(e) => setNewContent(e.target.value)}
+              placeholder="Share your thoughts, paste links, or attach media..."
+              maxLength={500}
+              rows={5}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                borderRadius: '0.375rem',
+                border: '1px solid #d1d5db',
+                background: 'white',
+                outline: 'none',
+                fontSize: '1rem',
+                fontFamily: 'inherit',
+                resize: 'vertical',
+                boxSizing: 'border-box'
+              }}
+            />
+            <div style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'right', marginTop: '0.25rem' }}>
+              {newContent.length}/500 characters
+            </div>
+          </div>
           {imagePreview && (
             <div style={{ marginBottom: '0.75rem', position: 'relative', display: 'inline-block' }}>
               <img src={imagePreview} alt="Preview" style={{ maxWidth: '300px', width: '100%', height: 'auto', borderRadius: '0.5rem', border: '1px solid #d1d5db' }} />
@@ -281,9 +357,18 @@ export default function Forum({ user }) {
               >
                 {myLikedPostIds.has(post.id) ? '❤️' : '🤍'} Like ({post.likes_count})
               </button>
-              <button className="nav-btn" onClick={() => setCommentingPostId(commentingPostId === post.id ? null : post.id)}>
+              <button className="nav-btn" onClick={() => setCommentingPostId(commentingPostId === post.id ? null : post.id)} style={{ marginRight: '0.5rem' }}>
                 Comment ({post.comments.length})
               </button>
+              {user && user.email === post.user_email && (
+                <button 
+                  className="nav-btn" 
+                  onClick={() => handleDeletePost(post.id)}
+                  style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' }}
+                >
+                  🗑️ Delete
+                </button>
+              )}
               {/* Hover tooltip for likes */}
               {likesHover === post.id && post.likes && post.likes.length > 0 && (
                 <div style={{
@@ -306,25 +391,29 @@ export default function Forum({ user }) {
               )}
             </div>
 
-            {(commentingPostId === post.id || post.comments.length > 0) && (
-              <div style={{ marginTop: '1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', overflow: 'hidden' }}>
-                {commentingPostId === post.id && (
-                  <div style={{ padding: '1rem', background: `${pastelColors[post.id % pastelColors.length]}dd`, borderBottom: '1px solid #d1d5db' }}>
+          {(commentingPostId === post.id || post.comments.length > 0) && (
+            <div style={{ marginTop: '1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', overflow: 'hidden' }}>
+              {commentingPostId === post.id && (
+                <div style={{ padding: '1rem', background: `${pastelColors[post.id % pastelColors.length]}dd`, borderBottom: '1px solid #d1d5db' }}>
+                  <div style={{ width: '100%', marginBottom: '0.75rem' }}>
                     <textarea
-                      rows={3}
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
                       placeholder="Write a comment..."
-                      style={{ width: '100%', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', marginBottom: '0.75rem', boxSizing: 'border-box', fontSize: '1rem', background: 'white' }}
+                      maxLength={100}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', boxSizing: 'border-box', fontSize: '1rem', background: 'white' }}
                     />
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button className="nav-btn active" onClick={handleComment} style={{ padding: '0.5rem 1rem' }}>Post</button>
-                      <button className="nav-btn" onClick={() => { setCommentingPostId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6' }}>Cancel</button>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'right', marginTop: '0.25rem' }}>
+                      {commentText.length}/100 characters
                     </div>
                   </div>
-                )}
-
-                {post.comments.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button className="nav-btn active" onClick={handleComment} style={{ padding: '0.5rem 1rem' }}>Post</button>
+                    <button className="nav-btn" onClick={() => { setCommentingPostId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6' }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+              {post.comments.length > 0 && (
                   <div style={{ 
                     padding: '1rem',
                     background: '#f9fafb',
@@ -334,8 +423,10 @@ export default function Forum({ user }) {
                     {[...post.comments].reverse().map((c) => {
                       const firstName = c.user_full_name.split(' ')[0]
                       return (
-                        <p key={c.id} style={{ margin: '0.5rem 0' }}>
-                          <small><strong>{firstName}:</strong> {c.comment}</small>
+                        <p key={c.id} style={{ margin: '0.5rem 0', wordWrap: 'break-word', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+                          <small>
+                            <strong>{firstName}:</strong> {renderCommentWithLinks(c.comment)}
+                          </small>
                         </p>
                       )
                     })}

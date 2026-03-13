@@ -106,9 +106,52 @@ export default function Events({ user }) {
     await refreshEventsAndLikes()
   }
 
+  const sanitizeInput = (text) => {
+    // Basic XSS prevention - escape HTML special characters
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#x27;')
+      .replace(/\//g, '&#x2F;')
+  }
+
+  const renderCommentWithLinks = (text) => {
+    // Detect URLs and convert to clickable links
+    const urlRegex = /(https?:\/\/[^\s]+)/g
+    const parts = text.split(urlRegex)
+    
+    return parts.map((part, idx) => {
+      // Check if this part is a URL by testing against the regex
+      if (part.match(/^https?:\/\//)) {
+        return (
+          <a 
+            key={idx} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            style={{ color: '#2563eb', textDecoration: 'underline' }}
+          >
+            {part}
+          </a>
+        )
+      }
+      // For non-URL text, return as plain text (React automatically escapes it)
+      return <span key={idx}>{part}</span>
+    })
+  }
+
   const handleComment = async () => {
     if (!user) return alert('Please log in to comment')
     if (!commentText.trim()) return
+    
+    // Limit comment to 100 characters
+    if (commentText.length > 100) {
+      return alert('Comment must be 100 characters or less')
+    }
+    
+    // Send comment without sanitization - renderCommentWithLinks handles safe rendering
     await fetch(apiUrl(`/api/events/${commentingEventId}/comments`), {
       method: 'POST',
       headers: {
@@ -164,7 +207,7 @@ export default function Events({ user }) {
               )}
               {event.description && (
                 <div style={{ marginTop: '0.5rem', whiteSpace: 'pre-line' }}>
-                  {renderDescription(event.description)}
+                  <p style={{ margin: '0.5rem 0', wordWrap: 'break-word', overflowWrap: 'break-word', wordBreak: 'break-word' }}>{renderDescription(event.description)}</p>
                 </div>
               )}
               <div style={{ marginTop: '0.5rem', position: 'relative' }}>
@@ -206,13 +249,19 @@ export default function Events({ user }) {
                 <div style={{ marginTop: '1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', overflow: 'hidden' }}>
                   {commentingEventId === event.id && (
                     <div style={{ padding: '1rem', background: `${bg}dd`, borderBottom: '1px solid #d1d5db' }}>
-                      <textarea
-                        rows={3}
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        placeholder="Write a comment..."
-                        style={{ width: '100%', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', marginBottom: '0.75rem', boxSizing: 'border-box', fontSize: '1rem', background: 'white' }}
-                      />
+                      <div style={{ width: '100%', marginBottom: '0.75rem' }}>
+                        <textarea
+                          rows={3}
+                          value={commentText}
+                          onChange={(e) => setCommentText(e.target.value)}
+                          placeholder="Write a comment..."
+                          maxLength={100}
+                          style={{ width: '100%', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', boxSizing: 'border-box', fontSize: '1rem', background: 'white' }}
+                        />
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'right', marginTop: '0.25rem' }}>
+                          {commentText.length}/100 characters
+                        </div>
+                      </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button className="nav-btn active" onClick={handleComment} style={{ padding: '0.5rem 1rem' }}>Post</button>
                         <button className="nav-btn" onClick={() => { setCommentingEventId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6' }}>Cancel</button>
@@ -230,8 +279,10 @@ export default function Events({ user }) {
                       {[...event.comments].reverse().map((c) => {
                         const firstName = (c.full_name || c.user_email).split(' ')[0]
                         return (
-                          <p key={c.id} style={{ margin: '0.5rem 0' }}>
-                            <small><strong>{firstName}:</strong> {c.comment}</small>
+                          <p key={c.id} style={{ margin: '0.5rem 0', wordWrap: 'break-word', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+                            <small>
+                              <strong>{firstName}:</strong> {renderCommentWithLinks(c.comment)}
+                            </small>
                           </p>
                         )
                       })}
