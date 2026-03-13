@@ -133,9 +133,9 @@ export default function Practice({ user }) {
       const isSelected = Boolean(day) && selectedDate?.toISOString().split('T')[0] === dateStr
 
       let backgroundColor = '#ffffff'
-      if (isThursday && isAdminSession) backgroundColor = '#86efac'
-      else if (isThursday) backgroundColor = '#f0fdf4'
-      if (isSelected) backgroundColor = '#fef08a'
+      if (isAdminSession) backgroundColor = '#86efac' // Green for any day with practice session
+      else if (isThursday) backgroundColor = '#f0fdf4' // Light green for Thursdays without session
+      if (isSelected) backgroundColor = '#fef08a' // Yellow for selected date
 
       return (
         <div

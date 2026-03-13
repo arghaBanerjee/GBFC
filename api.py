@@ -460,7 +460,7 @@ def logout(current_user: dict = Depends(get_current_user), token: str = Depends(
 def get_events():
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM events ORDER BY date DESC")
+        cur.execute("SELECT * FROM events ORDER BY date ASC")
         events = []
         for row in cur.fetchall():
             event = dict(row)

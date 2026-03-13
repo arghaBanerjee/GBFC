@@ -74,7 +74,15 @@ export default function Events({ user }) {
       .catch(() => setMyLikedEventIds(new Set()))
   }, [user])
 
-  const filtered = events.filter((e) => e.type === tab)
+  const filtered = events.filter((e) => e.type === tab).sort((a, b) => {
+    // For upcoming: ascending (nearest first)
+    // For past: descending (most recent first)
+    if (tab === 'upcoming') {
+      return new Date(a.date) - new Date(b.date)
+    } else {
+      return new Date(b.date) - new Date(a.date)
+    }
+  })
 
   const refreshEventsAndLikes = async () => {
     const updated = await fetch(apiUrl('/api/events'))
