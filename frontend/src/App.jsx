@@ -198,6 +198,9 @@ function App() {
                 style={{
                   position: 'relative',
                   cursor: 'pointer',
+                  background: notificationsOpen ? '#16a34a' : '#f3f4f6',
+                  color: notificationsOpen ? 'white' : '#374151',
+                  borderColor: notificationsOpen ? '#16a34a' : '#e5e7eb',
                 }}
                 aria-label="Notifications"
               >

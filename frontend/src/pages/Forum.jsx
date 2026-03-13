@@ -181,11 +181,12 @@ export default function Forum({ user }) {
             transition: 'all 0.3s ease',
             transform: 'translateY(0)',
             width: '100%',
-            maxWidth: '300px',
+            maxWidth: '180px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '0.5rem'
+            gap: '0.5rem',
+            whiteSpace: 'nowrap'
           }}
           onMouseEnter={(e) => {
             e.target.style.transform = 'translateY(-2px)'
