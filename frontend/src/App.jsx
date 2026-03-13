@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import Events from './pages/Events'
@@ -14,8 +14,30 @@ import './index.css'
 function App() {
   const [user, setUser] = useState(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [notifications, setNotifications] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const notificationRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
+
+  // Shared function to fetch notifications
+  const fetchNotifications = async () => {
+    const token = localStorage.getItem('token')
+    if (!token || !user) return
+    try {
+      const res = await fetch(apiUrl('/api/notifications'), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setNotifications(data)
+        setUnreadCount(data.filter(n => !n.read).length)
+      }
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err)
+    }
+  }
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -31,6 +53,49 @@ function App() {
         .catch(() => localStorage.removeItem('token'))
     }
   }, [])
+
+  // Poll notifications every 5 seconds
+  useEffect(() => {
+    if (!user) return
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 5000)
+    return () => clearInterval(interval)
+  }, [user])
+
+  // Refresh notifications when location changes
+  useEffect(() => {
+    if (user) {
+      fetchNotifications()
+    }
+  }, [location.pathname])
+
+  const markAsRead = async () => {
+    const token = localStorage.getItem('token')
+    if (!token) return
+    try {
+      await fetch(apiUrl('/api/notifications/mark-read'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+      setUnreadCount(0)
+    } catch (err) {
+      console.error('Failed to mark notifications as read:', err)
+    }
+  }
+
+  // Close notifications when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setNotificationsOpen(false)
+      }
+    }
+    if (notificationsOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [notificationsOpen])
 
   const logout = () => {
     localStorage.removeItem('token')
@@ -120,6 +185,117 @@ function App() {
               </Link>
             )}
           </div>
+
+          {/* Notification Bell - visible on both desktop and mobile */}
+          {user && (
+            <div ref={notificationRef} style={{ position: 'relative', marginRight: '0.5rem' }}>
+              <button
+                onClick={() => {
+                  setNotificationsOpen(!notificationsOpen)
+                  if (!notificationsOpen && unreadCount > 0) markAsRead()
+                }}
+                className="social-icon"
+                style={{
+                  position: 'relative',
+                  cursor: 'pointer',
+                }}
+                aria-label="Notifications"
+              >
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                      <path
+                        d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M13.73 21a2 2 0 0 1-3.46 0"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    {unreadCount > 0 && (
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: '-4px',
+                          right: '-4px',
+                          background: '#ef4444',
+                          color: 'white',
+                          borderRadius: '50%',
+                          width: '16px',
+                          height: '16px',
+                          fontSize: '0.65rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+              </button>
+              {notificationsOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: '50%',
+                    transform: 'translateX(50%)',
+                    marginTop: '0.5rem',
+                    background: 'white',
+                    border: '1px solid #ddd',
+                    borderRadius: '0.5rem',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    width: window.innerWidth <= 768 ? '85vw' : '320px',
+                    maxWidth: '320px',
+                    maxHeight: window.innerWidth <= 768 ? '280px' : '400px',
+                    overflowY: 'auto',
+                    zIndex: 1000,
+                  }}
+                >
+                  <div style={{ padding: '1rem', borderBottom: '1px solid #eee' }}>
+                    <strong>Notifications</strong>
+                  </div>
+                  {notifications.length === 0 ? (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>
+                      No notifications yet
+                    </div>
+                  ) : (
+                    notifications.map((notif) => (
+                      <div
+                        key={notif.id}
+                        style={{
+                          padding: '0.75rem 1rem',
+                          borderBottom: '1px solid #f0f0f0',
+                          background: notif.read ? 'white' : '#f0f9ff',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => {
+                          setNotificationsOpen(false)
+                          setMobileMenuOpen(false)
+                          if (notif.type === 'forum_post') navigate('/club-forum')
+                          else if (notif.type === 'match') navigate('/matches')
+                          else if (notif.type === 'practice') navigate('/book-practice')
+                        }}
+                      >
+                        <div style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+                          {notif.message}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#999' }}>
+                          {new Date(notif.created_at).toLocaleString()}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Desktop Auth Section */}
           <div className="desktop-auth">

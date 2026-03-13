@@ -158,6 +158,16 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id SERIAL PRIMARY KEY,
+                user_email VARCHAR(255),
+                type VARCHAR(50) NOT NULL,
+                message TEXT NOT NULL,
+                read BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
             conn.commit()
         else:
             # SQLite version (for local development)
@@ -242,6 +252,14 @@ def init_db():
                 comment TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(post_id) REFERENCES forum_posts(id)
+            );
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email TEXT,
+                type TEXT NOT NULL,
+                message TEXT NOT NULL,
+                read INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
             try:
@@ -480,6 +498,16 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
             (event.name, event.date, event.time, event.location, event.type, event.description, event.image_url, event.youtube_url),
         )
         conn.commit()
+        
+        # Notify all users about new match
+        time_info = f" at {event.time}" if event.time else ""
+        location_info = f" at {event.location}" if event.location else ""
+        notify_all_users(
+            "match",
+            f"New Football Match on {event.date}{time_info}{location_info}",
+            exclude_email=current_user["email"]
+        )
+        
         return EventOut(id=cur.lastrowid, **event.model_dump())
 
 @app.put("/api/events/{event_id}", response_model=EventOut)
@@ -584,6 +612,16 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
             (session.date, session.time, session.location),
         )
         conn.commit()
+        
+        # Notify all users about new practice session
+        time_info = f" at {session.time}" if session.time else ""
+        location_info = f" at {session.location}" if session.location else ""
+        notify_all_users(
+            "practice",
+            f"New Practice Session Added on {session.date}{time_info}{location_info}",
+            exclude_email=current_user["email"]
+        )
+        
         return PracticeSessionOut(**session.model_dump())
 
 @app.put("/api/practice/sessions/{date_str}", response_model=PracticeSessionOut)
@@ -726,6 +764,14 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
             (current_user["email"], post.content),
         )
         conn.commit()
+        
+        # Notify all users about new forum post
+        notify_all_users(
+            "forum_post",
+            f"New post added by {current_user['full_name']}",
+            exclude_email=current_user["email"]
+        )
+        
         return ForumPostOut(
             id=cur.lastrowid,
             user_full_name=current_user["full_name"],
@@ -918,6 +964,65 @@ def get_practice_availability_summary(date_str: str):
             "not_available": not_available,
             "no_vote": no_vote,
         }
+
+# --- Notifications ---
+def create_notification(user_email: str, notif_type: str, message: str):
+    """Helper function to create a notification for a user"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO notifications (user_email, type, message) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (user_email, notif_type, message)
+        )
+        conn.commit()
+
+def notify_all_users(notif_type: str, message: str, exclude_email: str = None):
+    """Create notification for all users except the one who triggered it"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT email FROM users")
+        users = cur.fetchall()
+        for user in users:
+            email = user["email"] if USE_POSTGRES else user[0]
+            if email != exclude_email:
+                create_notification(email, notif_type, message)
+
+@app.get("/api/notifications")
+def get_notifications(current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT * FROM notifications WHERE user_email = {PLACEHOLDER} ORDER BY created_at DESC LIMIT 50",
+            (current_user["email"],)
+        )
+        rows = cur.fetchall()
+        notifications = []
+        for row in rows:
+            notifications.append({
+                "id": row["id"] if USE_POSTGRES else row[0],
+                "type": row["type"] if USE_POSTGRES else row[2],
+                "message": row["message"] if USE_POSTGRES else row[3],
+                "read": row["read"] if USE_POSTGRES else bool(row[4]),
+                "created_at": row["created_at"] if USE_POSTGRES else row[5],
+            })
+        return notifications
+
+@app.post("/api/notifications/mark-read")
+def mark_notifications_read(current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                f"UPDATE notifications SET read = TRUE WHERE user_email = {PLACEHOLDER}",
+                (current_user["email"],)
+            )
+        else:
+            cur.execute(
+                f"UPDATE notifications SET read = 1 WHERE user_email = {PLACEHOLDER}",
+                (current_user["email"],)
+            )
+        conn.commit()
+        return {"message": "Notifications marked as read"}
 
 # --- About Us ---
 @app.get("/api/about")
