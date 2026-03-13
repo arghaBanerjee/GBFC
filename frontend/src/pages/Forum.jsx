@@ -10,6 +10,7 @@ export default function Forum({ user }) {
   const [commentText, setCommentText] = useState('')
   const [myLikedPostIds, setMyLikedPostIds] = useState(new Set())
   const [likesHover, setLikesHover] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
   const token = localStorage.getItem('token')
 
   const pastelColors = useMemo(
@@ -47,34 +48,52 @@ export default function Forum({ user }) {
       .catch(() => setMyLikedPostIds(new Set()))
   }, [user])
 
+  const getYouTubeVideoId = (url) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/
+    const match = url.match(regExp)
+    return (match && match[2].length === 11) ? match[2] : null
+  }
+
+  const convertUrlsToLinks = (text) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g
+    return text.replace(urlRegex, (url) => {
+      const videoId = getYouTubeVideoId(url)
+      if (videoId) {
+        return `<div style="margin: 1rem 0;"><iframe width="100%" height="315" style="max-width: 560px; border-radius: 0.5rem;" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`
+      }
+      return `<a href="${url}" style="color: #2563eb; text-decoration: underline;">${url}</a>`
+    })
+  }
+
   const handleCreate = async () => {
     if (!user) return alert('Please log in to post')
+    if (!newContent.trim() && !imagePreview) return
+    
+    let finalContent = convertUrlsToLinks(newContent.replace(/\n/g, '<br>'))
+    if (imagePreview) {
+      finalContent += `<br><img src="${imagePreview}" style="max-width: 600px; width: 100%; height: auto; display: block; margin-top: 0.5rem; border-radius: 0.5rem;" />`
+    }
+    
     await fetch(apiUrl('/api/forum'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ content: newContent }),
+      body: JSON.stringify({ content: finalContent }),
     })
     setNewContent('')
-    if (editorRef.current) editorRef.current.innerHTML = ''
+    setImagePreview(null)
     setShowCreate(false)
     const updated = await fetch(apiUrl('/api/forum'))
     setPosts(await updated.json())
-  }
-
-  const exec = (command, value) => {
-    if (!editorRef.current) return
-    editorRef.current.focus()
-    document.execCommand(command, false, value)
-    setNewContent(editorRef.current.innerHTML)
   }
 
   const handleAttachImage = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (!user) return alert('Please log in to attach images')
+    if (!file.type.startsWith('image/')) return alert('Please select an image file')
 
     const formData = new FormData()
     formData.append('file', file)
@@ -87,15 +106,9 @@ export default function Forum({ user }) {
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) return alert(data?.detail || 'Image upload failed')
-    exec('insertImage', data.image_url)
-
+    
+    setImagePreview(data.image_url)
     e.target.value = ''
-  }
-
-  const handleAddLink = () => {
-    const url = prompt('Enter URL')
-    if (!url) return
-    exec('createLink', url)
   }
 
   const refreshPostsAndLikes = async () => {
@@ -152,44 +165,96 @@ export default function Forum({ user }) {
       `}</style>
       <h2>Club Forum</h2>
       {user && (
-        <button className="nav-btn active" onClick={() => setShowCreate(true)} style={{ marginBottom: '1rem' }}>
-          Create Post
+        <button 
+          onClick={() => setShowCreate(true)} 
+          style={{ 
+            marginBottom: '1rem',
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white',
+            border: 'none',
+            padding: '1rem 2rem',
+            fontSize: '1.1rem',
+            fontWeight: 'bold',
+            borderRadius: '0.75rem',
+            cursor: 'pointer',
+            boxShadow: '0 4px 15px rgba(16, 185, 129, 0.4)',
+            transition: 'all 0.3s ease',
+            transform: 'translateY(0)',
+            width: '100%',
+            maxWidth: '300px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.transform = 'translateY(-2px)'
+            e.target.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.6)'
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.transform = 'translateY(0)'
+            e.target.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.4)'
+          }}
+        >
+          ✨ Create Post
         </button>
       )}
       {showCreate && (
-        <div style={{ border: '1px solid #ddd', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-            <button className="nav-btn" type="button" onClick={() => exec('bold')}>Bold</button>
-            <button className="nav-btn" type="button" onClick={() => exec('italic')}>Italic</button>
-            <button className="nav-btn" type="button" onClick={() => exec('underline')}>Underline</button>
-            <button className="nav-btn" type="button" onClick={() => exec('insertUnorderedList')}>List</button>
-            <button className="nav-btn" type="button" onClick={handleAddLink}>Link</button>
-            <label className="nav-btn" style={{ display: 'inline-flex', alignItems: 'center' }}>
-              Attach Image
+        <div style={{ border: '1px solid #ddd', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', background: '#f9fafb' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.1rem', color: '#374151' }}>What's on your mind?</h3>
+          <textarea
+            value={newContent}
+            onChange={(e) => setNewContent(e.target.value)}
+            placeholder="Share your thoughts, paste links, or attach media..."
+            rows={5}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              borderRadius: '0.375rem',
+              border: '1px solid #d1d5db',
+              background: 'white',
+              outline: 'none',
+              fontSize: '1rem',
+              fontFamily: 'inherit',
+              resize: 'vertical',
+              boxSizing: 'border-box',
+              marginBottom: '0.75rem'
+            }}
+          />
+          {imagePreview && (
+            <div style={{ marginBottom: '0.75rem', position: 'relative', display: 'inline-block' }}>
+              <img src={imagePreview} alt="Preview" style={{ maxWidth: '300px', width: '100%', height: 'auto', borderRadius: '0.5rem', border: '1px solid #d1d5db' }} />
+              <button 
+                onClick={() => setImagePreview(null)}
+                style={{ 
+                  position: 'absolute', 
+                  top: '0.5rem', 
+                  right: '0.5rem', 
+                  background: '#ef4444', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '50%', 
+                  width: '24px', 
+                  height: '24px', 
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <label className="nav-btn" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0 }}>
+              📎 Attach Image
               <input type="file" accept="image/*" onChange={handleAttachImage} style={{ display: 'none' }} />
             </label>
           </div>
-          <div
-            ref={editorRef}
-            contentEditable
-            onInput={() => setNewContent(editorRef.current?.innerHTML || '')}
-            style={{
-              width: '100%',
-              minHeight: '120px',
-              borderRadius: '0.375rem',
-              border: '1px solid #d1d5db',
-              padding: '0.75rem',
-              background: 'white',
-              outline: 'none',
-            }}
-          />
-          {!newContent && (
-            <div style={{ marginTop: '0.5rem', opacity: 0.7 }}>
-              What's on your mind?
-            </div>
-          )}
-          <button className="nav-btn" onClick={handleCreate} style={{ marginRight: '0.5rem' }}>Post</button>
-          <button className="nav-btn" onClick={() => setShowCreate(false)}>Cancel</button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="nav-btn active" onClick={handleCreate} style={{ padding: '0.5rem 1rem' }}>Post</button>
+            <button className="nav-btn" onClick={() => { setShowCreate(false); setNewContent(''); setImagePreview(null) }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6' }}>Cancel</button>
+          </div>
         </div>
       )}
       <div style={{ display: 'grid', gap: '1rem' }}>
@@ -241,29 +306,29 @@ export default function Forum({ user }) {
             </div>
 
             {(commentingPostId === post.id || post.comments.length > 0) && (
-              <div style={{ marginTop: '1rem', border: '1px solid #d1d5db', padding: '1rem', borderRadius: '0.5rem', background: '#f9fafb' }}>
+              <div style={{ marginTop: '1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', overflow: 'hidden' }}>
                 {commentingPostId === post.id && (
-                  <>
+                  <div style={{ padding: '1rem', background: `${pastelColors[post.id % pastelColors.length]}dd`, borderBottom: '1px solid #d1d5db' }}>
                     <textarea
                       rows={3}
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
                       placeholder="Write a comment..."
-                      style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', marginBottom: '0.5rem' }}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', marginBottom: '0.75rem', boxSizing: 'border-box', fontSize: '1rem', background: 'white' }}
                     />
-                    <div>
-                      <button className="nav-btn" onClick={handleComment} style={{ marginRight: '0.5rem' }}>Post</button>
-                      <button className="nav-btn" onClick={() => { setCommentingPostId(null); setCommentText('') }}>Cancel</button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button className="nav-btn active" onClick={handleComment} style={{ padding: '0.5rem 1rem' }}>Post</button>
+                      <button className="nav-btn" onClick={() => { setCommentingPostId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6' }}>Cancel</button>
                     </div>
-                  </>
+                  </div>
                 )}
 
                 {post.comments.length > 0 && (
                   <div style={{ 
-                    marginTop: commentingPostId === post.id ? '1rem' : '0',
+                    padding: '1rem',
+                    background: '#f9fafb',
                     maxHeight: '200px',
-                    overflowY: 'auto',
-                    paddingRight: '0.5rem'
+                    overflowY: 'auto'
                   }}>
                     {[...post.comments].reverse().map((c) => {
                       const firstName = c.user_full_name.split(' ')[0]

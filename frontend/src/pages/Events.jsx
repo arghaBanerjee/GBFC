@@ -195,29 +195,29 @@ export default function Events({ user }) {
               </div>
               {/* Comments section */}
               {(commentingEventId === event.id || commentsCount > 0) && (
-                <div style={{ marginTop: '1rem', border: '1px solid #d1d5db', padding: '1rem', borderRadius: '0.5rem', background: '#f9fafb' }}>
+                <div style={{ marginTop: '1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', overflow: 'hidden' }}>
                   {commentingEventId === event.id && (
-                    <>
+                    <div style={{ padding: '1rem', background: `${bg}dd`, borderBottom: '1px solid #d1d5db' }}>
                       <textarea
                         rows={3}
                         value={commentText}
                         onChange={(e) => setCommentText(e.target.value)}
                         placeholder="Write a comment..."
-                        style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', marginBottom: '0.5rem' }}
+                        style={{ width: '100%', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', marginBottom: '0.75rem', boxSizing: 'border-box', fontSize: '1rem', background: 'white' }}
                       />
-                      <div>
-                        <button className="nav-btn" onClick={handleComment} style={{ marginRight: '0.5rem' }}>Post</button>
-                        <button className="nav-btn" onClick={() => { setCommentingEventId(null); setCommentText('') }}>Cancel</button>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button className="nav-btn active" onClick={handleComment} style={{ padding: '0.5rem 1rem' }}>Post</button>
+                        <button className="nav-btn" onClick={() => { setCommentingEventId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6' }}>Cancel</button>
                       </div>
-                    </>
+                    </div>
                   )}
                   {/* Show existing comments */}
                   {event.comments && event.comments.length > 0 && (
                     <div style={{ 
-                      marginTop: commentingEventId === event.id ? '1rem' : '0',
+                      padding: '1rem',
+                      background: '#f9fafb',
                       maxHeight: '200px',
-                      overflowY: 'auto',
-                      paddingRight: '0.5rem'
+                      overflowY: 'auto'
                     }}>
                       {[...event.comments].reverse().map((c) => {
                         const firstName = (c.full_name || c.user_email).split(' ')[0]
