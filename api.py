@@ -970,6 +970,16 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
         )
         conn.commit()
         
+        # Get the inserted event ID (PostgreSQL compatible)
+        if USE_POSTGRES:
+            cur.execute(
+                f"SELECT id FROM events WHERE name = {PLACEHOLDER} AND date = {PLACEHOLDER} ORDER BY id DESC LIMIT 1",
+                (event.name, event.date)
+            )
+            event_id = cur.fetchone()['id']
+        else:
+            event_id = cur.lastrowid
+        
         # Notify all users about new match
         time_info = f" at {event.time}" if event.time else ""
         location_info = f" at {event.location}" if event.location else ""
@@ -979,7 +989,7 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
             exclude_email=current_user["email"]
         )
         
-        return EventOut(id=cur.lastrowid, **event.model_dump())
+        return EventOut(id=event_id, **event.model_dump())
 
 @app.put("/api/events/{event_id}", response_model=EventOut)
 def update_event(event_id: int, event: EventCreate, current_user: dict = Depends(get_current_user)):
