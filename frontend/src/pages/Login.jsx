@@ -48,6 +48,7 @@ export default function Login({ setUser }) {
     if (res.ok) {
       const { access_token } = await res.json()
       localStorage.setItem('token', access_token)
+      localStorage.setItem('lastActivity', Date.now().toString())
       const userRes = await fetch(apiUrl('/api/me'), { headers: { Authorization: `Bearer ${access_token}` } })
       const userData = await userRes.json()
       setUser(userData)

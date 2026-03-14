@@ -13,6 +13,7 @@ import './index.css'
 
 function App() {
   const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
@@ -20,6 +21,8 @@ function App() {
   const notificationRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
+  const sessionTimeoutRef = useRef(null)
+  const lastActivityRef = useRef(Date.now())
 
   // Shared function to fetch notifications
   const fetchNotifications = async () => {
@@ -39,9 +42,72 @@ function App() {
     }
   }
 
+  // Session timeout: 30 minutes of inactivity
+  const SESSION_TIMEOUT = 30 * 60 * 1000 // 30 minutes in milliseconds
+
+  const resetSessionTimeout = () => {
+    lastActivityRef.current = Date.now()
+    localStorage.setItem('lastActivity', Date.now().toString())
+  }
+
+  const checkSessionTimeout = () => {
+    const lastActivity = parseInt(localStorage.getItem('lastActivity') || '0')
+    const now = Date.now()
+    if (lastActivity && (now - lastActivity) > SESSION_TIMEOUT) {
+      // Session expired - logout
+      logout()
+      alert('Your session has expired due to inactivity. Please login again.')
+    }
+  }
+
+  const logout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('lastActivity')
+    setUser(null)
+    if (sessionTimeoutRef.current) {
+      clearInterval(sessionTimeoutRef.current)
+    }
+    navigate('/login')
+  }
+
+  // Track user activity to reset timeout
+  useEffect(() => {
+    const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click']
+    
+    const handleActivity = () => {
+      resetSessionTimeout()
+    }
+
+    activityEvents.forEach(event => {
+      document.addEventListener(event, handleActivity)
+    })
+
+    return () => {
+      activityEvents.forEach(event => {
+        document.removeEventListener(event, handleActivity)
+      })
+    }
+  }, [])
+
+  // Check session timeout every minute
+  useEffect(() => {
+    if (user) {
+      sessionTimeoutRef.current = setInterval(checkSessionTimeout, 60000) // Check every minute
+      return () => {
+        if (sessionTimeoutRef.current) {
+          clearInterval(sessionTimeoutRef.current)
+        }
+      }
+    }
+  }, [user])
+
+  // Fetch user on mount and preserve current route
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (token) {
+      // Check if session is still valid before fetching user
+      checkSessionTimeout()
+      
       fetch(apiUrl('/api/me'), {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -49,8 +115,20 @@ function App() {
           if (r.ok) return r.json()
           throw new Error()
         })
-        .then((u) => setUser(u))
-        .catch(() => localStorage.removeItem('token'))
+        .then((u) => {
+          setUser(u)
+          resetSessionTimeout()
+          setLoading(false)
+          // User stays on current page - no redirect
+        })
+        .catch(() => {
+          localStorage.removeItem('token')
+          localStorage.removeItem('lastActivity')
+          setLoading(false)
+          navigate('/login')
+        })
+    } else {
+      setLoading(false)
     }
   }, [])
 
@@ -97,11 +175,6 @@ function App() {
     }
   }, [notificationsOpen])
 
-  const logout = () => {
-    localStorage.removeItem('token')
-    setUser(null)
-    navigate('/')
-  }
 
   const navItems = ['Home', 'Matches', 'Book Practice', 'Club Forum']
   const isActive = (path) => location.pathname === path
@@ -402,7 +475,7 @@ function App() {
         <Route path="/about-us" element={<About />} />
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/signup" element={<Signup setUser={setUser} />} />
-        <Route path="/admin" element={<Admin user={user} />} />
+        <Route path="/admin" element={<Admin user={user} loading={loading} />} />
       </Routes>
     </div>
   )

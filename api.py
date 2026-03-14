@@ -80,7 +80,10 @@ def init_db():
                 full_name VARCHAR(255) NOT NULL,
                 password VARCHAR(255) NOT NULL,
                 user_type VARCHAR(50) DEFAULT 'member',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_deleted BOOLEAN DEFAULT FALSE,
+                deleted_at TIMESTAMP,
+                deleted_by VARCHAR(255)
             )
             """)
             # Add user_type column if it doesn't exist (for existing databases)
@@ -118,6 +121,132 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not add created_at column: {e}")
                 conn.rollback()
+            
+            # Add is_deleted column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='is_deleted'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add is_deleted column: {e}")
+                conn.rollback()
+            
+            # Add deleted_at column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='deleted_at'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN deleted_at TIMESTAMP;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add deleted_at column: {e}")
+                conn.rollback()
+            
+            # Add deleted_by column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='deleted_by'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN deleted_by VARCHAR(255);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add deleted_by column: {e}")
+                conn.rollback()
+            
+            # Add user_full_name to forum_posts if it doesn't exist
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='forum_posts' AND column_name='user_full_name'
+                        ) THEN
+                            ALTER TABLE forum_posts ADD COLUMN user_full_name VARCHAR(255);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add user_full_name to forum_posts: {e}")
+                conn.rollback()
+            
+            # Add user_full_name to forum_comments if it doesn't exist
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='forum_comments' AND column_name='user_full_name'
+                        ) THEN
+                            ALTER TABLE forum_comments ADD COLUMN user_full_name VARCHAR(255);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add user_full_name to forum_comments: {e}")
+                conn.rollback()
+            
+            # Add user_full_name to event_comments if it doesn't exist
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='event_comments' AND column_name='user_full_name'
+                        ) THEN
+                            ALTER TABLE event_comments ADD COLUMN user_full_name VARCHAR(255);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add user_full_name to event_comments: {e}")
+                conn.rollback()
+            
+            # Add user_full_name to practice_availability if it doesn't exist
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='practice_availability' AND column_name='user_full_name'
+                        ) THEN
+                            ALTER TABLE practice_availability ADD COLUMN user_full_name VARCHAR(255);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add user_full_name to practice_availability: {e}")
+                conn.rollback()
             cur.execute("""
             CREATE TABLE IF NOT EXISTS events (
                 id SERIAL PRIMARY KEY,
@@ -150,6 +279,7 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 event_id INTEGER REFERENCES events(id),
                 user_email VARCHAR(255),
+                user_full_name VARCHAR(255),
                 comment TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -159,6 +289,7 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 date VARCHAR(50) NOT NULL,
                 user_email VARCHAR(255),
+                user_full_name VARCHAR(255),
                 status VARCHAR(50) NOT NULL CHECK(status IN ('available', 'tentative', 'not_available')),
                 UNIQUE(date, user_email)
             )
@@ -174,6 +305,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS forum_posts (
                 id SERIAL PRIMARY KEY,
                 user_email VARCHAR(255),
+                user_full_name VARCHAR(255),
                 content TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -191,6 +323,7 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 post_id INTEGER REFERENCES forum_posts(id),
                 user_email VARCHAR(255),
+                user_full_name VARCHAR(255),
                 comment TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -220,7 +353,10 @@ def init_db():
                 full_name TEXT NOT NULL,
                 password TEXT NOT NULL,
                 user_type TEXT DEFAULT 'member',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_deleted BOOLEAN DEFAULT 0,
+                deleted_at TIMESTAMP,
+                deleted_by TEXT
             )
             """)
             try:
@@ -244,6 +380,48 @@ def init_db():
                 cur.execute("UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
             except sqlite3.OperationalError:
                 pass
+            # Add is_deleted column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN is_deleted BOOLEAN DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add is_deleted column: {e}")
+            # Add deleted_at column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN deleted_at TIMESTAMP")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add deleted_at column: {e}")
+            # Add deleted_by column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN deleted_by TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add deleted_by column: {e}")
+            # Add user_full_name to forum_posts if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE forum_posts ADD COLUMN user_full_name TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add user_full_name to forum_posts: {e}")
+            # Add user_full_name to forum_comments if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE forum_comments ADD COLUMN user_full_name TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add user_full_name to forum_comments: {e}")
+            # Add user_full_name to event_comments if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE event_comments ADD COLUMN user_full_name TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add user_full_name to event_comments: {e}")
+            # Add user_full_name to practice_availability if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE practice_availability ADD COLUMN user_full_name TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add user_full_name to practice_availability: {e}")
             cur.executescript("""
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -272,6 +450,7 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_id INTEGER,
                 user_email TEXT,
+                user_full_name TEXT,
                 comment TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(event_id) REFERENCES events(id)
@@ -280,6 +459,7 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL,
                 user_email TEXT,
+                user_full_name TEXT,
                 status TEXT NOT NULL CHECK(status IN ('available', 'tentative', 'not_available')),
                 UNIQUE(date, user_email)
             );
@@ -291,6 +471,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS forum_posts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_email TEXT,
+                user_full_name TEXT,
                 content TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -305,6 +486,7 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 post_id INTEGER,
                 user_email TEXT,
+                user_full_name TEXT,
                 comment TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(post_id) REFERENCES forum_posts(id)
@@ -409,6 +591,11 @@ class PracticeAvailability(BaseModel):
     date: str
     status: str
 
+class AdminPracticeAvailability(BaseModel):
+    date: str
+    user_email: str
+    status: str  # 'available', 'tentative', 'not_available', or 'delete' to remove
+
 class PracticeSessionCreate(BaseModel):
     date: str
     time: Optional[str] = None
@@ -425,10 +612,13 @@ def is_admin(current_user: dict) -> bool:
     # Fetch user_type from database
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT user_type FROM users WHERE email = {PLACEHOLDER}", (current_user["email"],))
+        cur.execute(f"SELECT user_type, is_deleted FROM users WHERE email = {PLACEHOLDER}", (current_user["email"],))
         row = cur.fetchone()
         if row:
             row_dict = dict(row)
+            # Check if user is deleted
+            if row_dict.get("is_deleted"):
+                return False
             user_type = row_dict.get("user_type") or "member"
         else:
             user_type = "member"
@@ -483,6 +673,31 @@ def signup(user: UserCreate):
     try:
         with get_connection() as conn:
             cur = conn.cursor()
+            
+            # Check if email already exists
+            cur.execute(
+                f"SELECT id, is_deleted FROM users WHERE email = {PLACEHOLDER}",
+                (user.email,)
+            )
+            existing = cur.fetchone()
+            
+            if existing:
+                existing_dict = dict(existing)
+                if existing_dict.get('is_deleted'):
+                    # Reactivate deleted account
+                    cur.execute(
+                        f"UPDATE users SET is_deleted = FALSE, deleted_at = NULL, "
+                        f"full_name = {PLACEHOLDER}, password = {PLACEHOLDER}, user_type = 'member' "
+                        f"WHERE email = {PLACEHOLDER}",
+                        (user.full_name, hash_password(user.password), user.email)
+                    )
+                    conn.commit()
+                    return UserOut(id=existing_dict['id'], email=user.email, full_name=user.full_name, user_type='member')
+                else:
+                    # Active user already exists
+                    raise HTTPException(status_code=400, detail="Email already registered")
+            
+            # Create new user
             cur.execute(
                 f"INSERT INTO users (email, full_name, password) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
                 (user.email, user.full_name, hash_password(user.password)),
@@ -494,19 +709,17 @@ def signup(user: UserCreate):
                 user_id = cur.fetchone()['id']
             else:
                 user_id = cur.lastrowid
-            return UserOut(id=user_id, email=user.email, full_name=user.full_name)
-    except (sqlite3.IntegrityError if not USE_POSTGRES else Exception) as e:
-        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-            raise HTTPException(status_code=400, detail=f"Email already registered")
-        raise HTTPException(status_code=400, detail=f"Database constraint failed: {e}")
+            return UserOut(id=user_id, email=user.email, full_name=user.full_name, user_type='member')
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM users WHERE email = {PLACEHOLDER}", (form_data.username,))
+        cur.execute(f"SELECT * FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)", (form_data.username,))
         user = cur.fetchone()
         if not user:
             print(f"Login failed: no user found for email {form_data.username}")
@@ -527,10 +740,13 @@ def me(current_user: dict = Depends(get_current_user)):
     # Fetch user_type from database
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT user_type FROM users WHERE email = {PLACEHOLDER}", (current_user["email"],))
+        cur.execute(f"SELECT user_type, is_deleted FROM users WHERE email = {PLACEHOLDER}", (current_user["email"],))
         row = cur.fetchone()
         if row:
             row_dict = dict(row)
+            # Check if user is deleted
+            if row_dict.get("is_deleted"):
+                raise HTTPException(status_code=401, detail="Account has been deleted")
             user_type = row_dict.get("user_type") or "member"
         else:
             user_type = "member"
@@ -555,7 +771,7 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
     
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, email, full_name, user_type, created_at FROM users ORDER BY id DESC")
+        cur.execute("SELECT id, email, full_name, user_type, created_at FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
         users = []
         for row in cur.fetchall():
             user_dict = dict(row)
@@ -598,6 +814,42 @@ def update_user_type(email: str, data: dict, current_user: dict = Depends(get_cu
         
         return {"message": f"User type updated to {user_type}"}
 
+@app.put("/api/users/{email}/name")
+def update_user_name(email: str, data: dict, current_user: dict = Depends(get_current_user)):
+    # Admin only
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    # Prevent editing super admin account
+    if email == "super@admin.com":
+        raise HTTPException(status_code=403, detail="Cannot edit super admin account")
+    
+    # Validate input
+    full_name = data.get("full_name", "").strip()
+    if not full_name:
+        raise HTTPException(status_code=400, detail="Full name cannot be empty")
+    
+    if len(full_name) > 100:
+        raise HTTPException(status_code=400, detail="Full name must be 100 characters or less")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if user exists
+        cur.execute(f"SELECT id FROM users WHERE email = {PLACEHOLDER}", (email,))
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Update user's full name
+        cur.execute(
+            f"UPDATE users SET full_name = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+            (full_name, email)
+        )
+        conn.commit()
+        
+        return {"message": "User name updated successfully"}
+
 @app.delete("/api/users/{email}")
 def delete_user(email: str, current_user: dict = Depends(get_current_user)):
     # Admin only
@@ -611,44 +863,53 @@ def delete_user(email: str, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         
-        # Check if user exists
-        cur.execute(f"SELECT id FROM users WHERE email = {PLACEHOLDER}", (email,))
+        # Check if user exists and is not already deleted
+        cur.execute(f"SELECT id, is_deleted FROM users WHERE email = {PLACEHOLDER}", (email,))
         user = cur.fetchone()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # Cascade delete: Remove all user's data
+        user_dict = dict(user)
+        if user_dict.get('is_deleted'):
+            raise HTTPException(status_code=400, detail="User already deleted")
+        
+        # Soft delete: Mark user as deleted and record who deleted them
+        # Also remove user's likes to prevent confusion when account is reactivated
+        
         # Delete forum post likes
         cur.execute(f"DELETE FROM forum_likes WHERE user_email = {PLACEHOLDER}", (email,))
-        
-        # Delete forum comments
-        cur.execute(f"DELETE FROM forum_comments WHERE user_email = {PLACEHOLDER}", (email,))
-        
-        # Delete forum posts (and their associated likes and comments)
-        cur.execute(f"SELECT id FROM forum_posts WHERE user_email = {PLACEHOLDER}", (email,))
-        post_ids = [row["id"] for row in cur.fetchall()]
-        for post_id in post_ids:
-            cur.execute(f"DELETE FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post_id,))
-            cur.execute(f"DELETE FROM forum_comments WHERE post_id = {PLACEHOLDER}", (post_id,))
-        cur.execute(f"DELETE FROM forum_posts WHERE user_email = {PLACEHOLDER}", (email,))
         
         # Delete event likes
         cur.execute(f"DELETE FROM event_likes WHERE user_email = {PLACEHOLDER}", (email,))
         
-        # Delete event comments
-        cur.execute(f"DELETE FROM event_comments WHERE user_email = {PLACEHOLDER}", (email,))
+        # Delete only FUTURE practice availability (preserve historical records)
+        if USE_POSTGRES:
+            cur.execute(
+                f"DELETE FROM practice_availability WHERE user_email = {PLACEHOLDER} AND date > CURRENT_DATE",
+                (email,)
+            )
+        else:
+            cur.execute(
+                f"DELETE FROM practice_availability WHERE user_email = {PLACEHOLDER} AND date > date('now')",
+                (email,)
+            )
         
-        # Delete practice availability
-        cur.execute(f"DELETE FROM practice_availability WHERE user_email = {PLACEHOLDER}", (email,))
-        
-        # Delete notifications
-        cur.execute(f"DELETE FROM notifications WHERE user_email = {PLACEHOLDER}", (email,))
-        
-        # Finally, delete the user
-        cur.execute(f"DELETE FROM users WHERE email = {PLACEHOLDER}", (email,))
+        # Mark user as deleted
+        if USE_POSTGRES:
+            cur.execute(
+                f"UPDATE users SET is_deleted = TRUE, deleted_at = CURRENT_TIMESTAMP, "
+                f"deleted_by = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+                (current_user["email"], email)
+            )
+        else:
+            cur.execute(
+                f"UPDATE users SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, "
+                f"deleted_by = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+                (current_user["email"], email)
+            )
         
         conn.commit()
-        return {"message": "User and all associated data deleted"}
+        return {"message": "User deleted successfully. Historical posts/comments preserved, likes removed."}
 
 # --- Events endpoints ---
 @app.get("/api/events", response_model=List[EventOut])
@@ -667,10 +928,21 @@ def get_events():
             event["likes"] = [dict(r) for r in cur.fetchall()]
             # comments
             cur.execute(
-                f"SELECT ec.*, u.full_name FROM event_comments ec JOIN users u ON ec.user_email = u.email WHERE ec.event_id = {PLACEHOLDER} ORDER BY ec.created_at ASC",
+                f"SELECT * FROM event_comments WHERE event_id = {PLACEHOLDER} ORDER BY created_at ASC",
                 (event["id"],),
             )
-            event["comments"] = [dict(r) for r in cur.fetchall()]
+            comments = []
+            for comment_row in cur.fetchall():
+                comment_dict = dict(comment_row)
+                # Use stored user_full_name, fallback to users table if not set (for old comments)
+                full_name = comment_dict.get("user_full_name")
+                if not full_name:
+                    cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (comment_dict["user_email"],))
+                    user_row = cur.fetchone()
+                    full_name = user_row["full_name"] if user_row else comment_dict["user_email"]
+                comment_dict["full_name"] = full_name
+                comments.append(comment_dict)
+            event["comments"] = comments
             events.append(EventOut(**event))
         return events
 
@@ -686,6 +958,10 @@ def get_event(event_id: int):
 
 @app.post("/api/events", response_model=EventOut)
 def create_event(event: EventCreate, current_user: dict = Depends(get_current_user)):
+    # Admin only
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -893,8 +1169,8 @@ def create_event_comment(event_id: int, comment: dict, current_user: dict = Depe
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"INSERT INTO event_comments (event_id, user_email, comment) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (event_id, current_user["email"], comment["comment"]),
+            f"INSERT INTO event_comments (event_id, user_email, user_full_name, comment) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (event_id, current_user["email"], current_user["full_name"], comment["comment"]),
         )
         conn.commit()
         return EventComment(id=cur.lastrowid, user_email=current_user["email"], comment=comment["comment"], created_at=datetime.utcnow().isoformat())
@@ -908,9 +1184,12 @@ def get_forum_posts():
         posts = []
         for row in cur.fetchall():
             post = dict(row)
-            cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (post["user_email"],))
-            user_row = cur.fetchone()
-            post_full_name = user_row["full_name"] if user_row else post["user_email"]
+            # Use stored user_full_name, fallback to email if not set (for old posts)
+            post_full_name = post.get("user_full_name")
+            if not post_full_name:
+                cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (post["user_email"],))
+                user_row = cur.fetchone()
+                post_full_name = user_row["full_name"] if user_row else post["user_email"]
             # likes with full names
             cur.execute(
                 f"SELECT fl.user_email, u.full_name FROM forum_likes fl JOIN users u ON fl.user_email = u.email WHERE fl.post_id = {PLACEHOLDER}",
@@ -926,9 +1205,12 @@ def get_forum_posts():
             comments = []
             for c in cur.fetchall():
                 cd = dict(c)
-                cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (cd["user_email"],))
-                cu = cur.fetchone()
-                c_full_name = cu["full_name"] if cu else cd["user_email"]
+                # Use stored user_full_name, fallback to users table if not set (for old comments)
+                c_full_name = cd.get("user_full_name")
+                if not c_full_name:
+                    cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (cd["user_email"],))
+                    cu = cur.fetchone()
+                    c_full_name = cu["full_name"] if cu else cd["user_email"]
                 # Convert datetime to ISO string if needed
                 created_at_str = cd["created_at"].isoformat() if hasattr(cd["created_at"], 'isoformat') else cd["created_at"]
                 comments.append(
@@ -964,8 +1246,8 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"INSERT INTO forum_posts (user_email, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER})",
-            (current_user["email"], post.content),
+            f"INSERT INTO forum_posts (user_email, user_full_name, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (current_user["email"], current_user["full_name"], post.content),
         )
         conn.commit()
         
@@ -1008,9 +1290,12 @@ def admin_update_forum_post(
         post = dict(row)
         post["content"] = payload.content
 
-        cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (post["user_email"],))
-        user_row = cur.fetchone()
-        post_full_name = user_row["full_name"] if user_row else post["user_email"]
+        # Use stored user_full_name, fallback to users table if not set (for old posts)
+        post_full_name = post.get("user_full_name")
+        if not post_full_name:
+            cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (post["user_email"],))
+            user_row = cur.fetchone()
+            post_full_name = user_row["full_name"] if user_row else post["user_email"]
 
         cur.execute(f"SELECT COUNT(*) as cnt FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post_id,))
         likes = cur.fetchone()["cnt"]
@@ -1022,9 +1307,12 @@ def admin_update_forum_post(
         comments = []
         for c in cur.fetchall():
             cd = dict(c)
-            cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (cd["user_email"],))
-            cu = cur.fetchone()
-            c_full_name = cu["full_name"] if cu else cd["user_email"]
+            # Use stored user_full_name, fallback to users table if not set (for old comments)
+            c_full_name = cd.get("user_full_name")
+            if not c_full_name:
+                cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (cd["user_email"],))
+                cu = cur.fetchone()
+                c_full_name = cu["full_name"] if cu else cd["user_email"]
             # Convert datetime to ISO string if needed
             created_at_str = cd["created_at"].isoformat() if hasattr(cd["created_at"], 'isoformat') else cd["created_at"]
             comments.append(
@@ -1109,8 +1397,8 @@ def create_forum_comment(post_id: int, comment: ForumComment, current_user: dict
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"INSERT INTO forum_comments (post_id, user_email, comment) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (post_id, current_user["email"], comment.comment),
+            f"INSERT INTO forum_comments (post_id, user_email, user_full_name, comment) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (post_id, current_user["email"], current_user["full_name"], comment.comment),
         )
         conn.commit()
         return ForumCommentOut(id=cur.lastrowid, user_full_name=current_user["full_name"], comment=comment.comment, created_at=datetime.utcnow().isoformat())
@@ -1131,50 +1419,152 @@ def delete_practice(date_str: str, current_user: dict = Depends(get_current_user
 def get_my_practice_availability(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
+        # Only return availability records for current user
+        # This prevents reactivated users from seeing old user's selections
         cur.execute(
-            f"SELECT date, status FROM practice_availability WHERE user_email = {PLACEHOLDER}",
+            f"SELECT date, status, user_full_name FROM practice_availability WHERE user_email = {PLACEHOLDER}",
             (current_user["email"],),
         )
-        return {row["date"]: row["status"] for row in cur.fetchall()}
+        result = {}
+        for row in cur.fetchall():
+            row_dict = dict(row)
+            # Only include if user_full_name matches current user's name
+            # This ensures reactivated users don't see previous user's selections
+            stored_name = row_dict.get("user_full_name")
+            # IMPORTANT: Only show if stored name exactly matches current user's name
+            # Do NOT show if stored_name is None (old records before migration)
+            if stored_name and stored_name == current_user["full_name"]:
+                result[row_dict["date"]] = row_dict["status"]
+        return result
 
 @app.post("/api/practice/availability")
 def set_my_practice_availability(avail: PracticeAvailability, current_user: dict = Depends(get_current_user)):
+    # Parse the date string to compare with today
+    from datetime import datetime, date
+    try:
+        practice_date = datetime.strptime(avail.date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    # Check if user is trying to modify past practice availability
+    today = date.today()
+    if practice_date < today:
+        # Only admins can modify past practice availability
+        if not is_admin(current_user):
+            raise HTTPException(
+                status_code=403, 
+                detail="Cannot modify past practice availability. Historical records are locked."
+            )
+    
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(
-            f"INSERT INTO practice_availability (date, user_email, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET status = EXCLUDED.status",
-            (avail.date, current_user["email"], avail.status),
-        )
+        
+        # If status is 'none', delete the availability record (deselection)
+        if avail.status == 'none':
+            cur.execute(
+                f"DELETE FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+                (avail.date, current_user["email"])
+            )
+            conn.commit()
+            return {"message": "Availability removed"}
+        
+        # Otherwise, insert or update the availability
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET status = EXCLUDED.status, user_full_name = EXCLUDED.user_full_name",
+                (avail.date, current_user["email"], current_user["full_name"], avail.status),
+            )
+        else:
+            # SQLite doesn't support ON CONFLICT with multiple updates in the same way
+            cur.execute(
+                f"INSERT OR REPLACE INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (avail.date, current_user["email"], current_user["full_name"], avail.status),
+            )
         conn.commit()
         return {"message": "Availability set"}
+
+@app.post("/api/admin/practice/availability")
+def admin_set_practice_availability(avail: AdminPracticeAvailability, current_user: dict = Depends(get_current_user)):
+    # Only admins can use this endpoint
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # If status is 'delete', remove the availability record
+        if avail.status == 'delete':
+            cur.execute(
+                f"DELETE FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+                (avail.date, avail.user_email)
+            )
+            conn.commit()
+            return {"message": "Availability removed"}
+        
+        # Get user's full name
+        cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (avail.user_email,))
+        user_row = cur.fetchone()
+        if not user_row:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_full_name = user_row["full_name"]
+        
+        # Set or update availability
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET status = EXCLUDED.status, user_full_name = EXCLUDED.user_full_name",
+                (avail.date, avail.user_email, user_full_name, avail.status),
+            )
+        else:
+            cur.execute(
+                f"INSERT OR REPLACE INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (avail.date, avail.user_email, user_full_name, avail.status),
+            )
+        conn.commit()
+        return {"message": "Availability set by admin"}
 
 @app.get("/api/practice/availability/{date_str}")
 def get_practice_availability_summary(date_str: str):
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT email, full_name FROM users ORDER BY full_name ASC")
-        users = [dict(r) for r in cur.fetchall()]
-        email_to_name = {u["email"]: u["full_name"] for u in users}
-        all_emails = [u["email"] for u in users]
-
         cur.execute(
-            f"SELECT user_email, status FROM practice_availability WHERE date = {PLACEHOLDER}",
+            f"SELECT user_email, user_full_name, status FROM practice_availability WHERE date = {PLACEHOLDER}",
             (date_str,),
         )
         rows = [dict(r) for r in cur.fetchall()]
 
-        available = [email_to_name.get(r["user_email"], r["user_email"]) for r in rows if r["status"] == "available"]
-        tentative = [email_to_name.get(r["user_email"], r["user_email"]) for r in rows if r["status"] == "tentative"]
-        not_available = [email_to_name.get(r["user_email"], r["user_email"]) for r in rows if r["status"] == "not_available"]
+        # Use stored user_full_name to show original username at time of booking
+        # This prevents showing reactivated user's new name on historical records
+        available = []
+        tentative = []
+        not_available = []
+        
+        for r in rows:
+            # Use stored user_full_name (snapshot from booking time)
+            name = r.get("user_full_name")
+            
+            # If user_full_name is not set (old records before migration)
+            # We cannot reliably identify the original user because:
+            # - Email might now belong to a reactivated user with different name
+            # - Current name in users table might be wrong for historical record
+            # Best to show a placeholder indicating historical data
+            # Note: No spaces so frontend split(' ')[0] doesn't truncate it
+            if not name:
+                name = "[OldData]"
+            
+            if r["status"] == "available":
+                available.append(name)
+            elif r["status"] == "tentative":
+                tentative.append(name)
+            elif r["status"] == "not_available":
+                not_available.append(name)
 
-        voted_emails = {r["user_email"] for r in rows}
-        no_vote = [email_to_name.get(e, e) for e in all_emails if e not in voted_emails]
-
+        # Return with email mapping for admin delete functionality
         return {
             "available": available,
             "tentative": tentative,
             "not_available": not_available,
-            "no_vote": no_vote,
+            "user_emails": {r["user_full_name"] or r["user_email"]: r["user_email"] for r in rows}
         }
 
 # --- Notifications ---

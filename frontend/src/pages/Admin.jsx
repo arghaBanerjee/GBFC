@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
 
-export default function Admin({ user }) {
+export default function Admin({ user, loading }) {
   const navigate = useNavigate()
   const token = localStorage.getItem('token')
 
@@ -38,11 +38,20 @@ export default function Admin({ user }) {
 
   // Users
   const [users, setUsers] = useState([])
+  const [editingUserId, setEditingUserId] = useState(null)
+  const [editingUserName, setEditingUserName] = useState('')
 
   useEffect(() => {
-    if (!user) navigate('/login')
-    else if (!isAdmin) setMessage('Access denied: Admins only')
-  }, [user, navigate, isAdmin])
+    // Wait for loading to complete before checking authentication
+    if (loading) return
+    
+    if (!user) {
+      navigate('/login')
+    } else if (!isAdmin) {
+      // Non-admin user trying to access admin page - redirect to home
+      navigate('/')
+    }
+  }, [user, loading, navigate, isAdmin])
 
   const loadEvents = async () => {
     const res = await fetch(apiUrl('/api/events'))
@@ -326,6 +335,31 @@ export default function Admin({ user }) {
       return
     }
     setMessage(`User type updated to ${userType}.`)
+    loadUsers()
+  }
+
+  const handleSaveUserName = async (email) => {
+    if (!editingUserName.trim()) {
+      alert('Name cannot be empty')
+      return
+    }
+    
+    const res = await fetch(apiUrl(`/api/users/${encodeURIComponent(email)}/name`), {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}` 
+      },
+      body: JSON.stringify({ full_name: editingUserName.trim() })
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMessage(data?.detail || 'Failed to update user name')
+      return
+    }
+    setMessage('User name updated successfully.')
+    setEditingUserId(null)
+    setEditingUserName('')
     loadUsers()
   }
 
@@ -616,38 +650,91 @@ export default function Admin({ user }) {
                   background: 'white'
                 }}
               >
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'flex-start',
-                  flexWrap: 'wrap',
-                  gap: '0.5rem',
-                  marginBottom: '0.75rem'
-                }}>
-                  <div style={{ flex: '1', minWidth: '200px' }}>
-                    <div style={{ fontWeight: '600', fontSize: '1.1rem', marginBottom: '0.25rem' }}>
-                      {u.full_name}
-                    </div>
-                    <div style={{ color: '#6b7280', fontSize: '0.875rem', wordBreak: 'break-word' }}>
-                      {u.email}
-                    </div>
+                <div>
+                  {/* Name and Edit UI */}
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    {editingUserId === u.email ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="text"
+                          value={editingUserName}
+                          onChange={(e) => setEditingUserName(e.target.value)}
+                          style={{
+                            padding: '0.5rem',
+                            border: '2px solid #3b82f6',
+                            borderRadius: '0.375rem',
+                            fontSize: '1rem',
+                            flex: '1',
+                            outline: 'none'
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleSaveUserName(u.email)}
+                          style={{
+                            padding: '0.5rem',
+                            background: '#10b981',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.375rem',
+                            cursor: 'pointer',
+                            fontSize: '1.25rem',
+                            lineHeight: '1',
+                            width: '2rem',
+                            height: '2rem'
+                          }}
+                          title="Save"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingUserId(null)
+                            setEditingUserName('')
+                          }}
+                          style={{
+                            padding: '0.5rem',
+                            background: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.375rem',
+                            cursor: 'pointer',
+                            fontSize: '1.25rem',
+                            lineHeight: '1',
+                            width: '2rem',
+                            height: '2rem'
+                          }}
+                          title="Cancel"
+                        >
+                          ✗
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
+                        {u.full_name}
+                      </div>
+                    )}
                   </div>
+                  
+                  {/* Member/Admin Tags */}
                   {u.email === user?.email ? (
                     // Current logged-in user - show only their current role (non-clickable)
-                    <span style={{ 
-                      padding: '0.25rem 0.75rem', 
-                      borderRadius: '0.25rem', 
-                      fontSize: '0.875rem',
-                      background: '#10b981',
-                      color: 'white',
-                      fontWeight: '600',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {u.user_type === 'admin' ? 'Admin' : 'Member'}
-                    </span>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <span style={{ 
+                        padding: '0.25rem 0.75rem', 
+                        borderRadius: '0.25rem', 
+                        fontSize: '0.875rem',
+                        background: '#10b981',
+                        color: 'white',
+                        fontWeight: '600',
+                        display: 'inline-block'
+                      }}>
+                        {u.user_type === 'admin' ? 'Admin' : 'Member'}
+                      </span>
+                    </div>
                   ) : (
                     // Other users - show toggle buttons
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                       <button
                         onClick={() => handleUpdateUserType(u.email, 'member')}
                         style={{
@@ -658,8 +745,7 @@ export default function Admin({ user }) {
                           color: u.user_type === 'member' ? 'white' : '#374151',
                           border: u.user_type === 'member' ? '1px solid #10b981' : '1px solid #d1d5db',
                           cursor: 'pointer',
-                          fontWeight: u.user_type === 'member' ? '600' : '400',
-                          whiteSpace: 'nowrap'
+                          fontWeight: u.user_type === 'member' ? '600' : '400'
                         }}
                       >
                         Member
@@ -674,14 +760,18 @@ export default function Admin({ user }) {
                           color: u.user_type === 'admin' ? 'white' : '#374151',
                           border: u.user_type === 'admin' ? '1px solid #10b981' : '1px solid #d1d5db',
                           cursor: 'pointer',
-                          fontWeight: u.user_type === 'admin' ? '600' : '400',
-                          whiteSpace: 'nowrap'
+                          fontWeight: u.user_type === 'admin' ? '600' : '400'
                         }}
                       >
                         Admin
                       </button>
                     </div>
                   )}
+                  
+                  {/* Email */}
+                  <div style={{ color: '#6b7280', fontSize: '0.875rem', wordBreak: 'break-word' }}>
+                    {u.email}
+                  </div>
                 </div>
                 <div style={{ 
                   display: 'flex', 
@@ -696,19 +786,34 @@ export default function Admin({ user }) {
                     <strong>Registered:</strong> {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
                   </div>
                   {u.email !== user?.email && (
-                    <button 
-                      className="nav-btn" 
-                      onClick={() => handleDeleteUser(u.email)}
-                      style={{ 
-                        background: '#ef4444', 
-                        color: 'white', 
-                        border: '1px solid #ef4444',
-                        padding: '0.5rem 1rem',
-                        fontSize: '0.875rem'
-                      }}
-                    >
-                      Delete
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button 
+                        className="nav-btn" 
+                        onClick={() => {
+                          setEditingUserId(u.email)
+                          setEditingUserName(u.full_name)
+                        }}
+                        style={{ 
+                          padding: '0.5rem 1rem',
+                          fontSize: '0.875rem'
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        className="nav-btn" 
+                        onClick={() => handleDeleteUser(u.email)}
+                        style={{ 
+                          background: '#ef4444', 
+                          color: 'white', 
+                          border: '1px solid #ef4444',
+                          padding: '0.5rem 1rem',
+                          fontSize: '0.875rem'
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
