@@ -9,6 +9,7 @@ export default function Practice({ user }) {
   const [selectedDate, setSelectedDate] = useState(null)
   const [availability, setAvailability] = useState({})
   const [adminSessions, setAdminSessions] = useState([])
+  const [matches, setMatches] = useState([])
   const [voteSummary, setVoteSummary] = useState(null)
   const [allUsers, setAllUsers] = useState([])
   const [isAdmin, setIsAdmin] = useState(false)
@@ -51,6 +52,12 @@ export default function Practice({ user }) {
     fetch(apiUrl('/api/practice/sessions'))
       .then(r => r.json())
       .then(data => setAdminSessions(data || []))
+    
+    // Fetch matches/events to highlight on calendar
+    fetch(apiUrl('/api/events'))
+      .then(r => r.json())
+      .then(data => setMatches(data || []))
+      .catch(() => setMatches([]))
     // Fetch user availability
     if (user && token) {
       fetch(apiUrl('/api/practice/availability'), {
@@ -279,25 +286,30 @@ export default function Practice({ user }) {
       const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const isThursday = day && new Date(currentDate.getFullYear(), currentDate.getMonth(), day).getDay() === 4
       const isAdminSession = adminSessions.some(s => s.date === dateStr)
+      const hasMatch = matches.some(m => m.date === dateStr)
       const isSelected = Boolean(day) && selectedDate?.toISOString().split('T')[0] === dateStr
 
       let backgroundColor = '#ffffff'
-      if (isAdminSession) backgroundColor = '#86efac' // Green for any day with practice session
+      if (hasMatch) backgroundColor = '#bfdbfe' // Light blue for match days
+      else if (isAdminSession) backgroundColor = '#86efac' // Green for any day with practice session
       else if (isThursday) backgroundColor = '#f0fdf4' // Light green for Thursdays without session
-      if (isSelected) backgroundColor = '#fef08a' // Yellow for selected date
 
       return (
         <div
           key={`cal-${index}`}
           onClick={() => day && handleDateClick(day)}
           style={{
-            border: '1px solid #e5e7eb',
+            border: isSelected ? '3px solid #3b82f6' : '1px solid #e5e7eb',
             padding: '0.5rem',
             margin: '2px',
             minHeight: '40px',
             backgroundColor,
             cursor: day ? 'pointer' : 'default',
             borderRadius: '4px',
+            boxShadow: isSelected ? '0 0 0 3px rgba(59, 130, 246, 0.3)' : 'none',
+            transform: isSelected ? 'scale(1.05)' : 'scale(1)',
+            transition: 'all 0.2s ease',
+            fontWeight: isSelected ? '700' : '400',
           }}
         >
           {day}
@@ -307,6 +319,7 @@ export default function Practice({ user }) {
   }
 
   const selectedSession = adminSessions.find(s => s.date === selectedDate?.toISOString().split('T')[0])
+  const selectedMatch = matches.find(m => m.date === selectedDate?.toISOString().split('T')[0])
   const selectedDateStr = selectedDate ? selectedDate.toISOString().split('T')[0] : null
   const selectedStatus = selectedDateStr ? availability[selectedDateStr] : null
 
@@ -325,6 +338,27 @@ export default function Practice({ user }) {
     <div className="container">
       <h2>Book Practice</h2>
       <p style={{ marginBottom: '1rem', color: '#6b7280' }}>Click on a date to select your availability</p>
+      
+      {/* Color Legend */}
+      <div style={{ 
+        marginBottom: '1rem', 
+        padding: '0.75rem', 
+        background: '#f9fafb', 
+        borderRadius: '0.5rem',
+        border: '1px solid #e5e7eb'
+      }}>
+        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.875rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ width: '20px', height: '20px', background: '#86efac', borderRadius: '4px', border: '1px solid #e5e7eb' }}></div>
+            <span>Practice Session</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ width: '20px', height: '20px', background: '#bfdbfe', borderRadius: '4px', border: '1px solid #e5e7eb' }}></div>
+            <span>Football Match</span>
+          </div>
+        </div>
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <button onClick={handlePrevMonth}>&lt;</button>
         <h3>{currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h3>
@@ -337,11 +371,45 @@ export default function Practice({ user }) {
         {renderCalendar()}
       </div>
 
-      {/* Selected Thursday Details */}
+      {/* Selected Date Details */}
       {selectedDate && (
         <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}>
           <h4>{selectedDate.toLocaleDateString()}</h4>
-          {selectedSession ? (
+          
+          {/* Show match details if there's a match on this date */}
+          {selectedMatch ? (
+            <div style={{ 
+              padding: '1rem', 
+              background: '#dbeafe', 
+              borderRadius: '0.5rem', 
+              border: '1px solid #93c5fd',
+              marginTop: '0.75rem'
+            }}>
+              <p style={{ marginBottom: '0.75rem', fontSize: '1.1rem' }}>
+                <strong>⚽ Football Match</strong>
+              </p>
+              <p style={{ marginBottom: '0.5rem', fontSize: '1rem', fontWeight: '600' }}>
+                {selectedMatch.name}
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+                <span>Time: {selectedMatch.time || 'TBD'}</span>
+              </div>
+              <p style={{ 
+                marginTop: '0.75rem', 
+                padding: '0.75rem', 
+                background: '#fff', 
+                borderRadius: '0.375rem',
+                color: '#1e40af',
+                fontWeight: '500'
+              }}>
+                ℹ️ There will be no practice session on this date as there is a football match already planned.
+              </p>
+            </div>
+          ) : selectedSession ? (
             <div>
               <p style={{ marginBottom: '0.75rem' }}>
                 <strong>Practice Session</strong>
@@ -368,7 +436,7 @@ export default function Practice({ user }) {
               {!user && 'Log in to set your availability'}
             </p>
           )}
-          {selectedSession && (
+          {selectedSession && !selectedMatch && (
             <>
               <div style={{ marginTop: '1rem' }}>
                 <strong>Your Selection</strong>
