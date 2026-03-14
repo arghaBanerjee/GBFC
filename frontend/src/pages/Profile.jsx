@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
 
 export default function Profile({ user, setUser, loading }) {
-  const [editMode, setEditMode] = useState(null) // 'name' or 'password'
+  const [editMode, setEditMode] = useState(null) // 'name', 'password', or 'birthday'
   const [fullName, setFullName] = useState('')
+  const [birthday, setBirthday] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -21,6 +22,7 @@ export default function Profile({ user, setUser, loading }) {
       navigate('/login')
     } else {
       setFullName(user.full_name)
+      setBirthday(user.birthday || '')
     }
   }, [user, loading, navigate])
 
@@ -108,6 +110,38 @@ export default function Profile({ user, setUser, loading }) {
       }
     } catch (err) {
       setError('Failed to update password. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleUpdateBirthday = async () => {
+    setSubmitting(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(apiUrl('/api/profile/birthday'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ birthday }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setUser({ ...user, birthday: data.birthday })
+        setSuccess('Birthday updated successfully!')
+        setEditMode(null)
+      } else {
+        const data = await res.json()
+        setError(data.detail || 'Failed to update birthday')
+      }
+    } catch (err) {
+      setError('Failed to update birthday. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -252,6 +286,78 @@ export default function Profile({ user, setUser, loading }) {
             <span style={{ fontSize: '1.125rem', color: '#6b7280' }}>{user.email}</span>
             <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>Read-only</span>
           </div>
+        </div>
+
+        {/* Birthday Section */}
+        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
+          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>
+            Birthday
+          </label>
+          {editMode === 'birthday' ? (
+            <div>
+              <input
+                type="date"
+                value={birthday}
+                onChange={(e) => setBirthday(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.375rem',
+                  fontSize: '1rem',
+                  marginBottom: '0.5rem',
+                  boxSizing: 'border-box',
+                }}
+                autoFocus
+              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={handleUpdateBirthday}
+                  disabled={submitting}
+                  className="nav-btn"
+                  style={{
+                    background: '#10b981',
+                    color: 'white',
+                    border: '1px solid #10b981',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.875rem',
+                    cursor: submitting ? 'not-allowed' : 'pointer',
+                    opacity: submitting ? 0.6 : 1,
+                  }}
+                >
+                  {submitting ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditMode(null)
+                    setBirthday(user.birthday || '')
+                    setError('')
+                  }}
+                  className="nav-btn"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '1.125rem', fontWeight: '500', color: user.birthday ? '#000' : '#9ca3af', fontStyle: user.birthday ? 'normal' : 'italic' }}>
+                {user.birthday ? formatDate(user.birthday) : 'Not set (Optional)'}
+              </span>
+              <button
+                onClick={() => setEditMode('birthday')}
+                className="nav-btn"
+                style={{ 
+                  padding: '0.5rem 1rem', 
+                  fontSize: '0.875rem',
+                  border: '1px solid #d1d5db'
+                }}
+              >
+                Edit
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Password Section */}

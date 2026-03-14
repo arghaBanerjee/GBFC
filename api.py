@@ -96,6 +96,7 @@ def init_db():
                 user_type VARCHAR(50) DEFAULT 'member',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_login TIMESTAMP,
+                birthday DATE,
                 is_deleted BOOLEAN DEFAULT FALSE,
                 deleted_at TIMESTAMP,
                 deleted_by VARCHAR(255)
@@ -207,6 +208,24 @@ def init_db():
                 conn.commit()
             except Exception as e:
                 print(f"Warning: Could not add last_login column: {e}")
+                conn.rollback()
+            
+            # Add birthday column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='birthday'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN birthday DATE;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add birthday column: {e}")
                 conn.rollback()
             
             # Add user_full_name to forum_posts if it doesn't exist
@@ -388,6 +407,7 @@ def init_db():
                 user_type TEXT DEFAULT 'member',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_login TIMESTAMP,
+                birthday DATE,
                 is_deleted BOOLEAN DEFAULT 0,
                 deleted_at TIMESTAMP,
                 deleted_by TEXT
@@ -438,6 +458,12 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add last_login column: {e}")
+            # Add birthday column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN birthday DATE")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add birthday column: {e}")
             # Add user_full_name to forum_posts if it doesn't exist
             try:
                 cur.execute("ALTER TABLE forum_posts ADD COLUMN user_full_name TEXT")
@@ -599,6 +625,7 @@ class UserOut(BaseModel):
     user_type: str = "member"
     created_at: Optional[str] = None
     last_login: Optional[str] = None
+    birthday: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -900,7 +927,7 @@ def me(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"SELECT user_type, is_deleted, created_at, last_login FROM users WHERE email = {PLACEHOLDER}", 
+            f"SELECT user_type, is_deleted, created_at, last_login, birthday FROM users WHERE email = {PLACEHOLDER}", 
             (current_user["email"],)
         )
         row = cur.fetchone()
@@ -925,10 +952,19 @@ def me(current_user: dict = Depends(get_current_user)):
                     last_login = row_dict["last_login"].isoformat()
                 else:
                     last_login = str(row_dict["last_login"])
+            
+            # Convert birthday date to ISO string
+            birthday = None
+            if row_dict.get("birthday"):
+                if hasattr(row_dict["birthday"], 'isoformat'):
+                    birthday = row_dict["birthday"].isoformat()
+                else:
+                    birthday = str(row_dict["birthday"])
         else:
             user_type = "member"
             created_at = None
             last_login = None
+            birthday = None
     
     return UserOut(
         id=current_user["id"], 
@@ -936,7 +972,8 @@ def me(current_user: dict = Depends(get_current_user)):
         full_name=current_user["full_name"], 
         user_type=user_type,
         created_at=created_at,
-        last_login=last_login
+        last_login=last_login,
+        birthday=birthday
     )
 
 @app.post("/api/logout")
@@ -1099,6 +1136,38 @@ def update_own_password(data: dict, current_user: dict = Depends(get_current_use
         conn.commit()
         
         return {"message": "Password updated successfully"}
+
+@app.put("/api/profile/birthday")
+def update_own_birthday(data: dict, current_user: dict = Depends(get_current_user)):
+    """Allow user to update their own birthday"""
+    birthday = data.get("birthday", "").strip()
+    
+    # Birthday is optional, allow empty string to clear it
+    if birthday and birthday != "":
+        # Validate date format (YYYY-MM-DD)
+        try:
+            from datetime import datetime
+            datetime.strptime(birthday, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Update user's birthday (or set to NULL if empty)
+        if birthday and birthday != "":
+            cur.execute(
+                f"UPDATE users SET birthday = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+                (birthday, current_user["email"])
+            )
+        else:
+            cur.execute(
+                f"UPDATE users SET birthday = NULL WHERE email = {PLACEHOLDER}",
+                (current_user["email"],)
+            )
+        conn.commit()
+        
+        return {"message": "Birthday updated successfully", "birthday": birthday if birthday else None}
 
 @app.delete("/api/users/{email}")
 def delete_user(email: str, current_user: dict = Depends(get_current_user)):
