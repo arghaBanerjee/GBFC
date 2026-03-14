@@ -214,14 +214,34 @@ export default function Events({ user }) {
                 <button
                   className={`nav-btn ${myLikedEventIds.has(event.id) ? 'active' : ''}`}
                   onClick={() => handleLikeToggle(event.id)}
-                  style={{ marginRight: '0.5rem', border: '1px solid #d1d5db' }}
+                  style={{ 
+                    marginRight: '0.5rem', 
+                    border: 'none',
+                    background: myLikedEventIds.has(event.id) ? '#10b981' : '#f3f4f6',
+                    color: myLikedEventIds.has(event.id) ? 'white' : 'inherit',
+                    borderRadius: '0.5rem',
+                    padding: '0.5rem 1rem',
+                    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                    transition: 'all 0.2s ease'
+                  }}
                   onMouseEnter={() => setLikesHover(event.id)}
                   onMouseLeave={() => setLikesHover(null)}
                 >
                   {myLikedEventIds.has(event.id) ? '❤️' : '🤍'} Like ({likesCount})
                 </button>
-                <button className="nav-btn" onClick={() => setCommentingEventId(commentingEventId === event.id ? null : event.id)} style={{ border: '1px solid #d1d5db' }}>
-                  Comment ({commentsCount})
+                <button 
+                  className="nav-btn" 
+                  onClick={() => setCommentingEventId(commentingEventId === event.id ? null : event.id)} 
+                  style={{ 
+                    border: 'none',
+                    background: '#f3f4f6',
+                    borderRadius: '0.5rem',
+                    padding: '0.5rem 1rem',
+                    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  💬 Comment ({commentsCount})
                 </button>
                 {/* Hover tooltip for likes */}
                 {likesHover === event.id && event.likes && event.likes.length > 0 && (
