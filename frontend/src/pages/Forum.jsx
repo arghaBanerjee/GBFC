@@ -351,13 +351,13 @@ export default function Forum({ user }) {
               <button
                 className={`nav-btn ${myLikedPostIds.has(post.id) ? 'active' : ''}`}
                 onClick={() => handleLikeToggle(post.id)}
-                style={{ marginRight: '0.5rem' }}
+                style={{ marginRight: '0.5rem', border: '1px solid #d1d5db' }}
                 onMouseEnter={() => setLikesHover(post.id)}
                 onMouseLeave={() => setLikesHover(null)}
               >
                 {myLikedPostIds.has(post.id) ? '❤️' : '🤍'} Like ({post.likes_count})
               </button>
-              <button className="nav-btn" onClick={() => setCommentingPostId(commentingPostId === post.id ? null : post.id)} style={{ marginRight: '0.5rem' }}>
+              <button className="nav-btn" onClick={() => setCommentingPostId(commentingPostId === post.id ? null : post.id)} style={{ marginRight: '0.5rem', border: '1px solid #d1d5db' }}>
                 Comment ({post.comments.length})
               </button>
               {user && user.email === post.user_email && (

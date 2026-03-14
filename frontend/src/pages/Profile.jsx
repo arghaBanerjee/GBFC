@@ -228,7 +228,11 @@ export default function Profile({ user, setUser }) {
               <button
                 onClick={() => setEditMode('name')}
                 className="nav-btn"
-                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                style={{ 
+                  padding: '0.5rem 1rem', 
+                  fontSize: '0.875rem',
+                  border: '1px solid #d1d5db'
+                }}
               >
                 Edit
               </button>
@@ -337,7 +341,11 @@ export default function Profile({ user, setUser }) {
               <button
                 onClick={() => setEditMode('password')}
                 className="nav-btn"
-                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                style={{ 
+                  padding: '0.5rem 1rem', 
+                  fontSize: '0.875rem',
+                  border: '1px solid #d1d5db'
+                }}
               >
                 Change Password
               </button>

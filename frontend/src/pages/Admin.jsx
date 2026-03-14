@@ -507,7 +507,7 @@ export default function Admin({ user, loading }) {
                 </div>
                 <div style={{ opacity: 0.8, marginBottom: '0.75rem', fontSize: '0.9rem' }}>{ev.date} {ev.time || ''}</div>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ flex: '1', minWidth: '100px' }}>
+                  <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ flex: '1', minWidth: '100px', border: '1px solid #d1d5db' }}>
                     Edit
                   </button>
                   <button className="nav-btn" onClick={() => handleDeleteEvent(ev.id)} style={{ flex: '1', minWidth: '100px', background: '#ef4444', color: 'white', border: '#ef4444' }}>
@@ -565,7 +565,7 @@ export default function Admin({ user, loading }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <strong>{s.date}</strong>
                   <div>
-                    <button className="nav-btn" onClick={() => handleEditPractice(s)} style={{ marginRight: 8 }}>
+                    <button className="nav-btn" onClick={() => handleEditPractice(s)} style={{ marginRight: 8, border: '1px solid #d1d5db' }}>
                       Edit
                     </button>
                     <button className="nav-btn" onClick={() => handleDeletePractice(s.date)} style={{ background: '#ef4444', color: 'white', border: '#ef4444' }}>
@@ -612,7 +612,7 @@ export default function Admin({ user, loading }) {
                     <div style={{ opacity: 0.8, marginTop: 4 }}>{new Date(p.created_at).toLocaleString()}</div>
                   </div>
                   <div>
-                    <button className="nav-btn" onClick={() => handleEditForumPost(p)} style={{ marginRight: 8 }}>
+                    <button className="nav-btn" onClick={() => handleEditForumPost(p)} style={{ marginRight: 8, border: '1px solid #d1d5db' }}>
                       Edit
                     </button>
                     <button className="nav-btn" onClick={() => handleDeleteForumPost(p.id)} style={{ background: '#ef4444', color: 'white', border: '#ef4444' }}>
@@ -800,7 +800,8 @@ export default function Admin({ user, loading }) {
                         }}
                         style={{ 
                           padding: '0.5rem 1rem',
-                          fontSize: '0.875rem'
+                          fontSize: '0.875rem',
+                          border: '1px solid #d1d5db'
                         }}
                       >
                         Edit

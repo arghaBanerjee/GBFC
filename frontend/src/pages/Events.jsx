@@ -214,13 +214,13 @@ export default function Events({ user }) {
                 <button
                   className={`nav-btn ${myLikedEventIds.has(event.id) ? 'active' : ''}`}
                   onClick={() => handleLikeToggle(event.id)}
-                  style={{ marginRight: '0.5rem' }}
+                  style={{ marginRight: '0.5rem', border: '1px solid #d1d5db' }}
                   onMouseEnter={() => setLikesHover(event.id)}
                   onMouseLeave={() => setLikesHover(null)}
                 >
                   {myLikedEventIds.has(event.id) ? '❤️' : '🤍'} Like ({likesCount})
                 </button>
-                <button className="nav-btn" onClick={() => setCommentingEventId(commentingEventId === event.id ? null : event.id)}>
+                <button className="nav-btn" onClick={() => setCommentingEventId(commentingEventId === event.id ? null : event.id)} style={{ border: '1px solid #d1d5db' }}>
                   Comment ({commentsCount})
                 </button>
                 {/* Hover tooltip for likes */}
