@@ -480,7 +480,7 @@ function App() {
         <Route path="/about-us" element={<About />} />
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/signup" element={<Signup setUser={setUser} />} />
-        <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
+        <Route path="/profile" element={<Profile user={user} setUser={setUser} loading={loading} />} />
         <Route path="/admin" element={<Admin user={user} loading={loading} />} />
       </Routes>
     </div>

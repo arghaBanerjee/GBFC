@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
 
-export default function Profile({ user, setUser }) {
+export default function Profile({ user, setUser, loading }) {
   const [editMode, setEditMode] = useState(null) // 'name' or 'password'
   const [fullName, setFullName] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
@@ -10,16 +10,19 @@ export default function Profile({ user, setUser }) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
+    // Wait for loading to complete before checking authentication
+    if (loading) return
+    
     if (!user) {
       navigate('/login')
     } else {
       setFullName(user.full_name)
     }
-  }, [user, navigate])
+  }, [user, loading, navigate])
 
   const handleUpdateName = async () => {
     if (!fullName.trim()) {
@@ -27,7 +30,7 @@ export default function Profile({ user, setUser }) {
       return
     }
 
-    setLoading(true)
+    setSubmitting(true)
     setError('')
     setSuccess('')
 
@@ -54,7 +57,7 @@ export default function Profile({ user, setUser }) {
     } catch (err) {
       setError('Failed to update name. Please try again.')
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
@@ -77,7 +80,7 @@ export default function Profile({ user, setUser }) {
       return
     }
 
-    setLoading(true)
+    setSubmitting(true)
 
     try {
       const token = localStorage.getItem('token')
@@ -106,7 +109,7 @@ export default function Profile({ user, setUser }) {
     } catch (err) {
       setError('Failed to update password. Please try again.')
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
@@ -195,7 +198,7 @@ export default function Profile({ user, setUser }) {
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   onClick={handleUpdateName}
-                  disabled={loading}
+                  disabled={submitting}
                   className="nav-btn"
                   style={{
                     background: '#10b981',
@@ -203,11 +206,11 @@ export default function Profile({ user, setUser }) {
                     border: '1px solid #10b981',
                     padding: '0.5rem 1rem',
                     fontSize: '0.875rem',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.6 : 1,
+                    cursor: submitting ? 'not-allowed' : 'pointer',
+                    opacity: submitting ? 0.6 : 1,
                   }}
                 >
-                  {loading ? 'Saving...' : 'Save'}
+                  {submitting ? 'Saving...' : 'Save'}
                 </button>
                 <button
                   onClick={() => {
@@ -306,7 +309,7 @@ export default function Profile({ user, setUser }) {
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   onClick={handleUpdatePassword}
-                  disabled={loading}
+                  disabled={submitting}
                   className="nav-btn"
                   style={{
                     background: '#10b981',
@@ -314,11 +317,11 @@ export default function Profile({ user, setUser }) {
                     border: '1px solid #10b981',
                     padding: '0.5rem 1rem',
                     fontSize: '0.875rem',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.6 : 1,
+                    cursor: submitting ? 'not-allowed' : 'pointer',
+                    opacity: submitting ? 0.6 : 1,
                   }}
                 >
-                  {loading ? 'Updating...' : 'Update Password'}
+                  {submitting ? 'Updating...' : 'Update Password'}
                 </button>
                 <button
                   onClick={() => {
