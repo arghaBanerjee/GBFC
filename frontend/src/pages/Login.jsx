@@ -7,6 +7,14 @@ export default function Login({ setUser }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [validationErrors, setValidationErrors] = useState({})
+  
+  // ========== FORGOT PASSWORD FEATURE - State Variables ==========
+  // These state variables are used by the forgot password feature
+  // Keep these even when the button is hidden
+  const [forgotPasswordMessage, setForgotPasswordMessage] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  // ================================================================
+  
   const navigate = useNavigate()
 
   const validateEmail = (email) => {
@@ -40,6 +48,7 @@ export default function Login({ setUser }) {
     
     setValidationErrors({})
     setError('')
+    setForgotPasswordMessage('')
     const form = new FormData()
     form.append('username', email)
     form.append('password', password)
@@ -55,6 +64,47 @@ export default function Login({ setUser }) {
       navigate('/')
     } else {
       setError('Invalid email or password')
+    }
+  }
+
+  // ========== FORGOT PASSWORD FEATURE - Handler Function ==========
+  // This function handles the forgot password flow:
+  // 1. Validates the email address
+  // 2. Calls the backend API endpoint /api/forgot-password
+  // 3. Displays success/error messages to the user
+  // Keep this function even when the button is hidden
+  // ================================================================
+  const handleForgotPassword = async () => {
+    // Validate email first
+    const emailError = validateEmail(email)
+    if (emailError) {
+      setValidationErrors({ email: emailError })
+      setForgotPasswordMessage('')
+      return
+    }
+    
+    setValidationErrors({})
+    setError('')
+    setForgotPasswordMessage('')
+    setSendingEmail(true)
+    
+    try {
+      const res = await fetch(apiUrl('/api/forgot-password'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+      
+      if (res.ok) {
+        setForgotPasswordMessage('Password sent to your email successfully!')
+      } else {
+        const data = await res.json()
+        setForgotPasswordMessage(data.detail || 'Failed to send password. Please check your email.')
+      }
+    } catch (err) {
+      setForgotPasswordMessage('Failed to send email. Please try again.')
+    } finally {
+      setSendingEmail(false)
     }
   }
 
@@ -101,7 +151,39 @@ export default function Login({ setUser }) {
         />
         {validationErrors.password && <p style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.password}</p>}
         {error && <p style={{ color: 'red' }}>{error}</p>}
+        {/* ========== FORGOT PASSWORD FEATURE - Success/Error Message ========== */}
+        {/* This displays feedback when user clicks forgot password button */}
+        {forgotPasswordMessage && <p style={{ color: forgotPasswordMessage.includes('successfully') ? '#10b981' : '#ef4444', fontSize: '0.875rem', marginBottom: '0.5rem' }}>{forgotPasswordMessage}</p>}
+        {/* ====================================================================== */}
+        
         <button type="submit" className="nav-btn" style={{ width: '100%', background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>Log in</button>
+        
+        {/* ========== FORGOT PASSWORD FEATURE - Button (CURRENTLY HIDDEN) ========== */}
+        {/* TO ENABLE THIS FEATURE:                                                    */}
+        {/* 1. Configure email settings (see EMAIL_SETUP.md)                          */}
+        {/* 2. Change {false && ( to {true && ( on the line below                     */}
+        {/* 3. The white "Forgot Password?" button will appear below the login button */}
+        {/* ========================================================================== */}
+        {false && (
+          <button 
+            type="button" 
+            onClick={handleForgotPassword}
+            disabled={sendingEmail}
+            className="nav-btn" 
+            style={{ 
+              width: '100%', 
+              background: 'white', 
+              color: '#374151', 
+              border: '1px solid #d1d5db', 
+              fontWeight: '400',
+              cursor: sendingEmail ? 'not-allowed' : 'pointer',
+              opacity: sendingEmail ? 0.6 : 1,
+              marginTop: '0.5rem'
+            }}
+          >
+            {sendingEmail ? 'Sending...' : 'Forgot Password?'}
+          </button>
+        )}
       </form>
     </div>
   )

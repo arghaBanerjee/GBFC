@@ -15,6 +15,9 @@ from contextlib import contextmanager
 import cloudinary
 import cloudinary.uploader
 from urllib.parse import urlparse
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # --- Database helpers (supports both SQLite and Postgres) ---
 DATABASE_URL = os.environ.get("DATABASE_URL")  # Render provides this
@@ -42,6 +45,17 @@ if CLOUDINARY_URL:
         api_key=os.environ.get("CLOUDINARY_API_KEY"),
         api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
     )
+
+# ========== FORGOT PASSWORD FEATURE - Email Configuration ==========
+# These environment variables configure the email service for password recovery
+# Set these in your environment or .env file to enable email functionality
+# See EMAIL_SETUP.md for detailed configuration instructions
+# ====================================================================
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")  # Your email address
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")  # App password (NOT regular password)
+FROM_EMAIL = os.environ.get("FROM_EMAIL", SMTP_USERNAME)
 
 @contextmanager
 def get_connection():
@@ -516,6 +530,36 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return hash_password(password) == hashed
 
+# ========== FORGOT PASSWORD FEATURE - Email Sending Function ==========
+# This function sends emails using SMTP (Simple Mail Transfer Protocol)
+# Used by the forgot password endpoint to send recovery emails to users
+# Returns True if email sent successfully, False otherwise
+# =======================================================================
+def send_email(to_email: str, subject: str, body: str) -> bool:
+    """Send email using SMTP"""
+    if not SMTP_USERNAME or not SMTP_PASSWORD:
+        print("Email not configured. Set SMTP_USERNAME and SMTP_PASSWORD environment variables.")
+        return False
+    
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = FROM_EMAIL
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_USERNAME, SMTP_PASSWORD)
+        server.send_message(msg)
+        server.quit()
+        
+        return True
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        return False
+
 # --- Pydantic models ---
 class UserCreate(BaseModel):
     email: EmailStr
@@ -735,6 +779,66 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         SESSIONS[token] = {"email": user["email"], "full_name": user["full_name"], "id": user["id"]}
         return {"access_token": token, "token_type": "bearer"}
 
+# ========== FORGOT PASSWORD FEATURE - API Endpoint ==========
+# This endpoint handles password recovery requests
+# Frontend: Login.jsx (button currently hidden - see comments there)
+# To enable: Configure email settings (see EMAIL_SETUP.md)
+# PostgreSQL Compatible: Uses PLACEHOLDER for queries
+# ============================================================
+@app.post("/api/forgot-password")
+def forgot_password(data: dict):
+    """Send password recovery email to user"""
+    email = data.get("email", "").strip().lower()
+    
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Check if user exists and is not deleted
+        cur.execute(
+            f"SELECT email, full_name, password FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+            (email,)
+        )
+        user = cur.fetchone()
+        
+        if not user:
+            # For security, don't reveal if email exists or not
+            raise HTTPException(status_code=404, detail="If this email is registered, a password recovery email has been sent.")
+        
+        user_dict = dict(user)
+        
+        # IMPORTANT: Passwords are hashed for security
+        # We cannot retrieve the original password from the database
+        # The email informs users to contact the administrator for password reset
+        # This is the secure approach - never send actual passwords via email
+        
+        subject = "Glasgow Bengali FC - Password Recovery"
+        body = f"""Hello {user_dict['full_name']},
+
+You requested password recovery for your Glasgow Bengali FC account.
+
+Unfortunately, for security reasons, we cannot retrieve your original password as it is encrypted in our system.
+
+Please contact the administrator at super@admin.com to reset your password, or try remembering your password.
+
+If you did not request this, please ignore this email.
+
+Best regards,
+Glasgow Bengali FC Team"""
+        
+        # Try to send email using configured SMTP settings
+        email_sent = send_email(email, subject, body)
+        
+        if not email_sent:
+            # If email is not configured, return a helpful message
+            raise HTTPException(
+                status_code=503, 
+                detail="Email service is not configured. Please contact the administrator to reset your password."
+            )
+        
+        return {"message": "Password recovery email sent successfully"}
+
 @app.get("/api/me", response_model=UserOut)
 def me(current_user: dict = Depends(get_current_user)):
     # Fetch user_type from database
@@ -751,12 +855,7 @@ def me(current_user: dict = Depends(get_current_user)):
         else:
             user_type = "member"
     
-    return UserOut(
-        id=current_user["id"], 
-        email=current_user["email"], 
-        full_name=current_user["full_name"],
-        user_type=user_type
-    )
+    return UserOut(id=current_user["id"], email=current_user["email"], full_name=current_user["full_name"], user_type=user_type)
 
 @app.post("/api/logout")
 def logout(current_user: dict = Depends(get_current_user), token: str = Depends(oauth2_scheme)):
