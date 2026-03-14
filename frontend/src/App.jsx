@@ -8,6 +8,7 @@ import About from './pages/About'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Admin from './pages/Admin'
+import Profile from './pages/Profile'
 import { apiUrl } from './api'
 import './index.css'
 
@@ -377,7 +378,9 @@ function App() {
           <div className="desktop-auth">
             {user ? (
               <>
-                <span className="user-name">{user.full_name}</span>
+                <Link to="/profile" style={{ textDecoration: 'none' }}>
+                  <span className="user-name" style={{ cursor: 'pointer' }}>{user.full_name}</span>
+                </Link>
                 <button className="nav-btn logout-btn" onClick={logout}>
                   Logout
                 </button>
@@ -445,7 +448,9 @@ function App() {
               {user ? (
                 <>
                   <div className="mobile-user-info">
-                    <span className="user-name" style={{ textAlign: 'center', display: 'block', marginBottom: '0.5rem' }}>{user.full_name}</span>
+                    <Link to="/profile" onClick={() => setMobileMenuOpen(false)} style={{ textDecoration: 'none' }}>
+                      <span className="user-name" style={{ textAlign: 'center', display: 'block', marginBottom: '0.5rem', cursor: 'pointer' }}>{user.full_name}</span>
+                    </Link>
                   </div>
                   <button className="nav-btn logout-btn" onClick={() => { logout(); setMobileMenuOpen(false); }}>
                     Logout
@@ -475,6 +480,7 @@ function App() {
         <Route path="/about-us" element={<About />} />
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/signup" element={<Signup setUser={setUser} />} />
+        <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
         <Route path="/admin" element={<Admin user={user} loading={loading} />} />
       </Routes>
     </div>

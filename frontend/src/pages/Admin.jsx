@@ -782,8 +782,13 @@ export default function Admin({ user, loading }) {
                   paddingTop: '0.75rem',
                   borderTop: '1px solid #e5e7eb'
                 }}>
-                  <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                    <strong>Registered:</strong> {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                    <div>
+                      <strong>Registered:</strong> {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
+                    </div>
+                    <div>
+                      <strong>Last Login:</strong> {u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}
+                    </div>
                   </div>
                   {u.email !== user?.email && (
                     <div style={{ display: 'flex', gap: '0.5rem' }}>

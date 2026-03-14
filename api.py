@@ -95,6 +95,7 @@ def init_db():
                 password VARCHAR(255) NOT NULL,
                 user_type VARCHAR(50) DEFAULT 'member',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP,
                 is_deleted BOOLEAN DEFAULT FALSE,
                 deleted_at TIMESTAMP,
                 deleted_by VARCHAR(255)
@@ -188,6 +189,24 @@ def init_db():
                 conn.commit()
             except Exception as e:
                 print(f"Warning: Could not add deleted_by column: {e}")
+                conn.rollback()
+            
+            # Add last_login column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='last_login'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN last_login TIMESTAMP;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add last_login column: {e}")
                 conn.rollback()
             
             # Add user_full_name to forum_posts if it doesn't exist
@@ -368,6 +387,7 @@ def init_db():
                 password TEXT NOT NULL,
                 user_type TEXT DEFAULT 'member',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP,
                 is_deleted BOOLEAN DEFAULT 0,
                 deleted_at TIMESTAMP,
                 deleted_by TEXT
@@ -412,6 +432,12 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add deleted_by column: {e}")
+            # Add last_login column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN last_login TIMESTAMP")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add last_login column: {e}")
             # Add user_full_name to forum_posts if it doesn't exist
             try:
                 cur.execute("ALTER TABLE forum_posts ADD COLUMN user_full_name TEXT")
@@ -572,6 +598,7 @@ class UserOut(BaseModel):
     full_name: str
     user_type: str = "member"
     created_at: Optional[str] = None
+    last_login: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -729,23 +756,37 @@ def signup(user: UserCreate):
                 existing_dict = dict(existing)
                 if existing_dict.get('is_deleted'):
                     # Reactivate deleted account
-                    cur.execute(
-                        f"UPDATE users SET is_deleted = FALSE, deleted_at = NULL, "
-                        f"full_name = {PLACEHOLDER}, password = {PLACEHOLDER}, user_type = 'member' "
-                        f"WHERE email = {PLACEHOLDER}",
-                        (user.full_name, hash_password(user.password), user.email)
-                    )
+                    if USE_POSTGRES:
+                        cur.execute(
+                            f"UPDATE users SET is_deleted = FALSE, deleted_at = NULL, "
+                            f"full_name = {PLACEHOLDER}, password = {PLACEHOLDER}, user_type = 'member', "
+                            f"last_login = CURRENT_TIMESTAMP WHERE email = {PLACEHOLDER}",
+                            (user.full_name, hash_password(user.password), user.email)
+                        )
+                    else:
+                        cur.execute(
+                            f"UPDATE users SET is_deleted = 0, deleted_at = NULL, "
+                            f"full_name = {PLACEHOLDER}, password = {PLACEHOLDER}, user_type = 'member', "
+                            f"last_login = CURRENT_TIMESTAMP WHERE email = {PLACEHOLDER}",
+                            (user.full_name, hash_password(user.password), user.email)
+                        )
                     conn.commit()
                     return UserOut(id=existing_dict['id'], email=user.email, full_name=user.full_name, user_type='member')
                 else:
                     # Active user already exists
                     raise HTTPException(status_code=400, detail="Email already registered")
             
-            # Create new user
-            cur.execute(
-                f"INSERT INTO users (email, full_name, password) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (user.email, user.full_name, hash_password(user.password)),
-            )
+            # Create new user with initial last_login timestamp
+            if USE_POSTGRES:
+                cur.execute(
+                    f"INSERT INTO users (email, full_name, password, last_login) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)",
+                    (user.email, user.full_name, hash_password(user.password)),
+                )
+            else:
+                cur.execute(
+                    f"INSERT INTO users (email, full_name, password, last_login) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)",
+                    (user.email, user.full_name, hash_password(user.password)),
+                )
             conn.commit()
             if USE_POSTGRES:
                 # PostgreSQL doesn't support lastrowid, need to fetch the inserted row
@@ -775,6 +816,20 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         if not verify_password(form_data.password, user["password"]):
             print("Login failed: password mismatch")
             raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        # Update last_login timestamp
+        if USE_POSTGRES:
+            cur.execute(
+                f"UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE email = {PLACEHOLDER}",
+                (form_data.username,)
+            )
+        else:
+            cur.execute(
+                f"UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE email = {PLACEHOLDER}",
+                (form_data.username,)
+            )
+        conn.commit()
+        
         token = str(uuid.uuid4())
         SESSIONS[token] = {"email": user["email"], "full_name": user["full_name"], "id": user["id"]}
         return {"access_token": token, "token_type": "bearer"}
@@ -841,10 +896,13 @@ Glasgow Bengali FC Team"""
 
 @app.get("/api/me", response_model=UserOut)
 def me(current_user: dict = Depends(get_current_user)):
-    # Fetch user_type from database
+    # Fetch user details from database including created_at and last_login
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT user_type, is_deleted FROM users WHERE email = {PLACEHOLDER}", (current_user["email"],))
+        cur.execute(
+            f"SELECT user_type, is_deleted, created_at, last_login FROM users WHERE email = {PLACEHOLDER}", 
+            (current_user["email"],)
+        )
         row = cur.fetchone()
         if row:
             row_dict = dict(row)
@@ -852,10 +910,34 @@ def me(current_user: dict = Depends(get_current_user)):
             if row_dict.get("is_deleted"):
                 raise HTTPException(status_code=401, detail="Account has been deleted")
             user_type = row_dict.get("user_type") or "member"
+            
+            # Convert datetime fields to ISO string
+            created_at = None
+            if row_dict.get("created_at"):
+                if hasattr(row_dict["created_at"], 'isoformat'):
+                    created_at = row_dict["created_at"].isoformat()
+                else:
+                    created_at = str(row_dict["created_at"])
+            
+            last_login = None
+            if row_dict.get("last_login"):
+                if hasattr(row_dict["last_login"], 'isoformat'):
+                    last_login = row_dict["last_login"].isoformat()
+                else:
+                    last_login = str(row_dict["last_login"])
         else:
             user_type = "member"
+            created_at = None
+            last_login = None
     
-    return UserOut(id=current_user["id"], email=current_user["email"], full_name=current_user["full_name"], user_type=user_type)
+    return UserOut(
+        id=current_user["id"], 
+        email=current_user["email"], 
+        full_name=current_user["full_name"], 
+        user_type=user_type,
+        created_at=created_at,
+        last_login=last_login
+    )
 
 @app.post("/api/logout")
 def logout(current_user: dict = Depends(get_current_user), token: str = Depends(oauth2_scheme)):
@@ -870,7 +952,7 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
     
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, email, full_name, user_type, created_at FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
+        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
         users = []
         for row in cur.fetchall():
             user_dict = dict(row)
@@ -882,6 +964,14 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
                     user_dict["created_at"] = str(user_dict["created_at"])
             else:
                 user_dict["created_at"] = None
+            # Convert last_login datetime to ISO string if needed, or set to None
+            if user_dict.get("last_login"):
+                if hasattr(user_dict["last_login"], 'isoformat'):
+                    user_dict["last_login"] = user_dict["last_login"].isoformat()
+                else:
+                    user_dict["last_login"] = str(user_dict["last_login"])
+            else:
+                user_dict["last_login"] = None
             # Ensure user_type has a default
             if not user_dict.get("user_type"):
                 user_dict["user_type"] = "member"
@@ -948,6 +1038,67 @@ def update_user_name(email: str, data: dict, current_user: dict = Depends(get_cu
         conn.commit()
         
         return {"message": "User name updated successfully"}
+
+@app.put("/api/profile/name")
+def update_own_name(data: dict, current_user: dict = Depends(get_current_user)):
+    """Allow user to update their own name"""
+    # Validate input
+    full_name = data.get("full_name", "").strip()
+    if not full_name:
+        raise HTTPException(status_code=400, detail="Full name cannot be empty")
+    
+    if len(full_name) > 100:
+        raise HTTPException(status_code=400, detail="Full name must be 100 characters or less")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Update user's own full name
+        cur.execute(
+            f"UPDATE users SET full_name = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+            (full_name, current_user["email"])
+        )
+        conn.commit()
+        
+        # Return updated user info
+        return {"full_name": full_name, "email": current_user["email"]}
+
+@app.put("/api/profile/password")
+def update_own_password(data: dict, current_user: dict = Depends(get_current_user)):
+    """Allow user to update their own password"""
+    current_password = data.get("current_password", "")
+    new_password = data.get("new_password", "")
+    
+    if not current_password or not new_password:
+        raise HTTPException(status_code=400, detail="Current and new passwords are required")
+    
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Verify current password
+        cur.execute(
+            f"SELECT password FROM users WHERE email = {PLACEHOLDER}",
+            (current_user["email"],)
+        )
+        user = cur.fetchone()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if not verify_password(current_password, user["password"]):
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+        
+        # Update password
+        cur.execute(
+            f"UPDATE users SET password = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+            (hash_password(new_password), current_user["email"])
+        )
+        conn.commit()
+        
+        return {"message": "Password updated successfully"}
 
 @app.delete("/api/users/{email}")
 def delete_user(email: str, current_user: dict = Depends(get_current_user)):
