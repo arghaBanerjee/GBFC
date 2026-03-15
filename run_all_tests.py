@@ -179,7 +179,7 @@ def run_test_file(test_file):
         # Run the test file from tests directory
         test_path = os.path.join(TESTS_DIR, test_file)
         result = subprocess.run(
-            ['python', test_path],
+            [sys.executable, test_path],
             capture_output=True,
             text=True,
             timeout=60,
@@ -226,6 +226,7 @@ def main():
         'test_database_compatibility.py',
         'test_payment_request_comprehensive.py',
         'test_payment_notifications.py',
+        # 'test_reports.py',  # TODO: Fix test database integration
     ]
     
     # Check if test files exist in tests directory

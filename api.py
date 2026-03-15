@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -18,6 +18,9 @@ from urllib.parse import urlparse
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill
+from io import BytesIO
 
 # --- Database helpers (supports both SQLite and Postgres) ---
 DATABASE_URL = os.environ.get("DATABASE_URL")  # Render provides this
@@ -1319,7 +1322,7 @@ def delete_user(email: str, current_user: dict = Depends(get_current_user)):
         # Delete only FUTURE practice availability (preserve historical records)
         if USE_POSTGRES:
             cur.execute(
-                f"DELETE FROM practice_availability WHERE user_email = {PLACEHOLDER} AND date > CURRENT_DATE",
+                f"DELETE FROM practice_availability WHERE user_email = {PLACEHOLDER} AND date::date > CURRENT_DATE",
                 (email,)
             )
         else:
@@ -2263,6 +2266,231 @@ def mark_notifications_read(current_user: dict = Depends(get_current_user)):
             )
         conn.commit()
         return {"message": "Notifications marked as read"}
+
+# --- Reports ---
+@app.get("/api/reports/booking")
+def generate_booking_report(from_date: str, to_date: str, current_user: dict = Depends(get_current_user)):
+    """Generate Booking Report Excel file"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Get practice sessions with payment info in date range
+        cur.execute(f"""
+            SELECT 
+                ps.date,
+                ps.time,
+                ps.location,
+                ps.session_cost,
+                ps.paid_by,
+                u.full_name as paid_by_name
+            FROM practice_sessions ps
+            LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            WHERE ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
+            ORDER BY ps.date ASC
+        """, (from_date, to_date))
+        
+        sessions = cur.fetchall()
+        
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Booking Report"
+        
+        # Header styling
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Headers
+        headers = ["Practice Session Date", "Time", "Place", "Total Cost (£)", "Paid By"]
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_alignment
+        
+        # Data rows
+        for row_num, session in enumerate(sessions, 2):
+            if USE_POSTGRES:
+                ws.cell(row=row_num, column=1, value=session["date"])
+                ws.cell(row=row_num, column=2, value=session["time"] or "TBD")
+                ws.cell(row=row_num, column=3, value=session["location"] or "TBD")
+                ws.cell(row=row_num, column=4, value=float(session["session_cost"]) if session["session_cost"] else 0.0)
+                ws.cell(row=row_num, column=5, value=session["paid_by_name"] or session["paid_by"] or "Not Set")
+            else:
+                ws.cell(row=row_num, column=1, value=session[0])
+                ws.cell(row=row_num, column=2, value=session[1] or "TBD")
+                ws.cell(row=row_num, column=3, value=session[2] or "TBD")
+                ws.cell(row=row_num, column=4, value=float(session[3]) if session[3] else 0.0)
+                ws.cell(row=row_num, column=5, value=session[5] or session[4] or "Not Set")
+        
+        # Adjust column widths
+        ws.column_dimensions['A'].width = 20
+        ws.column_dimensions['B'].width = 15
+        ws.column_dimensions['C'].width = 25
+        ws.column_dimensions['D'].width = 15
+        ws.column_dimensions['E'].width = 25
+        
+        # Save to BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        filename = f"Booking_Report_{from_date}_to_{to_date}.xlsx"
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+@app.get("/api/reports/player-payment")
+def generate_player_payment_report(from_date: str, to_date: str, current_user: dict = Depends(get_current_user)):
+    """Generate Player Payment Report Excel file"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Get all practice sessions in date range with availability and payment data
+        cur.execute(f"""
+            SELECT 
+                ps.date,
+                ps.time,
+                ps.location,
+                ps.session_cost,
+                pa.user_email,
+                u.full_name,
+                pa.status,
+                pp.paid,
+                pp.created_at as payment_date
+            FROM practice_sessions ps
+            LEFT JOIN practice_availability pa ON ps.date = pa.date
+            LEFT JOIN users u ON pa.user_email = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            LEFT JOIN practice_payments pp ON ps.date = pp.date AND pa.user_email = pp.user_email
+            WHERE ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
+                AND pa.status IS NOT NULL
+            ORDER BY ps.date ASC, u.full_name ASC
+        """, (from_date, to_date))
+        
+        rows = cur.fetchall()
+        
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Player Payment Report"
+        
+        # Header styling
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Headers
+        headers = ["Practice Session Date", "Time", "Place", "Player Name", "Availability", 
+                   "Individual Amount (£)", "Paid", "Payment Acknowledgement Date"]
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_alignment
+        
+        # Data rows
+        row_num = 2
+        for row in rows:
+            if USE_POSTGRES:
+                date = row["date"]
+                time = row["time"] or "TBD"
+                location = row["location"] or "TBD"
+                session_cost = row["session_cost"]
+                user_email = row["user_email"]
+                full_name = row["full_name"] or user_email
+                status = row["status"]
+                paid = row["paid"]
+                payment_date = row["payment_date"]
+            else:
+                date = row[0]
+                time = row[1] or "TBD"
+                location = row[2] or "TBD"
+                session_cost = row[3]
+                user_email = row[4]
+                full_name = row[5] or user_email
+                status = row[6]
+                paid = row[7]
+                payment_date = row[8]
+            
+            ws.cell(row=row_num, column=1, value=date)
+            ws.cell(row=row_num, column=2, value=time)
+            ws.cell(row=row_num, column=3, value=location)
+            ws.cell(row=row_num, column=4, value=full_name)
+            ws.cell(row=row_num, column=5, value=status.capitalize() if status else "")
+            
+            # Individual amount only for available users
+            if status == "available" and session_cost:
+                # Get count of available users for this session
+                cur.execute(f"""
+                    SELECT COUNT(*) as count 
+                    FROM practice_availability 
+                    WHERE date = {PLACEHOLDER} AND status = 'available'
+                """, (date,))
+                count_row = cur.fetchone()
+                available_count = count_row["count"] if USE_POSTGRES else count_row[0]
+                
+                if available_count > 0:
+                    individual_amount = float(session_cost) / available_count
+                    ws.cell(row=row_num, column=6, value=round(individual_amount, 2))
+                else:
+                    ws.cell(row=row_num, column=6, value="")
+            else:
+                ws.cell(row=row_num, column=6, value="")
+            
+            # Paid status only for available users
+            if status == "available":
+                if paid is not None:
+                    paid_value = "Yes" if (paid if USE_POSTGRES else bool(paid)) else "No"
+                    ws.cell(row=row_num, column=7, value=paid_value)
+                else:
+                    ws.cell(row=row_num, column=7, value="No")
+            else:
+                ws.cell(row=row_num, column=7, value="")
+            
+            # Payment acknowledgement date only for available users who paid
+            if status == "available" and paid and payment_date:
+                # Format date
+                if isinstance(payment_date, str):
+                    ws.cell(row=row_num, column=8, value=payment_date.split(' ')[0])
+                else:
+                    ws.cell(row=row_num, column=8, value=str(payment_date).split(' ')[0])
+            else:
+                ws.cell(row=row_num, column=8, value="")
+            
+            row_num += 1
+        
+        # Adjust column widths
+        ws.column_dimensions['A'].width = 20
+        ws.column_dimensions['B'].width = 15
+        ws.column_dimensions['C'].width = 25
+        ws.column_dimensions['D'].width = 25
+        ws.column_dimensions['E'].width = 15
+        ws.column_dimensions['F'].width = 20
+        ws.column_dimensions['G'].width = 10
+        ws.column_dimensions['H'].width = 25
+        
+        # Save to BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        filename = f"Player_Payment_Report_{from_date}_to_{to_date}.xlsx"
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
 
 # --- About Us ---
 @app.get("/api/about")

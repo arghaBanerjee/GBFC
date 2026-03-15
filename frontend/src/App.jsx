@@ -9,6 +9,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Admin from './pages/Admin'
 import Profile from './pages/Profile'
+import Reports from './pages/Reports'
 import { apiUrl } from './api'
 import './index.css'
 
@@ -177,7 +178,7 @@ function App() {
   }, [notificationsOpen])
 
 
-  const navItems = ['Home', 'Matches', 'Book Practice', 'Club Forum']
+  const navItems = ['Home', 'Matches', 'Book Practice', 'Forum']
   const isActive = (path) => location.pathname === path
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
@@ -254,9 +255,14 @@ function App() {
               )
             })}
             {isAdmin && (
-              <Link to="/admin" className="nav-link">
-                <button className={`nav-btn ${isActive('/admin') ? 'active' : ''}`}>Admin</button>
-              </Link>
+              <>
+                <Link to="/reports" className="nav-link">
+                  <button className={`nav-btn ${isActive('/reports') ? 'active' : ''}`}>Reports</button>
+                </Link>
+                <Link to="/admin" className="nav-link">
+                  <button className={`nav-btn ${isActive('/admin') ? 'active' : ''}`}>Admin</button>
+                </Link>
+              </>
             )}
           </div>
 
@@ -355,7 +361,7 @@ function App() {
                         onClick={() => {
                           setNotificationsOpen(false)
                           setMobileMenuOpen(false)
-                          if (notif.type === 'forum_post') navigate('/club-forum')
+                          if (notif.type === 'forum_post') navigate('/forum')
                           else if (notif.type === 'match') navigate('/matches')
                           else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed') {
                             // Navigate to book-practice with date in URL query parameter
@@ -442,13 +448,22 @@ function App() {
                 )
               })}
               {isAdmin && (
-                <Link 
-                  to="/admin" 
-                  className="mobile-nav-link"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <button className={`nav-btn ${isActive('/admin') ? 'active' : ''}`}>Admin</button>
-                </Link>
+                <>
+                  <Link 
+                    to="/reports" 
+                    className="mobile-nav-link"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <button className={`nav-btn ${isActive('/reports') ? 'active' : ''}`}>Reports</button>
+                  </Link>
+                  <Link 
+                    to="/admin" 
+                    className="mobile-nav-link"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <button className={`nav-btn ${isActive('/admin') ? 'active' : ''}`}>Admin</button>
+                  </Link>
+                </>
               )}
             </div>
             <div className="mobile-auth">
@@ -483,12 +498,13 @@ function App() {
         <Route path="/" element={<Home user={user} />} />
         <Route path="/matches" element={<Events user={user} />} />
         <Route path="/book-practice" element={<Practice user={user} />} />
-        <Route path="/club-forum" element={<Forum user={user} />} />
+        <Route path="/forum" element={<Forum user={user} />} />
         <Route path="/about-us" element={<About />} />
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/signup" element={<Signup setUser={setUser} />} />
         <Route path="/profile" element={<Profile user={user} setUser={setUser} loading={loading} />} />
         <Route path="/admin" element={<Admin user={user} loading={loading} />} />
+        <Route path="/reports" element={<Reports user={user} loading={loading} />} />
       </Routes>
     </div>
   )
