@@ -2600,7 +2600,7 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
                 FROM practice_sessions ps
                 LEFT JOIN practice_availability pa 
                     ON ps.date = pa.date AND pa.user_email = %s
-                WHERE ps.date >= CURRENT_DATE
+                WHERE ps.date::date >= CURRENT_DATE
                 ORDER BY ps.date ASC
                 """,
                 (current_user["email"],)
@@ -2669,7 +2669,7 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                 LEFT JOIN users u ON ps.paid_by = u.email
                 WHERE pa.status = 'available' 
                   AND ps.payment_requested = TRUE
-                  AND ps.date < CURRENT_DATE
+                  AND ps.date::date < CURRENT_DATE
                   AND (pp.paid IS NULL OR pp.paid = FALSE)
                 ORDER BY ps.date DESC
                 """,
