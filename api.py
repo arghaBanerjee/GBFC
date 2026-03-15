@@ -2195,7 +2195,12 @@ def get_notifications(current_user: dict = Depends(get_current_user)):
         for row in rows:
             # Extract related_date and ensure it's in YYYY-MM-DD format
             # Note: In SQLite, related_date is at index 6 because it was added via ALTER TABLE after created_at
-            related_date = row["related_date"] if USE_POSTGRES else row[6]
+            # Handle case where related_date column might not exist yet (during migration)
+            try:
+                related_date = row["related_date"] if USE_POSTGRES else row[6]
+            except (KeyError, IndexError):
+                related_date = None
+            
             if related_date and isinstance(related_date, str):
                 # If it's a string with timestamp, extract just the date part
                 related_date = related_date.split(' ')[0] if ' ' in related_date else related_date
