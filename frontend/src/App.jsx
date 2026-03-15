@@ -268,178 +268,178 @@ function App() {
             )}
           </div>
 
-          {/* User Actions Icon - visible on both desktop and mobile */}
-          {user && (
-            <Link to="/user-actions" style={{ textDecoration: 'none' }} title="My Actions">
-              <button className="social-icon" style={{ padding: '0.5rem', marginRight: '0' }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 11l3 3L22 4"/>
-                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-                </svg>
-              </button>
-            </Link>
-          )}
+          <div className="nav-actions">
+            {/* User Actions Icon - visible on both desktop and mobile */}
+            {user && (
+              <Link to="/user-actions" style={{ textDecoration: 'none' }} title="My Actions">
+                <button className="social-icon nav-action-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 11l3 3L22 4"/>
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                  </svg>
+                </button>
+              </Link>
+            )}
 
-          {/* Notification Bell - visible on both desktop and mobile */}
-          {user && (
-            <div ref={notificationRef} style={{ position: 'relative', marginRight: '0.5rem' }}>
-              <button
-                onClick={() => {
-                  setNotificationsOpen(!notificationsOpen)
-                  if (!notificationsOpen && unreadCount > 0) markAsRead()
-                }}
-                className="social-icon"
-                style={{
-                  position: 'relative',
-                  cursor: 'pointer',
-                  background: notificationsOpen ? '#16a34a' : '#f3f4f6',
-                  color: notificationsOpen ? 'white' : '#374151',
-                  borderColor: notificationsOpen ? '#16a34a' : '#e5e7eb',
-                }}
-                aria-label="Notifications"
-              >
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-                      <path
-                        d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M13.73 21a2 2 0 0 1-3.46 0"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    {unreadCount > 0 && (
-                      <span
-                        style={{
-                          position: 'absolute',
-                          top: '-4px',
-                          right: '-4px',
-                          background: '#ef4444',
-                          color: 'white',
-                          borderRadius: '50%',
-                          width: '16px',
-                          height: '16px',
-                          fontSize: '0.65rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
-                    )}
-              </button>
-              {notificationsOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '100%',
-                    right: '50%',
-                    transform: 'translateX(50%)',
-                    marginTop: '0.5rem',
-                    background: 'white',
-                    border: '1px solid #ddd',
-                    borderRadius: '0.5rem',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    width: window.innerWidth <= 768 ? '85vw' : '320px',
-                    maxWidth: '320px',
-                    maxHeight: window.innerWidth <= 768 ? '280px' : '400px',
-                    overflowY: 'auto',
-                    zIndex: 1000,
+            {/* Notification Bell - visible on both desktop and mobile */}
+            {user && (
+              <div ref={notificationRef} className="notification-wrapper">
+                <button
+                  onClick={() => {
+                    setNotificationsOpen(!notificationsOpen)
+                    if (!notificationsOpen && unreadCount > 0) markAsRead()
                   }}
+                  className="social-icon nav-action-icon"
+                  style={{
+                    position: 'relative',
+                    cursor: 'pointer',
+                    background: notificationsOpen ? '#16a34a' : '#f3f4f6',
+                    color: notificationsOpen ? 'white' : '#374151',
+                    borderColor: notificationsOpen ? '#16a34a' : '#e5e7eb',
+                  }}
+                  aria-label="Notifications"
                 >
-                  <div style={{ padding: '1rem', borderBottom: '1px solid #eee' }}>
-                    <strong>Notifications</strong>
-                  </div>
-                  {notifications.length === 0 ? (
-                    <div style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>
-                      No notifications yet
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                        <path
+                          d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M13.73 21a2 2 0 0 1-3.46 0"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      {unreadCount > 0 && (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: '-4px',
+                            right: '-4px',
+                            background: '#ef4444',
+                            color: 'white',
+                            borderRadius: '50%',
+                            width: '16px',
+                            height: '16px',
+                            fontSize: '0.65rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 'bold',
+                          }}
+                        >
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      )}
+                </button>
+                {notificationsOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: '0',
+                      marginTop: '0.5rem',
+                      background: 'white',
+                      border: '1px solid #ddd',
+                      borderRadius: '0.5rem',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      width: window.innerWidth <= 768 ? '85vw' : '320px',
+                      maxWidth: '320px',
+                      maxHeight: window.innerWidth <= 768 ? '280px' : '400px',
+                      overflowY: 'auto',
+                      zIndex: 1000,
+                    }}
+                  >
+                    <div style={{ padding: '1rem', borderBottom: '1px solid #eee' }}>
+                      <strong>Notifications</strong>
                     </div>
-                  ) : (
-                    notifications.map((notif) => (
-                      <div
-                        key={notif.id}
-                        style={{
-                          padding: '0.75rem 1rem',
-                          borderBottom: '1px solid #f0f0f0',
-                          background: notif.read ? 'white' : '#f0f9ff',
-                          cursor: 'pointer',
-                        }}
-                        onClick={() => {
-                          setNotificationsOpen(false)
-                          setMobileMenuOpen(false)
-                          if (notif.type === 'forum_post') navigate('/forum')
-                          else if (notif.type === 'match') navigate('/matches')
-                          else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed') {
-                            // Navigate to book-practice with date in URL query parameter
-                            if (notif.related_date) {
-                              navigate(`/book-practice?date=${notif.related_date}`)
-                            } else {
-                              navigate('/book-practice')
-                            }
-                          }
-                        }}
-                      >
-                        <div style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>
-                          {notif.message}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: '#999' }}>
-                          {new Date(notif.created_at).toLocaleString()}
-                        </div>
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>
+                        No notifications yet
                       </div>
-                    ))
-                  )}
-                </div>
+                    ) : (
+                      notifications.map((notif) => (
+                        <div
+                          key={notif.id}
+                          style={{
+                            padding: '0.75rem 1rem',
+                            borderBottom: '1px solid #f0f0f0',
+                            background: notif.read ? 'white' : '#f0f9ff',
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => {
+                            setNotificationsOpen(false)
+                            setMobileMenuOpen(false)
+                            if (notif.type === 'forum_post') navigate('/forum')
+                            else if (notif.type === 'match') navigate('/matches')
+                            else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed') {
+                              if (notif.related_date) {
+                                navigate(`/book-practice?date=${notif.related_date}`)
+                              } else {
+                                navigate('/book-practice')
+                              }
+                            }
+                          }}
+                        >
+                          <div style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+                            {notif.message}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#999' }}>
+                            {new Date(notif.created_at).toLocaleString()}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Desktop Auth Section */}
+            <div className="desktop-auth">
+              {user ? (
+                <>
+                  <Link to="/profile" style={{ textDecoration: 'none' }}>
+                    <span className="user-name" style={{ cursor: 'pointer', border: '1px solid #10b981', color: '#10b981', backgroundColor: '#f0fdf4', padding: '0.5rem 1rem', borderRadius: '0.375rem' }}>{user.full_name}</span>
+                  </Link>
+                  <button className="nav-btn logout-btn" onClick={logout}>
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link to="/login">
+                    <button className="nav-btn login-btn">Login</button>
+                  </Link>
+                  <Link to="/signup">
+                    <button className="nav-btn signup-btn">Sign Up</button>
+                  </Link>
+                </>
               )}
             </div>
-          )}
 
-          {/* Desktop Auth Section */}
-          <div className="desktop-auth">
-            {user ? (
-              <>
-                <Link to="/profile" style={{ textDecoration: 'none' }}>
-                  <span className="user-name" style={{ cursor: 'pointer', border: '1px solid #ddd', padding: '0.5rem 1rem', borderRadius: '0.375rem' }}>{user.full_name}</span>
-                </Link>
-                <button className="nav-btn logout-btn" onClick={logout}>
-                  Logout
-                </button>
-              </>
-            ) : (
-              <>
-                <Link to="/login">
-                  <button className="nav-btn login-btn">Login</button>
-                </Link>
-                <Link to="/signup">
-                  <button className="nav-btn signup-btn">Sign Up</button>
-                </Link>
-              </>
-            )}
+            {/* Mobile Menu Button */}
+            <button 
+              className="mobile-menu-btn" 
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 12h18M3 6h18M3 18h18" />
+                </svg>
+              )}
+            </button>
           </div>
-
-          {/* Mobile Menu Button */}
-          <button 
-            className="mobile-menu-btn" 
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle menu"
-          >
-            {mobileMenuOpen ? (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            ) : (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 12h18M3 6h18M3 18h18" />
-              </svg>
-            )}
-          </button>
         </div>
 
         {/* Mobile Menu */}
@@ -483,11 +483,9 @@ function App() {
             <div className="mobile-auth">
               {user ? (
                 <>
-                  <div className="mobile-user-info">
-                    <Link to="/profile" onClick={() => setMobileMenuOpen(false)} style={{ textDecoration: 'none' }}>
-                      <span className="user-name" style={{ textAlign: 'center', display: 'block', marginBottom: '0.5rem', cursor: 'pointer' }}>{user.full_name}</span>
-                    </Link>
-                  </div>
+                  <Link to="/profile" onClick={() => setMobileMenuOpen(false)} style={{ textDecoration: 'none' }}>
+                    <span className="user-name mobile-profile-link" style={{ textAlign: 'center', display: 'block', cursor: 'pointer', border: '1px solid #10b981', color: '#10b981', backgroundColor: '#f0fdf4', padding: '0.75rem 1rem', borderRadius: '0.5rem' }}>{user.full_name}</span>
+                  </Link>
                   <button className="nav-btn logout-btn" onClick={() => { logout(); setMobileMenuOpen(false); }}>
                     Logout
                   </button>
