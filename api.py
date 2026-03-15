@@ -1641,6 +1641,49 @@ def get_session_payments(date_str: str, current_user: dict = Depends(get_current
             payments[row_dict["user_email"]] = row_dict["paid"]
         return payments
 
+@app.post("/api/practice/{date}/payment")
+def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(get_current_user)):
+    """User endpoint to confirm or unconfirm payment for a practice session (used by User Actions page)"""
+    paid = data.get("paid", False)
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if payment is requested for this session
+        cur.execute(
+            f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}", 
+            (date,)
+        )
+        session = cur.fetchone()
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+        if not session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Payment request has not been enabled for this session")
+        
+        # Check if user is available for this session
+        cur.execute(
+            f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (date, current_user["email"]),
+        )
+        availability = cur.fetchone()
+        if not availability or availability["status"] != "available":
+            raise HTTPException(status_code=400, detail="You must be marked as available for this session to confirm payment")
+        
+        # Insert or update payment confirmation
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO practice_payments (date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET paid = EXCLUDED.paid",
+                (date, current_user["email"], paid),
+            )
+        else:
+            cur.execute(
+                f"INSERT OR REPLACE INTO practice_payments (date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (date, current_user["email"], 1 if paid else 0),
+            )
+        
+        conn.commit()
+        return {"message": "Payment confirmation updated"}
+
 @app.post("/api/practice/sessions/{date_str}/payment")
 def confirm_payment(date_str: str, data: dict, current_user: dict = Depends(get_current_user)):
     """User endpoint to confirm or unconfirm payment for a practice session"""
@@ -2024,6 +2067,55 @@ def get_my_practice_availability(current_user: dict = Depends(get_current_user))
             if stored_name and stored_name == current_user["full_name"]:
                 result[row_dict["date"]] = row_dict["status"]
         return result
+
+@app.post("/api/practice/{date}/availability")
+def set_practice_availability_by_date(date: str, status: dict, current_user: dict = Depends(get_current_user)):
+    """Set availability for a specific date (used by User Actions page)"""
+    from datetime import datetime
+    try:
+        practice_date = datetime.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    # Check if payment has been requested for this session
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}", (date,))
+        session = cur.fetchone()
+        
+        if session and session["payment_requested"]:
+            raise HTTPException(
+                status_code=403, 
+                detail="Cannot modify availability after payment request has been enabled."
+            )
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        availability_status = status.get("status")
+        
+        # If status is 'none', delete the availability record (deselection)
+        if availability_status == 'none':
+            cur.execute(
+                f"DELETE FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+                (date, current_user["email"])
+            )
+            conn.commit()
+            return {"message": "Availability removed"}
+        
+        # Otherwise, insert or update the availability
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET status = EXCLUDED.status, user_full_name = EXCLUDED.user_full_name",
+                (date, current_user["email"], current_user["full_name"], availability_status),
+            )
+        else:
+            cur.execute(
+                f"INSERT OR REPLACE INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (date, current_user["email"], current_user["full_name"], availability_status),
+            )
+        conn.commit()
+        return {"message": "Availability set"}
 
 @app.post("/api/practice/availability")
 def set_my_practice_availability(avail: PracticeAvailability, current_user: dict = Depends(get_current_user)):
@@ -2491,6 +2583,164 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+
+# --- User Actions ---
+@app.get("/api/user-actions/upcoming-sessions")
+def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
+    """Get all upcoming practice sessions for user to set availability"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Get all future practice sessions ordered by date (most recent first)
+        if USE_POSTGRES:
+            cur.execute(
+                """
+                SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
+                       pa.status as user_status
+                FROM practice_sessions ps
+                LEFT JOIN practice_availability pa 
+                    ON ps.date = pa.date AND pa.user_email = %s
+                WHERE ps.date >= CURRENT_DATE
+                ORDER BY ps.date ASC
+                """,
+                (current_user["email"],)
+            )
+        else:
+            cur.execute(
+                """
+                SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
+                       pa.status as user_status
+                FROM practice_sessions ps
+                LEFT JOIN practice_availability pa 
+                    ON ps.date = pa.date AND pa.user_email = ?
+                WHERE ps.date >= date('now')
+                ORDER BY ps.date ASC
+                """,
+                (current_user["email"],)
+            )
+        
+        rows = cur.fetchall()
+        sessions = []
+        for row in rows:
+            if USE_POSTGRES:
+                sessions.append({
+                    "date": row["date"],
+                    "time": row["time"],
+                    "location": row["location"],
+                    "session_cost": row["session_cost"],
+                    "paid_by": row["paid_by"],
+                    "user_status": row["user_status"]
+                })
+            else:
+                sessions.append({
+                    "date": row[0],
+                    "time": row[1],
+                    "location": row[2],
+                    "session_cost": row[3],
+                    "paid_by": row[4],
+                    "user_status": row[5]
+                })
+        
+        return {"sessions": sessions}
+
+@app.get("/api/user-actions/pending-payments")
+def get_pending_payments(current_user: dict = Depends(get_current_user)):
+    """Get all sessions where user was available but hasn't confirmed payment"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Get sessions where:
+        # 1. User marked themselves as available
+        # 2. Payment was requested (payment_requested = true)
+        # 3. User hasn't confirmed payment OR payment record doesn't exist
+        # Order by date descending (newest first)
+        if USE_POSTGRES:
+            cur.execute(
+                """
+                SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
+                       u.full_name as paid_by_name,
+                       pa.status,
+                       COALESCE(pp.paid, FALSE) as paid
+                FROM practice_sessions ps
+                INNER JOIN practice_availability pa 
+                    ON ps.date = pa.date AND pa.user_email = %s
+                LEFT JOIN practice_payments pp 
+                    ON ps.date = pp.date AND pp.user_email = %s
+                LEFT JOIN users u ON ps.paid_by = u.email
+                WHERE pa.status = 'available' 
+                  AND ps.payment_requested = TRUE
+                  AND ps.date < CURRENT_DATE
+                  AND (pp.paid IS NULL OR pp.paid = FALSE)
+                ORDER BY ps.date DESC
+                """,
+                (current_user["email"], current_user["email"])
+            )
+        else:
+            cur.execute(
+                """
+                SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
+                       u.full_name as paid_by_name,
+                       pa.status,
+                       COALESCE(pp.paid, 0) as paid
+                FROM practice_sessions ps
+                INNER JOIN practice_availability pa 
+                    ON ps.date = pa.date AND pa.user_email = ?
+                LEFT JOIN practice_payments pp 
+                    ON ps.date = pp.date AND pp.user_email = ?
+                LEFT JOIN users u ON ps.paid_by = u.email
+                WHERE pa.status = 'available' 
+                  AND ps.payment_requested = 1
+                  AND ps.date < date('now')
+                  AND (pp.paid IS NULL OR pp.paid = 0)
+                ORDER BY ps.date DESC
+                """,
+                (current_user["email"], current_user["email"])
+            )
+        
+        rows = cur.fetchall()
+        payments = []
+        for row in rows:
+            if USE_POSTGRES:
+                # Calculate individual amount
+                # Get count of available users for this session
+                cur.execute(
+                    "SELECT COUNT(*) FROM practice_availability WHERE date = %s AND status = 'available'",
+                    (row["date"],)
+                )
+                available_count = cur.fetchone()[0]
+                individual_amount = row["session_cost"] / available_count if available_count > 0 else 0
+                
+                payments.append({
+                    "date": row["date"],
+                    "time": row["time"],
+                    "location": row["location"],
+                    "session_cost": row["session_cost"],
+                    "individual_amount": round(individual_amount, 2),
+                    "paid_by": row["paid_by"],
+                    "paid_by_name": row["paid_by_name"],
+                    "paid": row["paid"]
+                })
+            else:
+                # Calculate individual amount
+                cur.execute(
+                    "SELECT COUNT(*) FROM practice_availability WHERE date = ? AND status = 'available'",
+                    (row[0],)
+                )
+                available_count = cur.fetchone()[0]
+                individual_amount = row[3] / available_count if available_count > 0 else 0
+                
+                payments.append({
+                    "date": row[0],
+                    "time": row[1],
+                    "location": row[2],
+                    "session_cost": row[3],
+                    "individual_amount": round(individual_amount, 2),
+                    "paid_by": row[4],
+                    "paid_by_name": row[5],
+                    "paid": bool(row[7])
+                })
+        
+        return {"payments": payments}
 
 # --- About Us ---
 @app.get("/api/about")

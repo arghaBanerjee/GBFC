@@ -10,6 +10,7 @@ import Signup from './pages/Signup'
 import Admin from './pages/Admin'
 import Profile from './pages/Profile'
 import Reports from './pages/Reports'
+import UserActions from './pages/UserActions'
 import { apiUrl } from './api'
 import './index.css'
 
@@ -266,6 +267,18 @@ function App() {
             )}
           </div>
 
+          {/* User Actions Icon - visible on both desktop and mobile */}
+          {user && (
+            <Link to="/user-actions" style={{ textDecoration: 'none' }} title="My Actions">
+              <button className="social-icon" style={{ padding: '0.5rem', marginRight: '0' }}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 11l3 3L22 4"/>
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                </svg>
+              </button>
+            </Link>
+          )}
+
           {/* Notification Bell - visible on both desktop and mobile */}
           {user && (
             <div ref={notificationRef} style={{ position: 'relative', marginRight: '0.5rem' }}>
@@ -392,7 +405,7 @@ function App() {
             {user ? (
               <>
                 <Link to="/profile" style={{ textDecoration: 'none' }}>
-                  <span className="user-name" style={{ cursor: 'pointer' }}>{user.full_name}</span>
+                  <span className="user-name" style={{ cursor: 'pointer', border: '1px solid #ddd', padding: '0.5rem 1rem', borderRadius: '0.375rem' }}>{user.full_name}</span>
                 </Link>
                 <button className="nav-btn logout-btn" onClick={logout}>
                   Logout
@@ -505,6 +518,9 @@ function App() {
         <Route path="/profile" element={<Profile user={user} setUser={setUser} loading={loading} />} />
         <Route path="/admin" element={<Admin user={user} loading={loading} />} />
         <Route path="/reports" element={<Reports user={user} loading={loading} />} />
+        <Route path="/user-actions" element={<UserActions user={user} loading={loading} />} />
+        <Route path="/user-actions/upcoming-events" element={<UserActions user={user} loading={loading} initialTab="upcoming" />} />
+        <Route path="/user-actions/pending-payments" element={<UserActions user={user} loading={loading} initialTab="payments" />} />
       </Routes>
     </div>
   )
