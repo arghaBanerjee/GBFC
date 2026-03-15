@@ -2186,33 +2186,65 @@ def notify_all_users(notif_type: str, message: str, exclude_email: str = None, r
 def get_notifications(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(
-            f"SELECT * FROM notifications WHERE user_email = {PLACEHOLDER} ORDER BY created_at DESC LIMIT 50",
-            (current_user["email"],)
-        )
+        
+        # Check if related_date column exists before querying
+        if USE_POSTGRES:
+            cur.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name='notifications' AND column_name='related_date'
+            """)
+            has_related_date = cur.fetchone() is not None
+        else:
+            cur.execute("PRAGMA table_info(notifications)")
+            columns = [col[1] for col in cur.fetchall()]
+            has_related_date = 'related_date' in columns
+        
+        # Build query based on column existence
+        if has_related_date:
+            cur.execute(
+                f"SELECT id, type, message, read, related_date, created_at FROM notifications WHERE user_email = {PLACEHOLDER} ORDER BY created_at DESC LIMIT 50",
+                (current_user["email"],)
+            )
+        else:
+            cur.execute(
+                f"SELECT id, type, message, read, created_at FROM notifications WHERE user_email = {PLACEHOLDER} ORDER BY created_at DESC LIMIT 50",
+                (current_user["email"],)
+            )
+        
         rows = cur.fetchall()
         notifications = []
         for row in rows:
-            # Extract related_date and ensure it's in YYYY-MM-DD format
-            # Note: In SQLite, related_date is at index 6 because it was added via ALTER TABLE after created_at
-            # Handle case where related_date column might not exist yet (during migration)
-            try:
-                related_date = row["related_date"] if USE_POSTGRES else row[6]
-            except (KeyError, IndexError):
+            # Extract related_date if column exists
+            if has_related_date:
+                if USE_POSTGRES:
+                    related_date = row["related_date"] if USE_POSTGRES else row[4]
+                else:
+                    related_date = row[4]
+                
+                if related_date and isinstance(related_date, str):
+                    # If it's a string with timestamp, extract just the date part
+                    related_date = related_date.split(' ')[0] if ' ' in related_date else related_date
+            else:
                 related_date = None
             
-            if related_date and isinstance(related_date, str):
-                # If it's a string with timestamp, extract just the date part
-                related_date = related_date.split(' ')[0] if ' ' in related_date else related_date
-            
-            notifications.append({
-                "id": row["id"] if USE_POSTGRES else row[0],
-                "type": row["type"] if USE_POSTGRES else row[2],
-                "message": row["message"] if USE_POSTGRES else row[3],
-                "read": row["read"] if USE_POSTGRES else bool(row[4]),
-                "related_date": related_date,
-                "created_at": row["created_at"] if USE_POSTGRES else row[5],
-            })
+            if USE_POSTGRES:
+                notifications.append({
+                    "id": row["id"],
+                    "type": row["type"],
+                    "message": row["message"],
+                    "read": row["read"],
+                    "related_date": related_date,
+                    "created_at": row["created_at"] if has_related_date else row[4],
+                })
+            else:
+                notifications.append({
+                    "id": row[0],
+                    "type": row[1],
+                    "message": row[2],
+                    "read": bool(row[3]),
+                    "related_date": related_date,
+                    "created_at": row[5] if has_related_date else row[4],
+                })
         return notifications
 
 @app.post("/api/notifications/mark-read")
