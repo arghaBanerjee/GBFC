@@ -75,7 +75,6 @@ export default function Admin({ user, loading }) {
       })
       if (res.ok) {
         const data = await res.json()
-        console.log('Users loaded:', data)
         setUsers(data)
       } else {
         const error = await res.json().catch(() => ({}))

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { apiUrl } from '../api'
 
 export default function Login({ setUser }) {
@@ -16,6 +16,7 @@ export default function Login({ setUser }) {
   // ================================================================
   
   const navigate = useNavigate()
+  const location = useLocation()
 
   const validateEmail = (email) => {
     if (!email) return 'Email is required'
@@ -61,7 +62,10 @@ export default function Login({ setUser }) {
       const userRes = await fetch(apiUrl('/api/me'), { headers: { Authorization: `Bearer ${access_token}` } })
       const userData = await userRes.json()
       setUser(userData)
-      navigate('/')
+      
+      // Redirect to the page user was trying to access, or home if none
+      const from = location.state?.from || '/'
+      navigate(from, { replace: true })
     } else {
       setError('Invalid email or password')
     }
@@ -158,32 +162,42 @@ export default function Login({ setUser }) {
         
         <button type="submit" className="nav-btn" style={{ width: '100%', background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>Log in</button>
         
-        {/* ========== FORGOT PASSWORD FEATURE - Button (CURRENTLY HIDDEN) ========== */}
-        {/* TO ENABLE THIS FEATURE:                                                    */}
-        {/* 1. Configure email settings (see EMAIL_SETUP.md)                          */}
-        {/* 2. Change {false && ( to {true && ( on the line below                     */}
-        {/* 3. The white "Forgot Password?" button will appear below the login button */}
-        {/* ========================================================================== */}
-        {false && (
+        {/* Sign Up and Forgot Password buttons */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+          <button 
+            type="button" 
+            onClick={() => navigate('/signup')}
+            className="nav-btn" 
+            style={{ 
+              flex: 1,
+              background: 'white', 
+              color: '#10b981', 
+              border: '1px solid #10b981', 
+              fontWeight: '400',
+              padding: '0.5rem'
+            }}
+          >
+            Sign Up
+          </button>
           <button 
             type="button" 
             onClick={handleForgotPassword}
             disabled={sendingEmail}
             className="nav-btn" 
             style={{ 
-              width: '100%', 
+              flex: 1,
               background: 'white', 
-              color: '#374151', 
-              border: '1px solid #d1d5db', 
+              color: '#f97316', 
+              border: '1px solid #f97316', 
               fontWeight: '400',
               cursor: sendingEmail ? 'not-allowed' : 'pointer',
               opacity: sendingEmail ? 0.6 : 1,
-              marginTop: '0.5rem'
+              padding: '0.5rem'
             }}
           >
-            {sendingEmail ? 'Sending...' : 'Forgot Password?'}
+            {sendingEmail ? 'Sending...' : 'Forgot Password'}
           </button>
-        )}
+        </div>
       </form>
     </div>
   )

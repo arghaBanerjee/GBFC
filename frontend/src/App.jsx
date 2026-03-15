@@ -11,6 +11,7 @@ import Admin from './pages/Admin'
 import Profile from './pages/Profile'
 import Reports from './pages/Reports'
 import UserActions from './pages/UserActions'
+import ProtectedRoute from './components/ProtectedRoute'
 import { apiUrl } from './api'
 import './index.css'
 
@@ -508,19 +509,62 @@ function App() {
 
       {/* Page Content */}
       <Routes>
-        <Route path="/" element={<Home user={user} />} />
-        <Route path="/matches" element={<Events user={user} />} />
-        <Route path="/book-practice" element={<Practice user={user} />} />
-        <Route path="/forum" element={<Forum user={user} />} />
-        <Route path="/about-us" element={<About />} />
+        {/* Public routes */}
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/signup" element={<Signup setUser={setUser} />} />
-        <Route path="/profile" element={<Profile user={user} setUser={setUser} loading={loading} />} />
-        <Route path="/admin" element={<Admin user={user} loading={loading} />} />
-        <Route path="/reports" element={<Reports user={user} loading={loading} />} />
-        <Route path="/user-actions" element={<UserActions user={user} loading={loading} />} />
-        <Route path="/user-actions/upcoming-events" element={<UserActions user={user} loading={loading} initialTab="upcoming" />} />
-        <Route path="/user-actions/pending-payments" element={<UserActions user={user} loading={loading} initialTab="payments" />} />
+        <Route path="/about-us" element={<About />} />
+        
+        {/* Protected routes - require authentication */}
+        <Route path="/" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <Home user={user} />
+          </ProtectedRoute>
+        } />
+        <Route path="/matches" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <Events user={user} />
+          </ProtectedRoute>
+        } />
+        <Route path="/book-practice" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <Practice user={user} />
+          </ProtectedRoute>
+        } />
+        <Route path="/forum" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <Forum user={user} />
+          </ProtectedRoute>
+        } />
+        <Route path="/profile" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <Profile user={user} setUser={setUser} loading={loading} />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <Admin user={user} loading={loading} />
+          </ProtectedRoute>
+        } />
+        <Route path="/reports" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <Reports user={user} loading={loading} />
+          </ProtectedRoute>
+        } />
+        <Route path="/user-actions" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <UserActions user={user} loading={loading} />
+          </ProtectedRoute>
+        } />
+        <Route path="/user-actions/upcoming-events" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <UserActions user={user} loading={loading} initialTab="upcoming" />
+          </ProtectedRoute>
+        } />
+        <Route path="/user-actions/pending-payments" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <UserActions user={user} loading={loading} initialTab="payments" />
+          </ProtectedRoute>
+        } />
       </Routes>
     </div>
   )
