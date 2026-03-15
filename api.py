@@ -2234,7 +2234,7 @@ def get_notifications(current_user: dict = Depends(get_current_user)):
                     "message": row["message"],
                     "read": row["read"],
                     "related_date": related_date,
-                    "created_at": row["created_at"] if has_related_date else row[4],
+                    "created_at": row["created_at"],
                 })
             else:
                 notifications.append({
