@@ -55,9 +55,16 @@ Visit `http://localhost:5173` in your browser.
 - Choose any password
 - Log in to access the Admin panel
 
+## Documentation
+
+- **[Quick Deployment Guide](docs/QUICKSTART_DEPLOY.md)** - 15-minute deployment guide
+- **[Detailed Deployment Guide](docs/DEPLOYMENT.md)** - Comprehensive deployment instructions
+- **[Testing Documentation](docs/TESTING.md)** - Test suite and testing guidelines
+- **[Email Setup Guide](docs/EMAIL_SETUP.md)** - Email configuration for forgot password feature
+
 ## Deployment
 
-See **`QUICKSTART_DEPLOY.md`** for a 15-minute deployment guide, or **`DEPLOYMENT.md`** for detailed instructions.
+See **[docs/QUICKSTART_DEPLOY.md](docs/QUICKSTART_DEPLOY.md)** for a 15-minute deployment guide, or **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for detailed instructions.
 
 **Deploy to:**
 - **Frontend**: Vercel (free)
@@ -72,15 +79,25 @@ Football/
 ├── api.py              # FastAPI backend
 ├── requirements.txt    # Python dependencies
 ├── render.yaml         # Render deployment config
-├── frontend/
-│   ├── src/
-│   │   ├── pages/      # React pages
-│   │   ├── App.jsx     # Main app component
-│   │   └── api.js      # API utility
-│   ├── vercel.json     # Vercel deployment config
-│   └── package.json    # Node dependencies
-├── DEPLOYMENT.md       # Detailed deployment guide
-└── QUICKSTART_DEPLOY.md # Quick deployment guide
+├── run_all_tests.py    # Master test runner
+├── docs/               # Documentation
+│   ├── DEPLOYMENT.md           # Detailed deployment guide
+│   ├── QUICKSTART_DEPLOY.md    # Quick deployment guide
+│   ├── TESTING.md              # Testing documentation
+│   ├── EMAIL_SETUP.md          # Email configuration guide
+│   ├── README_DEPLOYMENT.md    # Deployment README
+│   └── README_REACT.md         # React setup guide
+├── tests/              # Test directory
+│   ├── test_database_compatibility.py
+│   ├── test_payment_request_comprehensive.py
+│   └── test_payment_notifications.py
+└── frontend/
+    ├── src/
+    │   ├── pages/      # React pages
+    │   ├── App.jsx     # Main app component
+    │   └── api.js      # API utility
+    ├── vercel.json     # Vercel deployment config
+    └── package.json    # Node dependencies
 ```
 
 ## Development Notes

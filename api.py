@@ -23,6 +23,9 @@ from email.mime.multipart import MIMEMultipart
 DATABASE_URL = os.environ.get("DATABASE_URL")  # Render provides this
 USE_POSTGRES = DATABASE_URL is not None
 
+# Test database configuration - use separate database for testing
+TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
+
 if USE_POSTGRES:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -30,7 +33,8 @@ if USE_POSTGRES:
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 else:
-    DB_PATH = "football_club.db"
+    # Use test database if in test mode, otherwise use production database
+    DB_PATH = "test_football_club.db" if TEST_MODE else "football_club.db"
     UPLOAD_DIR = "uploads"
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -228,6 +232,60 @@ def init_db():
                 print(f"Warning: Could not add birthday column: {e}")
                 conn.rollback()
             
+            # Add session_cost column to practice_sessions if it doesn't exist
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='practice_sessions' AND column_name='session_cost'
+                        ) THEN
+                            ALTER TABLE practice_sessions ADD COLUMN session_cost DECIMAL(10, 2);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add session_cost column: {e}")
+                conn.rollback()
+            
+            # Add paid_by column to practice_sessions if it doesn't exist
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='practice_sessions' AND column_name='paid_by'
+                        ) THEN
+                            ALTER TABLE practice_sessions ADD COLUMN paid_by VARCHAR(255);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add paid_by column: {e}")
+                conn.rollback()
+            
+            # Add payment_requested column to practice_sessions if it doesn't exist
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='practice_sessions' AND column_name='payment_requested'
+                        ) THEN
+                            ALTER TABLE practice_sessions ADD COLUMN payment_requested BOOLEAN DEFAULT FALSE;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add payment_requested column: {e}")
+                conn.rollback()
+            
             # Add user_full_name to forum_posts if it doesn't exist
             try:
                 cur.execute("""
@@ -350,7 +408,20 @@ def init_db():
             CREATE TABLE IF NOT EXISTS practice_sessions (
                 date VARCHAR(50) PRIMARY KEY,
                 time VARCHAR(50),
-                location TEXT
+                location TEXT,
+                session_cost DECIMAL(10, 2),
+                paid_by VARCHAR(255),
+                payment_requested BOOLEAN DEFAULT FALSE
+            )
+            """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS practice_payments (
+                id SERIAL PRIMARY KEY,
+                date VARCHAR(50) NOT NULL,
+                user_email VARCHAR(255) NOT NULL,
+                paid BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, user_email)
             )
             """)
             cur.execute("""
@@ -387,6 +458,7 @@ def init_db():
                 type VARCHAR(50) NOT NULL,
                 message TEXT NOT NULL,
                 read BOOLEAN DEFAULT FALSE,
+                related_date DATE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
@@ -464,6 +536,24 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add birthday column: {e}")
+            # Add session_cost column to practice_sessions if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE practice_sessions ADD COLUMN session_cost REAL")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add session_cost column: {e}")
+            # Add paid_by column to practice_sessions if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE practice_sessions ADD COLUMN paid_by TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add paid_by column: {e}")
+            # Add payment_requested column to practice_sessions if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE practice_sessions ADD COLUMN payment_requested INTEGER DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add payment_requested column: {e}")
             # Add user_full_name to forum_posts if it doesn't exist
             try:
                 cur.execute("ALTER TABLE forum_posts ADD COLUMN user_full_name TEXT")
@@ -532,7 +622,18 @@ def init_db():
             CREATE TABLE IF NOT EXISTS practice_sessions (
                 date TEXT PRIMARY KEY,
                 time TEXT,
-                location TEXT
+                location TEXT,
+                session_cost REAL,
+                paid_by TEXT,
+                payment_requested INTEGER DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS practice_payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                user_email TEXT NOT NULL,
+                paid INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, user_email)
             );
             CREATE TABLE IF NOT EXISTS forum_posts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -563,6 +664,7 @@ def init_db():
                 type TEXT NOT NULL,
                 message TEXT NOT NULL,
                 read INTEGER DEFAULT 0,
+                related_date DATE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
@@ -572,6 +674,10 @@ def init_db():
                 pass
             try:
                 cur.execute("ALTER TABLE events ADD COLUMN youtube_url TEXT")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                cur.execute("ALTER TABLE notifications ADD COLUMN related_date DATE")
             except sqlite3.OperationalError:
                 pass
             conn.commit()
@@ -698,11 +804,17 @@ class PracticeSessionCreate(BaseModel):
     date: str
     time: Optional[str] = None
     location: Optional[str] = None
+    session_cost: Optional[float] = None
+    paid_by: Optional[str] = None
 
 class PracticeSessionOut(BaseModel):
     date: str
     time: Optional[str] = None
     location: Optional[str] = None
+    session_cost: Optional[float] = None
+    paid_by: Optional[str] = None
+    paid_by_name: Optional[str] = None
+    payment_requested: Optional[bool] = False
 
 # --- Helper Functions ---
 def is_admin(current_user: dict) -> bool:
@@ -927,7 +1039,7 @@ def me(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"SELECT user_type, is_deleted, created_at, last_login, birthday FROM users WHERE email = {PLACEHOLDER}", 
+            f"SELECT full_name, user_type, is_deleted, created_at, last_login, birthday FROM users WHERE email = {PLACEHOLDER}", 
             (current_user["email"],)
         )
         row = cur.fetchone()
@@ -936,6 +1048,8 @@ def me(current_user: dict = Depends(get_current_user)):
             # Check if user is deleted
             if row_dict.get("is_deleted"):
                 raise HTTPException(status_code=401, detail="Account has been deleted")
+            
+            full_name = row_dict.get("full_name") or current_user["full_name"]
             user_type = row_dict.get("user_type") or "member"
             
             # Convert datetime fields to ISO string
@@ -961,6 +1075,7 @@ def me(current_user: dict = Depends(get_current_user)):
                 else:
                     birthday = str(row_dict["birthday"])
         else:
+            full_name = current_user["full_name"]
             user_type = "member"
             created_at = None
             last_login = None
@@ -969,7 +1084,7 @@ def me(current_user: dict = Depends(get_current_user)):
     return UserOut(
         id=current_user["id"], 
         email=current_user["email"], 
-        full_name=current_user["full_name"], 
+        full_name=full_name, 
         user_type=user_type,
         created_at=created_at,
         last_login=last_login,
@@ -1398,7 +1513,19 @@ def get_uploaded_file(filename: str):
 def list_practice_sessions():
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT date, time, location FROM practice_sessions ORDER BY date ASC")
+        cur.execute("""
+            SELECT 
+                ps.date, 
+                ps.time, 
+                ps.location, 
+                ps.session_cost, 
+                ps.paid_by, 
+                ps.payment_requested,
+                u.full_name as paid_by_name
+            FROM practice_sessions ps
+            LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            ORDER BY ps.date ASC
+        """)
         return [PracticeSessionOut(**dict(r)) for r in cur.fetchall()]
 
 @app.post("/api/practice/sessions", response_model=PracticeSessionOut)
@@ -1408,8 +1535,8 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"INSERT INTO practice_sessions (date, time, location) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date) DO UPDATE SET time = EXCLUDED.time, location = EXCLUDED.location",
-            (session.date, session.time, session.location),
+            f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date) DO UPDATE SET time = EXCLUDED.time, location = EXCLUDED.location, session_cost = EXCLUDED.session_cost, paid_by = EXCLUDED.paid_by",
+            (session.date, session.time, session.location, session.session_cost, session.paid_by),
         )
         conn.commit()
         
@@ -1418,8 +1545,9 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
         location_info = f" at {session.location}" if session.location else ""
         notify_all_users(
             "practice",
-            f"New Practice Session Added on {session.date}{time_info}{location_info}",
-            exclude_email=current_user["email"]
+            f"New Practice Session Added on {session.date}{time_info}{location_info}. Please vote your Availability.",
+            exclude_email=current_user["email"],
+            related_date=session.date
         )
         
         return PracticeSessionOut(**session.model_dump())
@@ -1431,13 +1559,141 @@ def update_practice_session(date_str: str, session: PracticeSessionCreate, curre
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE practice_sessions SET time = {PLACEHOLDER}, location = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
-            (session.time, session.location, date_str),
+            f"UPDATE practice_sessions SET time = {PLACEHOLDER}, location = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, paid_by = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
+            (session.time, session.location, session.session_cost, session.paid_by, date_str),
         )
         conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Practice session not found")
-        return PracticeSessionOut(date=date_str, time=session.time, location=session.location)
+        return PracticeSessionOut(date=date_str, time=session.time, location=session.location, session_cost=session.session_cost, paid_by=session.paid_by)
+
+@app.post("/api/practice/sessions/{date_str}/request-payment")
+def request_payment(date_str: str, current_user: dict = Depends(get_current_user)):
+    """Admin endpoint to enable payment request for a practice session"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    from datetime import datetime, date
+    try:
+        session_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        if session_date >= date.today():
+            raise HTTPException(status_code=400, detail="Payment request can only be enabled after the practice session date has passed")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if session exists and get session details
+        cur.execute(
+            f"SELECT payment_requested, time, location FROM practice_sessions WHERE date = {PLACEHOLDER}", 
+            (date_str,)
+        )
+        session = cur.fetchone()
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+        
+        # Check if payment already requested
+        if session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Payment request has already been enabled for this session")
+        
+        session_time = session["time"] or "TBD"
+        session_location = session["location"] or "TBD"
+        
+        # Enable payment request
+        cur.execute(
+            f"UPDATE practice_sessions SET payment_requested = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
+            (True if USE_POSTGRES else 1, date_str),
+        )
+        conn.commit()
+        
+        # Get all available users for this session
+        cur.execute(
+            f"SELECT user_email FROM practice_availability WHERE date = {PLACEHOLDER} AND status = {PLACEHOLDER}",
+            (date_str, "available")
+        )
+        available_users = cur.fetchall()
+        
+        # Send notification to all available users
+        notification_message = f"Payment requested by Admin for the Session on {date_str} at {session_time}, {session_location}"
+        
+        for user_row in available_users:
+            user_email = user_row["user_email"]
+            create_notification(user_email, "payment_request", notification_message, date_str)
+        
+        return {"message": "Payment request enabled successfully"}
+
+@app.get("/api/practice/sessions/{date_str}/payments")
+def get_session_payments(date_str: str, current_user: dict = Depends(get_current_user)):
+    """Get payment status for all users in a practice session"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT user_email, paid FROM practice_payments WHERE date = {PLACEHOLDER}",
+            (date_str,),
+        )
+        payments = {}
+        for row in cur.fetchall():
+            row_dict = dict(row)
+            payments[row_dict["user_email"]] = row_dict["paid"]
+        return payments
+
+@app.post("/api/practice/sessions/{date_str}/payment")
+def confirm_payment(date_str: str, data: dict, current_user: dict = Depends(get_current_user)):
+    """User endpoint to confirm or unconfirm payment for a practice session"""
+    paid = data.get("paid", False)
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if payment is requested for this session and get session details
+        cur.execute(
+            f"SELECT payment_requested, time, location FROM practice_sessions WHERE date = {PLACEHOLDER}", 
+            (date_str,)
+        )
+        session = cur.fetchone()
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+        if not session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Payment request has not been enabled for this session")
+        
+        session_time = session["time"] or "TBD"
+        session_location = session["location"] or "TBD"
+        
+        # Check if user is available for this session
+        cur.execute(
+            f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (date_str, current_user["email"]),
+        )
+        availability = cur.fetchone()
+        if not availability or availability["status"] != "available":
+            raise HTTPException(status_code=400, detail="You must be marked as available for this session to confirm payment")
+        
+        # Insert or update payment status
+        cur.execute(
+            f"INSERT INTO practice_payments (date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET paid = EXCLUDED.paid",
+            (date_str, current_user["email"], paid if USE_POSTGRES else (1 if paid else 0)),
+        )
+        conn.commit()
+        
+        # If user confirmed payment (checked the box), notify all admins
+        if paid:
+            user_full_name = current_user.get("full_name", current_user["email"])
+            notification_message = f"{user_full_name} confirmed payment for the Session on {date_str} at {session_time}, {session_location}"
+            
+            # Get all admin users
+            cur.execute(
+                f"SELECT email FROM users WHERE user_type = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+                ("admin",)
+            )
+            admin_users = cur.fetchall()
+            
+            # Send notification to all admins
+            for admin_row in admin_users:
+                admin_email = admin_row["email"]
+                create_notification(admin_email, "payment_confirmed", notification_message, date_str)
+        
+        return {"message": "Payment status updated successfully", "paid": paid}
 
 # --- Likes/Comments for Events ---
 @app.post("/api/events/{event_id}/like")
@@ -1775,14 +2031,16 @@ def set_my_practice_availability(avail: PracticeAvailability, current_user: dict
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
-    # Check if user is trying to modify past practice availability
-    today = date.today()
-    if practice_date < today:
-        # Only admins can modify past practice availability
-        if not is_admin(current_user):
+    # Check if payment has been requested for this session
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}", (avail.date,))
+        session = cur.fetchone()
+        
+        if session and session["payment_requested"]:
             raise HTTPException(
                 status_code=403, 
-                detail="Cannot modify past practice availability. Historical records are locked."
+                detail="Cannot modify availability after payment request has been enabled."
             )
     
     with get_connection() as conn:
@@ -1897,17 +2155,23 @@ def get_practice_availability_summary(date_str: str):
         }
 
 # --- Notifications ---
-def create_notification(user_email: str, notif_type: str, message: str):
+def create_notification(user_email: str, notif_type: str, message: str, related_date: str = None):
     """Helper function to create a notification for a user"""
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(
-            f"INSERT INTO notifications (user_email, type, message) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (user_email, notif_type, message)
-        )
+        if related_date:
+            cur.execute(
+                f"INSERT INTO notifications (user_email, type, message, related_date) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (user_email, notif_type, message, related_date)
+            )
+        else:
+            cur.execute(
+                f"INSERT INTO notifications (user_email, type, message) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (user_email, notif_type, message)
+            )
         conn.commit()
 
-def notify_all_users(notif_type: str, message: str, exclude_email: str = None):
+def notify_all_users(notif_type: str, message: str, exclude_email: str = None, related_date: str = None):
     """Create notification for all users except the one who triggered it"""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -1916,7 +2180,7 @@ def notify_all_users(notif_type: str, message: str, exclude_email: str = None):
         for user in users:
             email = user["email"] if USE_POSTGRES else user[0]
             if email != exclude_email:
-                create_notification(email, notif_type, message)
+                create_notification(email, notif_type, message, related_date)
 
 @app.get("/api/notifications")
 def get_notifications(current_user: dict = Depends(get_current_user)):
@@ -1929,11 +2193,19 @@ def get_notifications(current_user: dict = Depends(get_current_user)):
         rows = cur.fetchall()
         notifications = []
         for row in rows:
+            # Extract related_date and ensure it's in YYYY-MM-DD format
+            # Note: In SQLite, related_date is at index 6 because it was added via ALTER TABLE after created_at
+            related_date = row["related_date"] if USE_POSTGRES else row[6]
+            if related_date and isinstance(related_date, str):
+                # If it's a string with timestamp, extract just the date part
+                related_date = related_date.split(' ')[0] if ' ' in related_date else related_date
+            
             notifications.append({
                 "id": row["id"] if USE_POSTGRES else row[0],
                 "type": row["type"] if USE_POSTGRES else row[2],
                 "message": row["message"] if USE_POSTGRES else row[3],
                 "read": row["read"] if USE_POSTGRES else bool(row[4]),
+                "related_date": related_date,
                 "created_at": row["created_at"] if USE_POSTGRES else row[5],
             })
         return notifications

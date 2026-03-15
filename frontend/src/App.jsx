@@ -357,7 +357,14 @@ function App() {
                           setMobileMenuOpen(false)
                           if (notif.type === 'forum_post') navigate('/club-forum')
                           else if (notif.type === 'match') navigate('/matches')
-                          else if (notif.type === 'practice') navigate('/book-practice')
+                          else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed') {
+                            // Navigate to book-practice with date in URL query parameter
+                            if (notif.related_date) {
+                              navigate(`/book-practice?date=${notif.related_date}`)
+                            } else {
+                              navigate('/book-practice')
+                            }
+                          }
                         }}
                       >
                         <div style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>

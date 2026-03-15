@@ -49,9 +49,30 @@ export default function Profile({ user, setUser, loading }) {
 
       if (res.ok) {
         const updatedUser = await res.json()
-        setUser({ ...user, full_name: updatedUser.full_name })
-        setSuccess('Name updated successfully!')
-        setEditMode(null)
+        
+        // Fetch fresh user data from the API to ensure consistency
+        const token = localStorage.getItem('token')
+        const userRes = await fetch(apiUrl('/api/me'), {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        
+        if (userRes.ok) {
+          const freshUserData = await userRes.json()
+          
+          // Exit edit mode first
+          setEditMode(null)
+          
+          // Then update user state - this will trigger useEffect
+          setUser(freshUserData)
+          
+          // Show success message
+          setSuccess('Name updated successfully!')
+        } else {
+          // Fallback to the returned data if /api/me fails
+          setEditMode(null)
+          setUser({ ...user, full_name: updatedUser.full_name })
+          setSuccess('Name updated successfully!')
+        }
       } else {
         const data = await res.json()
         setError(data.detail || 'Failed to update name')
