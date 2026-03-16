@@ -207,8 +207,13 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
                     className="card-header clickable-card-header"
                     onClick={() => navigateToPracticeDate(session.date)}
                   >
-                    <h3>Practice</h3>
-                    <span className="date">{formatDate(session.date)}</span>
+                    <div className="card-header-main">
+                      <h3>Practice</h3>
+                    </div>
+                    <div className="card-header-meta">
+                      <span className="date">{formatDate(session.date)}</span>
+                      <span className="card-header-cta">View details →</span>
+                    </div>
                   </button>
                   <div className="card-body">
                     <div className="session-details compact-details">
@@ -268,8 +273,13 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
                     className="card-header clickable-card-header"
                     onClick={() => navigateToPracticeDate(payment.date)}
                   >
-                    <h3>Practice</h3>
-                    <span className="date">{formatDate(payment.date)}</span>
+                    <div className="card-header-main">
+                      <h3>Practice</h3>
+                    </div>
+                    <div className="card-header-meta">
+                      <span className="date">{formatDate(payment.date)}</span>
+                      <span className="card-header-cta">View details →</span>
+                    </div>
                   </button>
                   <div className="card-body">
                     <div className="payment-details compact-details">
