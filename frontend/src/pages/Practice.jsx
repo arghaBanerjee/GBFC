@@ -22,6 +22,14 @@ export default function Practice({ user }) {
   const [paymentInfoSaved, setPaymentInfoSaved] = useState(false)
   const token = localStorage.getItem('token')
 
+  const formatDateStr = (dt) => {
+    if (!dt) return null
+    const year = dt.getFullYear()
+    const month = String(dt.getMonth() + 1).padStart(2, '0')
+    const day = String(dt.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   const parseDateStr = (dateStr) => {
     if (!dateStr) return null
     // Expect YYYY-MM-DD
@@ -29,21 +37,23 @@ export default function Practice({ user }) {
     if (parts.length !== 3) return null
     const [y, m, d] = parts
     if (!y || !m || !d) return null
-    const dt = new Date(y, m - 1, d)
+    const dt = new Date(y, m - 1, d, 12, 0, 0, 0)
     // Validate round-trip
-    const rt = dt.toISOString().split('T')[0]
+    const rt = formatDateStr(dt)
     if (rt !== dateStr) return null
     return dt
   }
-
-  const formatDateStr = (dt) => dt.toISOString().split('T')[0]
 
   // Sync from URL -> selected date
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const dateStr = params.get('date')
     const dt = parseDateStr(dateStr)
-    if (!dt) return
+    if (!dt) {
+      setSelectedDate(null)
+      setCurrentDate(new Date())
+      return
+    }
 
     const currentSelected = selectedDate ? formatDateStr(selectedDate) : null
     if (currentSelected === dateStr) return
@@ -124,7 +134,7 @@ export default function Practice({ user }) {
   }
 
   const handleDateClick = (day) => {
-    const clicked = new Date(Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), day))
+    const clicked = new Date(currentDate.getFullYear(), currentDate.getMonth(), day, 12, 0, 0, 0)
     setSelectedDate(clicked)
 
     const dateStr = formatDateStr(clicked)
@@ -136,7 +146,7 @@ export default function Practice({ user }) {
   const handleAvailability = (status) => {
     if (!user) return
     
-    const dateStr = selectedDate.toISOString().split('T')[0]
+    const dateStr = formatDateStr(selectedDate)
     const currentStatus = availability[dateStr]
     
     // Toggle: if clicking the same button, deselect (remove availability)
@@ -315,6 +325,7 @@ export default function Practice({ user }) {
     if (!selectedUserEmail) {
       return
     }
+    const selectedDateValue = formatDateStr(selectedDate)
     
     fetch(apiUrl('/api/admin/practice/availability'), {
       method: 'POST',
@@ -323,7 +334,7 @@ export default function Practice({ user }) {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        date: selectedDate.toISOString().split('T')[0],
+        date: selectedDateValue,
         user_email: selectedUserEmail,
         status: adminSelectedStatus,
       }),
@@ -338,7 +349,7 @@ export default function Practice({ user }) {
       })
       .then(() => {
         // Refresh vote summary
-        return fetch(apiUrl(`/api/practice/availability/${selectedDate.toISOString().split('T')[0]}`))
+        return fetch(apiUrl(`/api/practice/availability/${selectedDateValue}`))
           .then(r => r.json())
           .then(setVoteSummary)
       })
@@ -364,6 +375,7 @@ export default function Practice({ user }) {
     if (!confirm('Are you sure you want to remove this user\'s availability?')) {
       return
     }
+    const selectedDateValue = formatDateStr(selectedDate)
     
     fetch(apiUrl('/api/admin/practice/availability'), {
       method: 'POST',
@@ -372,7 +384,7 @@ export default function Practice({ user }) {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        date: selectedDate.toISOString().split('T')[0],
+        date: selectedDateValue,
         user_email: userEmail,
         status: 'delete',
       }),
@@ -387,7 +399,7 @@ export default function Practice({ user }) {
       })
       .then(() => {
         // Refresh vote summary
-        return fetch(apiUrl(`/api/practice/availability/${selectedDate.toISOString().split('T')[0]}`))
+        return fetch(apiUrl(`/api/practice/availability/${selectedDateValue}`))
           .then(r => r.json())
           .then(setVoteSummary)
       })
@@ -448,7 +460,7 @@ export default function Practice({ user }) {
       const isThursday = day && new Date(currentDate.getFullYear(), currentDate.getMonth(), day).getDay() === 4
       const isAdminSession = adminSessions.some(s => s.date === dateStr)
       const hasMatch = matches.some(m => m.date === dateStr)
-      const isSelected = Boolean(day) && selectedDate?.toISOString().split('T')[0] === dateStr
+      const isSelected = Boolean(day) && formatDateStr(selectedDate) === dateStr
 
       let backgroundColor = '#ffffff'
       if (hasMatch) backgroundColor = '#bfdbfe' // Light blue for match days
@@ -479,9 +491,9 @@ export default function Practice({ user }) {
     })
   }
 
-  const selectedSession = adminSessions.find(s => s.date === selectedDate?.toISOString().split('T')[0])
-  const selectedMatch = matches.find(m => m.date === selectedDate?.toISOString().split('T')[0])
-  const selectedDateStr = selectedDate ? selectedDate.toISOString().split('T')[0] : null
+  const selectedDateStr = selectedDate ? formatDateStr(selectedDate) : null
+  const selectedSession = adminSessions.find(s => s.date === selectedDateStr)
+  const selectedMatch = matches.find(m => m.date === selectedDateStr)
   const selectedStatus = selectedDateStr ? availability[selectedDateStr] : null
   
   // Check if current user is in the available list (for payment card visibility)
