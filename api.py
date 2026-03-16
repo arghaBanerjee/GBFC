@@ -8,6 +8,7 @@ from typing import List, Optional
 import sqlite3
 import hashlib
 import uuid
+import secrets
 import json
 import os
 import shutil
@@ -63,6 +64,7 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")  # Your email address
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")  # App password (NOT regular password)
 FROM_EMAIL = os.environ.get("FROM_EMAIL", SMTP_USERNAME)
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
 @contextmanager
 def get_connection():
@@ -465,6 +467,16 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id SERIAL PRIMARY KEY,
+                user_email VARCHAR(255) NOT NULL,
+                token VARCHAR(255) UNIQUE NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                used BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
             conn.commit()
         else:
             # SQLite version (for local development)
@@ -670,6 +682,14 @@ def init_db():
                 related_date DATE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email TEXT NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                used INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             """)
             try:
                 cur.execute("ALTER TABLE events ADD COLUMN image_url TEXT")
@@ -690,6 +710,12 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, hashed: str) -> bool:
     return hash_password(password) == hashed
+
+def generate_password_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+def build_password_reset_link(token: str) -> str:
+    return f"{FRONTEND_URL.rstrip('/')}/reset-password?token={token}"
 
 # ========== FORGOT PASSWORD FEATURE - Email Sending Function ==========
 # This function sends emails using SMTP (Simple Mail Transfer Protocol)
@@ -739,6 +765,13 @@ class UserOut(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 class EventOut(BaseModel):
     id: int
@@ -983,58 +1016,111 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 # PostgreSQL Compatible: Uses PLACEHOLDER for queries
 # ============================================================
 @app.post("/api/forgot-password")
-def forgot_password(data: dict):
-    """Send password recovery email to user"""
-    email = data.get("email", "").strip().lower()
-    
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
-    
+def forgot_password(data: ForgotPasswordRequest):
+    email = data.email.strip().lower()
+    generic_message = {"message": "If this email is registered, a password reset link has been sent."}
+
     with get_connection() as conn:
         cur = conn.cursor()
-        # Check if user exists and is not deleted
         cur.execute(
-            f"SELECT email, full_name, password FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+            f"SELECT email, full_name FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
             (email,)
         )
         user = cur.fetchone()
-        
+
         if not user:
-            # For security, don't reveal if email exists or not
-            raise HTTPException(status_code=404, detail="If this email is registered, a password recovery email has been sent.")
-        
+            return generic_message
+
         user_dict = dict(user)
-        
-        # IMPORTANT: Passwords are hashed for security
-        # We cannot retrieve the original password from the database
-        # The email informs users to contact the administrator for password reset
-        # This is the secure approach - never send actual passwords via email
-        
-        subject = "Glasgow Bengali FC - Password Recovery"
+        token = generate_password_reset_token()
+        expires_at = datetime.utcnow() + timedelta(hours=1)
+
+        cur.execute(
+            f"DELETE FROM password_reset_tokens WHERE user_email = {PLACEHOLDER} OR expires_at < CURRENT_TIMESTAMP OR used = {PLACEHOLDER}",
+            (email, True if USE_POSTGRES else 1)
+        )
+        cur.execute(
+            f"INSERT INTO password_reset_tokens (user_email, token, expires_at, used) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (email, token, expires_at, False if USE_POSTGRES else 0)
+        )
+        conn.commit()
+
+        reset_link = build_password_reset_link(token)
+        subject = "Glasgow Bengali FC - Reset Your Password"
         body = f"""Hello {user_dict['full_name']},
 
-You requested password recovery for your Glasgow Bengali FC account.
+We received a request to reset your Glasgow Bengali FC account password.
 
-Unfortunately, for security reasons, we cannot retrieve your original password as it is encrypted in our system.
+Use the secure link below to set a new password:
+{reset_link}
 
-Please contact the administrator at super@admin.com to reset your password, or try remembering your password.
+This link will expire in 1 hour.
 
 If you did not request this, please ignore this email.
 
 Best regards,
 Glasgow Bengali FC Team"""
-        
-        # Try to send email using configured SMTP settings
+
         email_sent = send_email(email, subject, body)
-        
+
         if not email_sent:
-            # If email is not configured, return a helpful message
             raise HTTPException(
-                status_code=503, 
-                detail="Email service is not configured. Please contact the administrator to reset your password."
+                status_code=503,
+                detail="Email service is not configured. Please contact the administrator."
             )
-        
-        return {"message": "Password recovery email sent successfully"}
+
+        return generic_message
+
+@app.post("/api/reset-password")
+def reset_password(data: ResetPasswordRequest):
+    token = data.token.strip()
+    new_password = data.new_password
+
+    if not token:
+        raise HTTPException(status_code=400, detail="Reset token is required")
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(new_password) > 128:
+        raise HTTPException(status_code=400, detail="Password must be less than 128 characters")
+    if not any(char.isalpha() for char in new_password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one letter")
+    if not any(char.isdigit() for char in new_password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one number")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT user_email, expires_at, used FROM password_reset_tokens WHERE token = {PLACEHOLDER}",
+            (token,)
+        )
+        token_row = cur.fetchone()
+
+        if not token_row:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+        token_dict = dict(token_row)
+        expires_at = token_dict["expires_at"]
+        if isinstance(expires_at, str):
+            expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00")).replace(tzinfo=None)
+
+        if token_dict.get("used") or expires_at < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+        cur.execute(
+            f"UPDATE users SET password = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+            (hash_password(new_password), token_dict["user_email"])
+        )
+        cur.execute(
+            f"UPDATE password_reset_tokens SET used = {PLACEHOLDER} WHERE token = {PLACEHOLDER}",
+            (True if USE_POSTGRES else 1, token)
+        )
+        cur.execute(
+            f"DELETE FROM password_reset_tokens WHERE user_email = {PLACEHOLDER} AND token != {PLACEHOLDER}",
+            (token_dict["user_email"], token)
+        )
+        conn.commit()
+
+        return {"message": "Password reset successful"}
 
 @app.get("/api/me", response_model=UserOut)
 def me(current_user: dict = Depends(get_current_user)):

@@ -7,6 +7,7 @@ import Forum from './pages/Forum'
 import About from './pages/About'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
+import ResetPassword from './pages/ResetPassword'
 import Admin from './pages/Admin'
 import Profile from './pages/Profile'
 import Reports from './pages/Reports'
@@ -516,6 +517,7 @@ function App() {
         {/* Public routes */}
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/signup" element={<Signup setUser={setUser} />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/about-us" element={<About />} />
         
         {/* Protected routes - require authentication */}

@@ -100,10 +100,11 @@ export default function Login({ setUser }) {
       })
       
       if (res.ok) {
-        setForgotPasswordMessage('Password sent to your email successfully!')
+        const data = await res.json()
+        setForgotPasswordMessage(data.message || 'If the email is registered, a password reset link has been sent.')
       } else {
         const data = await res.json()
-        setForgotPasswordMessage(data.detail || 'Failed to send password. Please check your email.')
+        setForgotPasswordMessage(data.detail || 'Failed to send reset email. Please try again.')
       }
     } catch (err) {
       setForgotPasswordMessage('Failed to send email. Please try again.')
@@ -157,7 +158,7 @@ export default function Login({ setUser }) {
         {error && <p style={{ color: 'red' }}>{error}</p>}
         {/* ========== FORGOT PASSWORD FEATURE - Success/Error Message ========== */}
         {/* This displays feedback when user clicks forgot password button */}
-        {forgotPasswordMessage && <p style={{ color: forgotPasswordMessage.includes('successfully') ? '#10b981' : '#ef4444', fontSize: '0.875rem', marginBottom: '0.5rem' }}>{forgotPasswordMessage}</p>}
+        {forgotPasswordMessage && <p style={{ color: forgotPasswordMessage.toLowerCase().includes('failed') ? '#ef4444' : '#10b981', fontSize: '0.875rem', marginBottom: '0.5rem' }}>{forgotPasswordMessage}</p>}
         {/* ====================================================================== */}
         
         <button type="submit" className="nav-btn" style={{ width: '100%', background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>Log in</button>

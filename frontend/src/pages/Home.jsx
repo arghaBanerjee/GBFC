@@ -22,7 +22,7 @@ export default function Home({ user }) {
               <h4>Training Schedule</h4>
               <p>Track Thursday practice sessions and share your availability.</p>
             </div>
-            <div className="hero-card" onClick={() => navigate('/club-forum')}>
+            <div className="hero-card" onClick={() => navigate('/forum')}>
               <h4>Club Community</h4>
               <p>Meet the Glasgow Bengali football community, volunteers, and committee behind the club.</p>
             </div>
