@@ -187,8 +187,8 @@ export default function Login({ setUser }) {
             style={{ 
               flex: 4,
               background: 'white', 
-              color: '#f97316', 
-              border: '1px solid #f97316', 
+              color: '#6b7280', 
+              border: '1px solid #6b7280', 
               fontWeight: '400',
               cursor: sendingEmail ? 'not-allowed' : 'pointer',
               opacity: sendingEmail ? 0.6 : 1,
