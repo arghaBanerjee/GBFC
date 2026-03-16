@@ -201,25 +201,25 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
                     <span className="date">{formatDate(session.date)}</span>
                   </div>
                   <div className="card-body">
-                    <div className="session-details">
-                      <div className="detail-row">
-                        <span className="label">Location:</span>
+                    <div className="session-details compact-details">
+                      <div className="detail-chip">
+                        <span className="label">Location</span>
                         <span className="value">{session.location || 'TBD'}</span>
                       </div>
-                      <div className="detail-row">
-                        <span className="label">Time:</span>
+                      <div className="detail-chip">
+                        <span className="label">Time</span>
                         <span className="value">{session.time || 'TBD'}</span>
                       </div>
                       {session.session_cost && (
-                        <div className="detail-row">
-                          <span className="label">Cost:</span>
+                        <div className="detail-chip">
+                          <span className="label">Cost</span>
                           <span className="value">£{session.session_cost}</span>
                         </div>
                       )}
                     </div>
                     
                     <div className="availability-section">
-                      <p className="section-label">Your Availability:</p>
+                      <p className="section-label">Availability</p>
                       <div className="availability-buttons">
                         <button
                           className={`availability-btn available ${session.user_status === 'available' ? 'selected' : ''}`}
@@ -258,13 +258,13 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
                     <span className="date">{formatDate(payment.date)}</span>
                   </div>
                   <div className="card-body">
-                    <div className="payment-details">
-                      <div className="detail-row">
-                        <span className="label">Your Amount:</span>
+                    <div className="payment-details compact-details">
+                      <div className="detail-chip">
+                        <span className="label">Your Amount</span>
                         <span className="value amount">£{payment.individual_amount}</span>
                       </div>
-                      <div className="detail-row">
-                        <span className="label">Pay To:</span>
+                      <div className="detail-chip">
+                        <span className="label">Pay To</span>
                         <span className="value">{payment.paid_by_name || payment.paid_by}</span>
                       </div>
                     </div>
