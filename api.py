@@ -64,7 +64,7 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")  # Your email address
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")  # App password (NOT regular password)
 FROM_EMAIL = os.environ.get("FROM_EMAIL", SMTP_USERNAME)
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://glasgow-bengali-fc.vercel.app")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
 @contextmanager
 def get_connection():
@@ -1526,8 +1526,7 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
         location_info = f" at {event.location}" if event.location else ""
         notify_all_users(
             "match",
-            f"New Football Match on {event.date}{time_info}{location_info}",
-            exclude_email=current_user["email"]
+            f"New Football Match on {event.date}{time_info}{location_info}"
         )
         
         return EventOut(id=event_id, **event.model_dump())
@@ -1653,7 +1652,6 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
         notify_all_users(
             "practice",
             f"New Practice Session Added on {session.date}{time_info}{location_info}. Please vote your Availability.",
-            exclude_email=current_user["email"],
             related_date=session.date
         )
         
@@ -1989,8 +1987,7 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
         # Notify all users about new forum post
         notify_all_users(
             "forum_post",
-            f"New post added by {current_user['full_name']}",
-            exclude_email=current_user["email"]
+            f"New post added by {current_user['full_name']}"
         )
         
         return ForumPostOut(
@@ -2374,7 +2371,7 @@ def notify_all_users(notif_type: str, message: str, exclude_email: str = None, r
     """Create notification for all users except the one who triggered it"""
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT email FROM users")
+        cur.execute(f"SELECT email FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL)")
         users = cur.fetchall()
         for user in users:
             email = user["email"] if USE_POSTGRES else user[0]
