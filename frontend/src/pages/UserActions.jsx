@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import '../styles/UserActions.css'
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 function UserActions({ user, loading, initialTab = 'upcoming' }) {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState(initialTab)
   const [upcomingSessions, setUpcomingSessions] = useState([])
   const [pendingPayments, setPendingPayments] = useState([])
@@ -143,6 +145,10 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
     return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
   }
 
+  const navigateToPracticeDate = (date) => {
+    navigate(`/book-practice?date=${date}`)
+  }
+
   if (loading || !user) {
     return <div className="user-actions-container"><p>Loading...</p></div>
   }
@@ -196,10 +202,14 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
             ) : (
               upcomingSessions.map(session => (
                 <div key={session.date} className="session-card">
-                  <div className="card-header">
+                  <button
+                    type="button"
+                    className="card-header clickable-card-header"
+                    onClick={() => navigateToPracticeDate(session.date)}
+                  >
                     <h3>Practice</h3>
                     <span className="date">{formatDate(session.date)}</span>
-                  </div>
+                  </button>
                   <div className="card-body">
                     <div className="session-details compact-details">
                       <div className="detail-chip">
@@ -253,10 +263,14 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
             ) : (
               pendingPayments.map(payment => (
                 <div key={payment.date} className="payment-card">
-                  <div className="card-header">
+                  <button
+                    type="button"
+                    className="card-header clickable-card-header"
+                    onClick={() => navigateToPracticeDate(payment.date)}
+                  >
                     <h3>Practice</h3>
                     <span className="date">{formatDate(payment.date)}</span>
-                  </div>
+                  </button>
                   <div className="card-body">
                     <div className="payment-details compact-details">
                       <div className="detail-chip">

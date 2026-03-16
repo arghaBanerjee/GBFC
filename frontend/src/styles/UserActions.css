@@ -90,6 +90,23 @@
   background-color: #f9fafb;
 }
 
+.clickable-card-header {
+  width: 100%;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.clickable-card-header:hover {
+  background-color: #f3f4f6;
+}
+
+.clickable-card-header:focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: -2px;
+}
+
 .card-header h3 {
   font-size: 1.125rem;
   font-weight: 700;
