@@ -64,7 +64,7 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")  # Your email address
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")  # App password (NOT regular password)
 FROM_EMAIL = os.environ.get("FROM_EMAIL", SMTP_USERNAME)
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://glasgow-bengali-fc.vercel.app")
 
 @contextmanager
 def get_connection():
@@ -361,6 +361,24 @@ def init_db():
                 conn.commit()
             except Exception as e:
                 print(f"Warning: Could not add user_full_name to practice_availability: {e}")
+                conn.rollback()
+            
+            # Add related_date to notifications if it doesn't exist
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='notifications' AND column_name='related_date'
+                        ) THEN
+                            ALTER TABLE notifications ADD COLUMN related_date DATE;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add related_date to notifications: {e}")
                 conn.rollback()
             cur.execute("""
             CREATE TABLE IF NOT EXISTS events (
