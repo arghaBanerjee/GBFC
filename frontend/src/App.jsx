@@ -46,8 +46,8 @@ function App() {
     }
   }
 
-  // Session timeout: 30 minutes of inactivity
-  const SESSION_TIMEOUT = 30 * 60 * 1000 // 30 minutes in milliseconds
+  // Session timeout: 48 hours of inactivity
+  const SESSION_TIMEOUT = 48 * 60 * 60 * 1000
 
   const resetSessionTimeout = () => {
     lastActivityRef.current = Date.now()
@@ -58,20 +58,24 @@ function App() {
     const lastActivity = parseInt(localStorage.getItem('lastActivity') || '0')
     const now = Date.now()
     if (lastActivity && (now - lastActivity) > SESSION_TIMEOUT) {
-      // Session expired - logout
-      logout()
-      alert('Your session has expired due to inactivity. Please login again.')
+      logout(true)
+      return true
     }
+    return false
   }
 
-  const logout = () => {
+  const logout = (isSessionExpired = false) => {
     localStorage.removeItem('token')
     localStorage.removeItem('lastActivity')
     setUser(null)
     if (sessionTimeoutRef.current) {
       clearInterval(sessionTimeoutRef.current)
     }
-    navigate('/login')
+    if (isSessionExpired) {
+      navigate('/login', { replace: true, state: { from: location.pathname + location.search } })
+    } else {
+      navigate('/login')
+    }
   }
 
   // Track user activity to reset timeout
@@ -96,7 +100,7 @@ function App() {
   // Check session timeout every minute
   useEffect(() => {
     if (user) {
-      sessionTimeoutRef.current = setInterval(checkSessionTimeout, 60000) // Check every minute
+      sessionTimeoutRef.current = setInterval(checkSessionTimeout, 60000)
       return () => {
         if (sessionTimeoutRef.current) {
           clearInterval(sessionTimeoutRef.current)
@@ -109,8 +113,10 @@ function App() {
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (token) {
-      // Check if session is still valid before fetching user
-      checkSessionTimeout()
+      if (checkSessionTimeout()) {
+        setLoading(false)
+        return
+      }
       
       fetch(apiUrl('/api/me'), {
         headers: { Authorization: `Bearer ${token}` },

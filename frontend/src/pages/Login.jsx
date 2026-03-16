@@ -169,7 +169,7 @@ export default function Login({ setUser }) {
             onClick={() => navigate('/signup')}
             className="nav-btn" 
             style={{ 
-              flex: 1,
+              flex: 6,
               background: 'white', 
               color: '#10b981', 
               border: '1px solid #10b981', 
@@ -177,7 +177,7 @@ export default function Login({ setUser }) {
               padding: '0.5rem'
             }}
           >
-            Sign Up
+            New User ? Sign Up
           </button>
           <button 
             type="button" 
@@ -185,7 +185,7 @@ export default function Login({ setUser }) {
             disabled={sendingEmail}
             className="nav-btn" 
             style={{ 
-              flex: 1,
+              flex: 4,
               background: 'white', 
               color: '#f97316', 
               border: '1px solid #f97316', 

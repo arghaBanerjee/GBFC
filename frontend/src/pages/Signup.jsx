@@ -141,7 +141,15 @@ export default function Signup({ setUser }) {
         />
         {validationErrors.password && <p style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.password}</p>}
         {error && <p style={{ color: 'red' }}>{error}</p>}
-        <button type="submit" className="nav-btn" style={{ width: '100%', background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>Create account</button>
+        <button type="submit" className="nav-btn" style={{ width: '100%', background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>Create Account</button>
+        <button
+          type="button"
+          onClick={() => navigate('/login')}
+          className="nav-btn"
+          style={{ width: '100%', background: 'white', color: '#10b981', border: '1px solid #10b981', fontWeight: '400', marginTop: '0.5rem' }}
+        >
+          Already User ? Login
+        </button>
       </form>
     </div>
   )
