@@ -41,6 +41,11 @@ export default function Admin({ user, loading }) {
   const [editingUserId, setEditingUserId] = useState(null)
   const [editingUserName, setEditingUserName] = useState('')
 
+  // Notifications
+  const [notificationSettings, setNotificationSettings] = useState([])
+  const [notificationMeta, setNotificationMeta] = useState({ target_audiences: [], notification_types: [] })
+  const [notificationSaving, setNotificationSaving] = useState('')
+
   useEffect(() => {
     // Wait for loading to complete before checking authentication
     if (loading) return
@@ -87,13 +92,116 @@ export default function Admin({ user, loading }) {
     }
   }
 
+  const loadNotificationSettings = async () => {
+    try {
+      const [settingsRes, metaRes] = await Promise.all([
+        fetch(apiUrl('/api/admin/notification-settings'), {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(apiUrl('/api/admin/notification-settings/meta'), {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ])
+
+      const settingsData = await settingsRes.json().catch(() => [])
+      if (!settingsRes.ok) {
+        setMessage(settingsData?.detail || 'Failed to load notification settings')
+        return
+      }
+      setNotificationSettings(settingsData)
+
+      if (metaRes.ok) {
+        const metaData = await metaRes.json()
+        setNotificationMeta(metaData)
+      }
+    } catch (err) {
+      console.error('Error loading notification settings:', err)
+      setMessage('Error loading notification settings')
+    }
+  }
+
   useEffect(() => {
     if (!isAdmin) return
     loadEvents()
     loadPracticeSessions()
     loadForumPosts()
     loadUsers()
+    loadNotificationSettings()
   }, [isAdmin])
+
+  const handleNotificationFieldChange = (notifType, field, value) => {
+    setNotificationSettings((current) =>
+      current.map((setting) =>
+        setting.notif_type === notifType ? { ...setting, [field]: value } : setting
+      )
+    )
+  }
+
+  const handleSaveNotificationSetting = async (notifType) => {
+    const setting = notificationSettings.find((item) => item.notif_type === notifType)
+    if (!setting) return
+
+    setNotificationSaving(notifType)
+    try {
+      const res = await fetch(apiUrl(`/api/admin/notification-settings/${notifType}`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          display_name: setting.display_name,
+          description: setting.description || '',
+          app_enabled: setting.app_enabled,
+          email_enabled: setting.email_enabled,
+          whatsapp_enabled: setting.whatsapp_enabled,
+          target_audience: setting.target_audience,
+          app_template: setting.app_template,
+          email_subject: setting.email_subject,
+          email_template: setting.email_template,
+          whatsapp_template: setting.whatsapp_template,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setMessage(data?.detail || 'Failed to save notification setting')
+        return
+      }
+      setNotificationSettings((current) =>
+        current.map((item) => (item.notif_type === notifType ? data : item))
+      )
+      setMessage('Notification setting saved.')
+    } catch (err) {
+      console.error('Error saving notification setting:', err)
+      setMessage('Error saving notification setting')
+    } finally {
+      setNotificationSaving('')
+    }
+  }
+
+  const handleResetNotificationSetting = async (notifType) => {
+    setNotificationSaving(notifType)
+    try {
+      const res = await fetch(apiUrl(`/api/admin/notification-settings/${notifType}/reset`), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setMessage(data?.detail || 'Failed to reset notification setting')
+        return
+      }
+      setNotificationSettings((current) =>
+        current.map((item) => (item.notif_type === notifType ? data : item))
+      )
+      setMessage('Notification setting reset.')
+    } catch (err) {
+      console.error('Error resetting notification setting:', err)
+      setMessage('Error resetting notification setting')
+    } finally {
+      setNotificationSaving('')
+    }
+  }
 
   const resetEventForm = () => {
     setEditingEventId(null)
@@ -442,6 +550,17 @@ export default function Admin({ user, loading }) {
           }}
         >
           Users
+        </button>
+        <button 
+          className={`nav-btn ${activeTab === 'notifications' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('notifications')}
+          style={{
+            width: '100%',
+            padding: '0.75rem 1rem',
+            fontSize: '0.95rem'
+          }}
+        >
+          Notifications
         </button>
       </div>
 
@@ -824,6 +943,163 @@ export default function Admin({ user, loading }) {
               </div>
             ))}
             {users.length === 0 && <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>No users found.</p>}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'notifications' && (
+        <>
+          <h3>Notifications</h3>
+          <p style={{ color: '#6b7280', maxWidth: '900px' }}>
+            Configure notification delivery across app, email, and WhatsApp. You can control per-type channel enablement,
+            recipient targeting, and the message template used in each platform.
+          </p>
+
+          <div style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
+            {notificationSettings.map((setting) => (
+              <div
+                key={setting.notif_type}
+                style={{
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.75rem',
+                  padding: '1.25rem',
+                  background: 'white',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                  <div>
+                    <div style={{ fontWeight: '700', fontSize: '1.05rem', marginBottom: '0.25rem' }}>{setting.display_name}</div>
+                    <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>{setting.description || 'No description set.'}</div>
+                    <div style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: '0.35rem' }}>Type: {setting.notif_type}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <button
+                      className="nav-btn"
+                      onClick={() => handleSaveNotificationSetting(setting.notif_type)}
+                      disabled={notificationSaving === setting.notif_type}
+                      style={{ background: '#10b981', color: 'white', border: '1px solid #10b981' }}
+                    >
+                      {notificationSaving === setting.notif_type ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      className="nav-btn"
+                      onClick={() => handleResetNotificationSetting(setting.notif_type)}
+                      disabled={notificationSaving === setting.notif_type}
+                      style={{ border: '1px solid #d1d5db' }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label>Display Name</label>
+                    <input
+                      value={setting.display_name}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'display_name', e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label>Target Users</label>
+                    <select
+                      value={setting.target_audience}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'target_audience', e.target.value)}
+                      style={{ width: '100%' }}
+                    >
+                      {notificationMeta.target_audiences.map((audience) => (
+                        <option key={audience.value} value={audience.value}>
+                          {audience.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>Description</label>
+                  <textarea
+                    rows={2}
+                    value={setting.description || ''}
+                    onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'description', e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={setting.app_enabled}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'app_enabled', e.target.checked)}
+                    />
+                    App enabled
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={setting.email_enabled}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'email_enabled', e.target.checked)}
+                    />
+                    Email enabled
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={setting.whatsapp_enabled}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'whatsapp_enabled', e.target.checked)}
+                    />
+                    WhatsApp enabled
+                  </label>
+                </div>
+
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                  <div>
+                    <label>App Template</label>
+                    <textarea
+                      rows={3}
+                      value={setting.app_template}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'app_template', e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label>Email Subject</label>
+                    <input
+                      value={setting.email_subject}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'email_subject', e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label>Email Template</label>
+                    <textarea
+                      rows={4}
+                      value={setting.email_template}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'email_template', e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label>WhatsApp Template</label>
+                    <textarea
+                      rows={4}
+                      value={setting.whatsapp_template}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'whatsapp_template', e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {notificationSettings.length === 0 && (
+              <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>
+                No notification settings found.
+              </p>
+            )}
           </div>
         </>
       )}

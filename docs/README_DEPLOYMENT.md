@@ -60,6 +60,10 @@ All changes are backward compatible:
 - `CLOUDINARY_API_SECRET` - From Cloudinary dashboard
 - `CLOUDINARY_URL` - Format: `cloudinary://API_KEY:API_SECRET@CLOUD_NAME`
 - `FRONTEND_ORIGIN` - Your Vercel URL (e.g., `https://your-app.vercel.app`)
+- `GREEN_API_INSTANCE_ID` - Green API instance ID for WhatsApp integration
+- `GREEN_API_TOKEN` - Green API token for WhatsApp integration
+- `WHATSAPP_GROUP_ID` - WhatsApp group chat ID ending in `@g.us`
+- `WHATSAPP_NOTIFICATIONS_ENABLED` - Set to `true` or `false` to toggle WhatsApp broadcasts
 
 ### Frontend (Vercel)
 - `VITE_API_BASE_URL` - Your Render backend URL (e.g., `https://your-api.onrender.com`)

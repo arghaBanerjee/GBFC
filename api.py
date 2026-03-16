@@ -22,6 +22,14 @@ from email.mime.multipart import MIMEMultipart
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from io import BytesIO
+from apscheduler.schedulers.background import BackgroundScheduler
+from whatsapp_notifier import (
+    find_group_chat_id,
+    get_instance_state,
+    keep_whatsapp_instance_alive,
+    send_group_message,
+    whatsapp_is_configured,
+)
 
 # --- Database helpers (supports both SQLite and Postgres) ---
 DATABASE_URL = os.environ.get("DATABASE_URL")  # Render provides this
@@ -65,6 +73,61 @@ SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")  # Your email address
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")  # App password (NOT regular password)
 FROM_EMAIL = os.environ.get("FROM_EMAIL", SMTP_USERNAME)
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+WHATSAPP_NOTIFICATIONS_ENABLED = os.environ.get("WHATSAPP_NOTIFICATIONS_ENABLED", "true").lower() == "true"
+
+whatsapp_scheduler = BackgroundScheduler()
+
+NOTIFICATION_TARGET_OPTIONS = {"all_active_users", "admin_users", "available_players"}
+NOTIFICATION_TYPE_DEFAULTS = {
+    "practice": {
+        "display_name": "New Practice Added",
+        "description": "Sent when a new practice session is created.",
+        "app_enabled": True,
+        "email_enabled": False,
+        "whatsapp_enabled": True,
+        "target_audience": "all_active_users",
+        "app_template": "New Practice Session Added on {{date}}{{time_suffix}}{{location_suffix}}. Please vote your Availability.",
+        "email_subject": "New practice session on {{date}}",
+        "email_template": "A new practice session has been added for {{date}}{{time_suffix}}{{location_suffix}}.\n\nPlease open the app and update your availability.",
+        "whatsapp_template": "🏃 *NEW PRACTICE SESSION*\n\n📅 {{date}}\n{{time_line}}{{location_line}}\nPlease update your availability in the app.",
+    },
+    "match": {
+        "display_name": "New Match Added",
+        "description": "Sent when a new football match is created.",
+        "app_enabled": True,
+        "email_enabled": False,
+        "whatsapp_enabled": True,
+        "target_audience": "all_active_users",
+        "app_template": "New Football Match on {{date}}{{time_suffix}}{{location_suffix}}",
+        "email_subject": "New match scheduled for {{date}}",
+        "email_template": "{{event_name}}\n\nA new football match has been scheduled for {{date}}{{time_suffix}}{{location_suffix}}.",
+        "whatsapp_template": "⚽ *NEW MATCH*\n\n{{event_name}}\n📅 {{date}}\n{{time_line}}{{location_line}}\nCheck the app for full details.",
+    },
+    "forum_post": {
+        "display_name": "New Forum Post Added",
+        "description": "Sent when a new forum post is created.",
+        "app_enabled": True,
+        "email_enabled": False,
+        "whatsapp_enabled": False,
+        "target_audience": "all_active_users",
+        "app_template": "New post added by {{author_name}}",
+        "email_subject": "New forum post from {{author_name}}",
+        "email_template": "A new forum post was added by {{author_name}}.\n\n{{content_preview}}",
+        "whatsapp_template": "💬 *NEW FORUM POST*\n\nBy {{author_name}}\n\n{{content_preview}}\n\nOpen the app to join the conversation.",
+    },
+    "payment_request": {
+        "display_name": "Practice Payment Requested",
+        "description": "Sent when payment is requested for a practice session.",
+        "app_enabled": True,
+        "email_enabled": False,
+        "whatsapp_enabled": True,
+        "target_audience": "available_players",
+        "app_template": "Payment requested by Admin for the Session on {{date}}{{time_suffix}}{{location_comma_suffix}}",
+        "email_subject": "Practice payment requested for {{date}}",
+        "email_template": "Payment has been requested for the practice session on {{date}}{{time_suffix}}{{location_comma_suffix}}.\n\nPlease confirm your payment in the app.",
+        "whatsapp_template": "💷 *PRACTICE PAYMENT REQUEST*\n\n📅 {{date}}\n{{time_line}}{{location_line}}\nAvailable players should confirm payment in the app.",
+    },
+}
 
 @contextmanager
 def get_connection():
@@ -343,6 +406,28 @@ def init_db():
                 conn.commit()
             except Exception as e:
                 print(f"Warning: Could not add user_full_name to event_comments: {e}")
+                conn.rollback()
+
+            try:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS notification_settings (
+                        notif_type VARCHAR(100) PRIMARY KEY,
+                        display_name VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        app_enabled BOOLEAN DEFAULT TRUE,
+                        email_enabled BOOLEAN DEFAULT FALSE,
+                        whatsapp_enabled BOOLEAN DEFAULT FALSE,
+                        target_audience VARCHAR(100) NOT NULL DEFAULT 'all_active_users',
+                        app_template TEXT NOT NULL,
+                        email_subject TEXT NOT NULL,
+                        email_template TEXT NOT NULL,
+                        whatsapp_template TEXT NOT NULL,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not create notification_settings table: {e}")
                 conn.rollback()
             
             # Add user_full_name to practice_availability if it doesn't exist
@@ -708,6 +793,20 @@ def init_db():
                 used INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS notification_settings (
+                notif_type TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                description TEXT,
+                app_enabled INTEGER DEFAULT 1,
+                email_enabled INTEGER DEFAULT 0,
+                whatsapp_enabled INTEGER DEFAULT 0,
+                target_audience TEXT NOT NULL DEFAULT 'all_active_users',
+                app_template TEXT NOT NULL,
+                email_subject TEXT NOT NULL,
+                email_template TEXT NOT NULL,
+                whatsapp_template TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
             """)
             try:
                 cur.execute("ALTER TABLE events ADD COLUMN image_url TEXT")
@@ -765,6 +864,196 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
         print(f"Failed to send email: {e}")
         return False
 
+def send_whatsapp_notification(message: str) -> bool:
+    if not WHATSAPP_NOTIFICATIONS_ENABLED:
+        return False
+    result = send_group_message(message)
+    if not result.get("success"):
+        print(f"Failed to send WhatsApp message: {result.get('error', 'Unknown error')}")
+        return False
+    return True
+
+def render_notification_template(template: str, context: dict) -> str:
+    rendered = template or ""
+    for key, value in context.items():
+        rendered = rendered.replace(f"{{{{{key}}}}}", "" if value is None else str(value))
+    return rendered
+
+def build_notification_context(payload: dict) -> dict:
+    date_value = payload.get("date") or ""
+    time_value = payload.get("time") or ""
+    location_value = payload.get("location") or ""
+    content_value = (payload.get("content") or "").strip()
+    content_preview = content_value[:180] + ("..." if len(content_value) > 180 else "")
+    return {
+        "date": date_value,
+        "time": time_value,
+        "location": location_value,
+        "event_name": payload.get("event_name") or payload.get("name") or "",
+        "author_name": payload.get("author_name") or "",
+        "content": content_value,
+        "content_preview": content_preview,
+        "time_suffix": f" at {time_value}" if time_value else "",
+        "location_suffix": f" at {location_value}" if location_value else "",
+        "location_comma_suffix": f", {location_value}" if location_value else "",
+        "time_line": f"🕐 {time_value}\n" if time_value else "",
+        "location_line": f"📍 {location_value}\n" if location_value else "",
+    }
+
+def seed_notification_settings():
+    with get_connection() as conn:
+        cur = conn.cursor()
+        for notif_type, defaults in NOTIFICATION_TYPE_DEFAULTS.items():
+            if USE_POSTGRES:
+                cur.execute(
+                    f"""
+                    INSERT INTO notification_settings (
+                        notif_type, display_name, description, app_enabled, email_enabled, whatsapp_enabled,
+                        target_audience, app_template, email_subject, email_template, whatsapp_template
+                    ) VALUES (
+                        {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER},
+                        {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}
+                    )
+                    ON CONFLICT (notif_type) DO NOTHING
+                    """,
+                    (
+                        notif_type,
+                        defaults["display_name"],
+                        defaults["description"],
+                        defaults["app_enabled"],
+                        defaults["email_enabled"],
+                        defaults["whatsapp_enabled"],
+                        defaults["target_audience"],
+                        defaults["app_template"],
+                        defaults["email_subject"],
+                        defaults["email_template"],
+                        defaults["whatsapp_template"],
+                    ),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT OR IGNORE INTO notification_settings (
+                        notif_type, display_name, description, app_enabled, email_enabled, whatsapp_enabled,
+                        target_audience, app_template, email_subject, email_template, whatsapp_template
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        notif_type,
+                        defaults["display_name"],
+                        defaults["description"],
+                        1 if defaults["app_enabled"] else 0,
+                        1 if defaults["email_enabled"] else 0,
+                        1 if defaults["whatsapp_enabled"] else 0,
+                        defaults["target_audience"],
+                        defaults["app_template"],
+                        defaults["email_subject"],
+                        defaults["email_template"],
+                        defaults["whatsapp_template"],
+                    ),
+                )
+        conn.commit()
+
+def get_notification_settings_map() -> dict:
+    seed_notification_settings()
+    settings_map = {}
+    for notif_type, defaults in NOTIFICATION_TYPE_DEFAULTS.items():
+        settings_map[notif_type] = {
+            "notif_type": notif_type,
+            "display_name": defaults["display_name"],
+            "description": defaults["description"],
+            "app_enabled": defaults["app_enabled"],
+            "email_enabled": defaults["email_enabled"],
+            "whatsapp_enabled": defaults["whatsapp_enabled"],
+            "target_audience": defaults["target_audience"],
+            "app_template": defaults["app_template"],
+            "email_subject": defaults["email_subject"],
+            "email_template": defaults["email_template"],
+            "whatsapp_template": defaults["whatsapp_template"],
+            "updated_at": None,
+        }
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM notification_settings ORDER BY display_name ASC")
+        rows = cur.fetchall()
+        for row in rows:
+            row_dict = dict(row)
+            settings_map[row_dict["notif_type"]] = {
+                **settings_map.get(row_dict["notif_type"], {}),
+                **row_dict,
+            }
+        return settings_map
+
+def get_notification_setting(notif_type: str) -> dict:
+    setting = get_notification_settings_map().get(notif_type)
+    if not setting:
+        raise HTTPException(status_code=404, detail="Notification type not found")
+    return setting
+
+def resolve_notification_recipients(target_audience: str, payload: dict) -> list:
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if target_audience == "admin_users":
+            cur.execute(
+                f"SELECT email, full_name FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) AND user_type = {PLACEHOLDER}",
+                ("admin",),
+            )
+        elif target_audience == "available_players":
+            if not payload.get("date"):
+                return []
+            cur.execute(
+                f"""
+                SELECT u.email, u.full_name
+                FROM practice_availability pa
+                JOIN users u ON pa.user_email = u.email
+                WHERE pa.date = {PLACEHOLDER}
+                  AND pa.status = {PLACEHOLDER}
+                  AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+                """,
+                (payload["date"], "available"),
+            )
+        else:
+            cur.execute("SELECT email, full_name FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL)")
+        return [dict(row) for row in cur.fetchall()]
+
+def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None):
+    setting = get_notification_setting(notif_type)
+    context = build_notification_context(payload)
+    recipients = resolve_notification_recipients(setting["target_audience"], payload)
+    if exclude_email:
+        recipients = [recipient for recipient in recipients if recipient["email"] != exclude_email]
+
+    if setting["app_enabled"]:
+        app_message = render_notification_template(setting["app_template"], context)
+        for recipient in recipients:
+            create_notification(recipient["email"], notif_type, app_message, related_date)
+
+    if setting["email_enabled"]:
+        subject = render_notification_template(setting["email_subject"], context)
+        email_body = render_notification_template(setting["email_template"], context)
+        for recipient in recipients:
+            send_email(recipient["email"], subject, email_body)
+
+    if setting["whatsapp_enabled"]:
+        whatsapp_message = render_notification_template(setting["whatsapp_template"], context)
+        send_whatsapp_notification(whatsapp_message)
+
+def serialize_notification_setting(row: dict) -> dict:
+    return {
+        "notif_type": row["notif_type"],
+        "display_name": row["display_name"],
+        "description": row.get("description"),
+        "app_enabled": bool(row["app_enabled"]),
+        "email_enabled": bool(row["email_enabled"]),
+        "whatsapp_enabled": bool(row["whatsapp_enabled"]),
+        "target_audience": row["target_audience"],
+        "app_template": row["app_template"],
+        "email_subject": row["email_subject"],
+        "email_template": row["email_template"],
+        "whatsapp_template": row["whatsapp_template"],
+        "updated_at": row.get("updated_at").isoformat() if hasattr(row.get("updated_at"), "isoformat") else row.get("updated_at"),
+    }
+
 # --- Pydantic models ---
 class UserCreate(BaseModel):
     email: EmailStr
@@ -790,6 +1079,38 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+class WhatsAppMessageRequest(BaseModel):
+    message: str
+
+class WhatsAppGroupLookupRequest(BaseModel):
+    group_name: str
+
+class NotificationSettingOut(BaseModel):
+    notif_type: str
+    display_name: str
+    description: Optional[str] = None
+    app_enabled: bool
+    email_enabled: bool
+    whatsapp_enabled: bool
+    target_audience: str
+    app_template: str
+    email_subject: str
+    email_template: str
+    whatsapp_template: str
+    updated_at: Optional[str] = None
+
+class NotificationSettingUpdate(BaseModel):
+    display_name: str
+    description: Optional[str] = None
+    app_enabled: bool
+    email_enabled: bool
+    whatsapp_enabled: bool
+    target_audience: str
+    app_template: str
+    email_subject: str
+    email_template: str
+    whatsapp_template: str
 
 class EventOut(BaseModel):
     id: int
@@ -919,7 +1240,17 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     init_db()
+    seed_notification_settings()
     print("Database initialized successfully")
+    if whatsapp_is_configured() and not whatsapp_scheduler.running:
+        whatsapp_scheduler.add_job(keep_whatsapp_instance_alive, "interval", minutes=30, id="whatsapp_keepalive", replace_existing=True)
+        whatsapp_scheduler.start()
+        print("WhatsApp keep-alive scheduler started")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if whatsapp_scheduler.running:
+        whatsapp_scheduler.shutdown(wait=False)
 
 # Simple in-memory session token store (use JWT in production)
 SESSIONS = {}
@@ -1521,12 +1852,14 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
         else:
             event_id = cur.lastrowid
         
-        # Notify all users about new match
-        time_info = f" at {event.time}" if event.time else ""
-        location_info = f" at {event.location}" if event.location else ""
-        notify_all_users(
+        deliver_notification(
             "match",
-            f"New Football Match on {event.date}{time_info}{location_info}"
+            {
+                "date": event.date,
+                "time": event.time,
+                "location": event.location,
+                "event_name": event.name,
+            }
         )
         
         return EventOut(id=event_id, **event.model_dump())
@@ -1646,12 +1979,13 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
         )
         conn.commit()
         
-        # Notify all users about new practice session
-        time_info = f" at {session.time}" if session.time else ""
-        location_info = f" at {session.location}" if session.location else ""
-        notify_all_users(
+        deliver_notification(
             "practice",
-            f"New Practice Session Added on {session.date}{time_info}{location_info}. Please vote your Availability.",
+            {
+                "date": session.date,
+                "time": session.time,
+                "location": session.location,
+            },
             related_date=session.date
         )
         
@@ -1719,12 +2053,15 @@ def request_payment(date_str: str, current_user: dict = Depends(get_current_user
         )
         available_users = cur.fetchall()
         
-        # Send notification to all available users
-        notification_message = f"Payment requested by Admin for the Session on {date_str} at {session_time}, {session_location}"
-        
-        for user_row in available_users:
-            user_email = user_row["user_email"]
-            create_notification(user_email, "payment_request", notification_message, date_str)
+        deliver_notification(
+            "payment_request",
+            {
+                "date": date_str,
+                "time": session["time"],
+                "location": session["location"],
+            },
+            related_date=date_str
+        )
         
         return {"message": "Payment request enabled successfully"}
 
@@ -1984,10 +2321,12 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
         )
         conn.commit()
         
-        # Notify all users about new forum post
-        notify_all_users(
+        deliver_notification(
             "forum_post",
-            f"New post added by {current_user['full_name']}"
+            {
+                "author_name": current_user["full_name"],
+                "content": post.content,
+            }
         )
         
         return ForumPostOut(
@@ -2377,6 +2716,217 @@ def notify_all_users(notif_type: str, message: str, exclude_email: str = None, r
             email = user["email"] if USE_POSTGRES else user[0]
             if email != exclude_email:
                 create_notification(email, notif_type, message, related_date)
+
+@app.get("/api/admin/notification-settings", response_model=List[NotificationSettingOut])
+def list_notification_settings(current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    settings_map = get_notification_settings_map()
+    return [serialize_notification_setting(setting) for setting in settings_map.values()]
+
+@app.get("/api/admin/notification-settings/meta")
+def notification_settings_meta(current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    return {
+        "target_audiences": [
+            {"value": "all_active_users", "label": "All active users"},
+            {"value": "admin_users", "label": "Admin users"},
+            {"value": "available_players", "label": "Only players marked available for the related practice"},
+        ],
+        "notification_types": [
+            {"value": notif_type, "label": defaults["display_name"]}
+            for notif_type, defaults in NOTIFICATION_TYPE_DEFAULTS.items()
+        ],
+    }
+
+@app.put("/api/admin/notification-settings/{notif_type}", response_model=NotificationSettingOut)
+def update_notification_setting(notif_type: str, payload: NotificationSettingUpdate, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if notif_type not in NOTIFICATION_TYPE_DEFAULTS:
+        raise HTTPException(status_code=404, detail="Notification type not found")
+    if payload.target_audience not in NOTIFICATION_TARGET_OPTIONS:
+        raise HTTPException(status_code=400, detail="Invalid target audience")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                f"""
+                UPDATE notification_settings
+                SET display_name = {PLACEHOLDER},
+                    description = {PLACEHOLDER},
+                    app_enabled = {PLACEHOLDER},
+                    email_enabled = {PLACEHOLDER},
+                    whatsapp_enabled = {PLACEHOLDER},
+                    target_audience = {PLACEHOLDER},
+                    app_template = {PLACEHOLDER},
+                    email_subject = {PLACEHOLDER},
+                    email_template = {PLACEHOLDER},
+                    whatsapp_template = {PLACEHOLDER},
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE notif_type = {PLACEHOLDER}
+                """,
+                (
+                    payload.display_name,
+                    payload.description,
+                    payload.app_enabled,
+                    payload.email_enabled,
+                    payload.whatsapp_enabled,
+                    payload.target_audience,
+                    payload.app_template,
+                    payload.email_subject,
+                    payload.email_template,
+                    payload.whatsapp_template,
+                    notif_type,
+                ),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE notification_settings
+                SET display_name = ?,
+                    description = ?,
+                    app_enabled = ?,
+                    email_enabled = ?,
+                    whatsapp_enabled = ?,
+                    target_audience = ?,
+                    app_template = ?,
+                    email_subject = ?,
+                    email_template = ?,
+                    whatsapp_template = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE notif_type = ?
+                """,
+                (
+                    payload.display_name,
+                    payload.description,
+                    1 if payload.app_enabled else 0,
+                    1 if payload.email_enabled else 0,
+                    1 if payload.whatsapp_enabled else 0,
+                    payload.target_audience,
+                    payload.app_template,
+                    payload.email_subject,
+                    payload.email_template,
+                    payload.whatsapp_template,
+                    notif_type,
+                ),
+            )
+        conn.commit()
+
+    return serialize_notification_setting(get_notification_setting(notif_type))
+
+@app.post("/api/admin/notification-settings/{notif_type}/reset", response_model=NotificationSettingOut)
+def reset_notification_setting(notif_type: str, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    defaults = NOTIFICATION_TYPE_DEFAULTS.get(notif_type)
+    if not defaults:
+        raise HTTPException(status_code=404, detail="Notification type not found")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                f"""
+                UPDATE notification_settings
+                SET display_name = {PLACEHOLDER},
+                    description = {PLACEHOLDER},
+                    app_enabled = {PLACEHOLDER},
+                    email_enabled = {PLACEHOLDER},
+                    whatsapp_enabled = {PLACEHOLDER},
+                    target_audience = {PLACEHOLDER},
+                    app_template = {PLACEHOLDER},
+                    email_subject = {PLACEHOLDER},
+                    email_template = {PLACEHOLDER},
+                    whatsapp_template = {PLACEHOLDER},
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE notif_type = {PLACEHOLDER}
+                """,
+                (
+                    defaults["display_name"],
+                    defaults["description"],
+                    defaults["app_enabled"],
+                    defaults["email_enabled"],
+                    defaults["whatsapp_enabled"],
+                    defaults["target_audience"],
+                    defaults["app_template"],
+                    defaults["email_subject"],
+                    defaults["email_template"],
+                    defaults["whatsapp_template"],
+                    notif_type,
+                ),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE notification_settings
+                SET display_name = ?,
+                    description = ?,
+                    app_enabled = ?,
+                    email_enabled = ?,
+                    whatsapp_enabled = ?,
+                    target_audience = ?,
+                    app_template = ?,
+                    email_subject = ?,
+                    email_template = ?,
+                    whatsapp_template = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE notif_type = ?
+                """,
+                (
+                    defaults["display_name"],
+                    defaults["description"],
+                    1 if defaults["app_enabled"] else 0,
+                    1 if defaults["email_enabled"] else 0,
+                    1 if defaults["whatsapp_enabled"] else 0,
+                    defaults["target_audience"],
+                    defaults["app_template"],
+                    defaults["email_subject"],
+                    defaults["email_template"],
+                    defaults["whatsapp_template"],
+                    notif_type,
+                ),
+            )
+        conn.commit()
+
+    return serialize_notification_setting(get_notification_setting(notif_type))
+
+@app.get("/api/admin/whatsapp/status")
+def whatsapp_status(current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    state = get_instance_state()
+    return {
+        "configured": whatsapp_is_configured(),
+        "enabled": WHATSAPP_NOTIFICATIONS_ENABLED,
+        "state": state,
+    }
+
+@app.post("/api/admin/whatsapp/test")
+def send_test_whatsapp_message(data: WhatsAppMessageRequest, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    message = data.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required")
+    result = send_group_message(message)
+    if not result.get("success"):
+        raise HTTPException(status_code=503, detail=result.get("error", "Failed to send WhatsApp message"))
+    return result
+
+@app.post("/api/admin/whatsapp/find-group")
+def lookup_whatsapp_group(data: WhatsAppGroupLookupRequest, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    group_name = data.group_name.strip()
+    if not group_name:
+        raise HTTPException(status_code=400, detail="Group name is required")
+    result = find_group_chat_id(group_name)
+    if not result.get("success"):
+        raise HTTPException(status_code=503, detail=result.get("error", "Failed to fetch WhatsApp chats"))
+    return result
 
 @app.get("/api/notifications")
 def get_notifications(current_user: dict = Depends(get_current_user)):

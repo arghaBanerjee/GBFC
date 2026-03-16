@@ -17,6 +17,14 @@ services:
         sync: false
       - key: FRONTEND_ORIGIN
         sync: false
+      - key: GREEN_API_INSTANCE_ID
+        sync: false
+      - key: GREEN_API_TOKEN
+        sync: false
+      - key: WHATSAPP_GROUP_ID
+        sync: false
+      - key: WHATSAPP_NOTIFICATIONS_ENABLED
+        sync: false
 
 databases:
   - name: glasgow-bengali-fc-db
