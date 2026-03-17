@@ -34,6 +34,7 @@ football_club.db
 .env
 .env.local
 .env.*.local
+.backend.local.env
 
 # Uploads (local development only)
 uploads/

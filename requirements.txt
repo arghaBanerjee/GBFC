@@ -5,3 +5,5 @@ pydantic[email]
 psycopg2-binary
 cloudinary
 openpyxl
+requests
+apscheduler

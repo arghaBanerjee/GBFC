@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
+import '../styles/Admin.css'
 
 export default function Admin({ user, loading }) {
   const navigate = useNavigate()
   const token = localStorage.getItem('token')
+  const isSuperAdmin = user?.email === 'super@admin.com'
+  const adminTabs = [
+    { value: 'event', label: 'Add Match' },
+    { value: 'practice', label: 'Add Practice' },
+    { value: 'forum', label: 'Forum Posts' },
+    { value: 'users', label: 'Users' },
+    ...(isSuperAdmin ? [{ value: 'notifications', label: 'Notifications' }] : []),
+  ]
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
   const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
@@ -30,6 +39,7 @@ export default function Admin({ user, loading }) {
   const [practiceDate, setPracticeDate] = useState('')
   const [practiceTime, setPracticeTime] = useState('')
   const [practiceLocation, setPracticeLocation] = useState('')
+  const [practiceInlineStatus, setPracticeInlineStatus] = useState('')
 
   // Forum posts
   const [forumPosts, setForumPosts] = useState([])
@@ -40,6 +50,91 @@ export default function Admin({ user, loading }) {
   const [users, setUsers] = useState([])
   const [editingUserId, setEditingUserId] = useState(null)
   const [editingUserName, setEditingUserName] = useState('')
+  const [userSearchTerm, setUserSearchTerm] = useState('')
+  const [userTypeStatusByEmail, setUserTypeStatusByEmail] = useState({})
+
+  // Notifications
+  const [notificationSettings, setNotificationSettings] = useState([])
+  const [notificationMeta, setNotificationMeta] = useState({ target_audiences: [], notification_types: [] })
+  const [notificationSaving, setNotificationSaving] = useState('')
+  const [notificationSaveStatusByType, setNotificationSaveStatusByType] = useState({})
+
+  const notificationPreviewSamples = {
+    practice: {
+      date: '2026-03-20',
+      time: '7:30 PM',
+      location: 'Glasgow Green',
+      event_name: '',
+      author_name: '',
+      content: '',
+      content_preview: '',
+      time_suffix: ' at 7:30 PM',
+      location_suffix: ' at Glasgow Green',
+      location_comma_suffix: ', Glasgow Green',
+      time_line: '🕐 7:30 PM\n',
+      location_line: '📍 Glasgow Green\n',
+    },
+    match: {
+      date: '2026-03-28',
+      time: '2:00 PM',
+      location: 'Toryglen Regional Football Centre',
+      event_name: 'GBFC vs Rivals FC',
+      author_name: '',
+      content: '',
+      content_preview: '',
+      time_suffix: ' at 2:00 PM',
+      location_suffix: ' at Toryglen Regional Football Centre',
+      location_comma_suffix: ', Toryglen Regional Football Centre',
+      time_line: '🕐 2:00 PM\n',
+      location_line: '📍 Toryglen Regional Football Centre\n',
+    },
+    forum_post: {
+      date: '',
+      time: '',
+      location: '',
+      event_name: '',
+      author_name: 'Argha Banerjee',
+      content: 'Please confirm who can join training this Thursday and whether we should arrange bibs.',
+      content_preview: 'Please confirm who can join training this Thursday and whether we should arrange bibs.',
+      time_suffix: '',
+      location_suffix: '',
+      location_comma_suffix: '',
+      time_line: '',
+      location_line: '',
+    },
+    payment_request: {
+      date: '2026-03-13',
+      time: '8:00 PM',
+      location: 'Scotstoun Sports Campus',
+      event_name: '',
+      author_name: '',
+      content: '',
+      content_preview: '',
+      time_suffix: ' at 8:00 PM',
+      location_suffix: ' at Scotstoun Sports Campus',
+      location_comma_suffix: ', Scotstoun Sports Campus',
+      time_line: '🕐 8:00 PM\n',
+      location_line: '📍 Scotstoun Sports Campus\n',
+    },
+  }
+
+  const notificationVariableMap = {
+    practice: ['{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    match: ['{{event_name}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    forum_post: ['{{author_name}}', '{{content}}', '{{content_preview}}'],
+    payment_request: ['{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+  }
+
+  const renderNotificationPreview = (template, notifType) => {
+    const context = notificationPreviewSamples[notifType] || {}
+    let rendered = template || ''
+    Object.entries(context).forEach(([key, value]) => {
+      rendered = rendered.replaceAll(`{{${key}}}`, value ?? '')
+    })
+    return rendered
+  }
+
+  const getNotificationVariables = (notifType) => notificationVariableMap[notifType] || []
 
   useEffect(() => {
     // Wait for loading to complete before checking authentication
@@ -87,13 +182,125 @@ export default function Admin({ user, loading }) {
     }
   }
 
+  const loadNotificationSettings = async () => {
+    try {
+      const [settingsRes, metaRes] = await Promise.all([
+        fetch(apiUrl('/api/admin/notification-settings'), {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(apiUrl('/api/admin/notification-settings/meta'), {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ])
+
+      const settingsData = await settingsRes.json().catch(() => [])
+      if (!settingsRes.ok) {
+        setMessage(settingsData?.detail || 'Failed to load notification settings')
+        return
+      }
+      setNotificationSettings(settingsData)
+
+      if (metaRes.ok) {
+        const metaData = await metaRes.json()
+        setNotificationMeta(metaData)
+      }
+    } catch (err) {
+      console.error('Error loading notification settings:', err)
+      setMessage('Error loading notification settings')
+    }
+  }
+
   useEffect(() => {
     if (!isAdmin) return
     loadEvents()
     loadPracticeSessions()
     loadForumPosts()
     loadUsers()
+    loadNotificationSettings()
   }, [isAdmin])
+
+  const handleNotificationFieldChange = (notifType, field, value) => {
+    setNotificationSettings((current) =>
+      current.map((setting) =>
+        setting.notif_type === notifType ? { ...setting, [field]: value } : setting
+      )
+    )
+  }
+
+  const handleSaveNotificationSetting = async (notifType) => {
+    const setting = notificationSettings.find((item) => item.notif_type === notifType)
+    if (!setting) return
+
+    setNotificationSaving(notifType)
+    try {
+      const res = await fetch(apiUrl(`/api/admin/notification-settings/${notifType}`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          display_name: setting.display_name,
+          description: setting.description || '',
+          app_enabled: setting.app_enabled,
+          email_enabled: setting.email_enabled,
+          whatsapp_enabled: setting.whatsapp_enabled,
+          target_audience: setting.target_audience,
+          app_template: setting.app_template,
+          email_subject: setting.email_subject,
+          email_template: setting.email_template,
+          whatsapp_template: setting.whatsapp_template,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setMessage(data?.detail || 'Failed to save notification setting')
+        return
+      }
+      setNotificationSettings((current) =>
+        current.map((item) => (item.notif_type === notifType ? data : item))
+      )
+      setNotificationSaveStatusByType((current) => ({
+        ...current,
+        [notifType]: 'Template saved successfully!',
+      }))
+      setMessage('Notification setting saved.')
+    } catch (err) {
+      console.error('Error saving notification setting:', err)
+      setMessage('Error saving notification setting')
+    } finally {
+      setNotificationSaving('')
+    }
+  }
+
+  const handleResetNotificationSetting = async (notifType) => {
+    setNotificationSaving(notifType)
+    try {
+      const res = await fetch(apiUrl(`/api/admin/notification-settings/${notifType}/reset`), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setMessage(data?.detail || 'Failed to reset notification setting')
+        return
+      }
+      setNotificationSettings((current) =>
+        current.map((item) => (item.notif_type === notifType ? data : item))
+      )
+      setNotificationSaveStatusByType((current) => {
+        const next = { ...current }
+        delete next[notifType]
+        return next
+      })
+      setMessage('Notification setting reset to defaults.')
+    } catch (err) {
+      console.error('Error resetting notification setting:', err)
+      setMessage('Error resetting notification setting')
+    } finally {
+      setNotificationSaving('')
+    }
+  }
 
   const resetEventForm = () => {
     setEditingEventId(null)
@@ -111,6 +318,7 @@ export default function Admin({ user, loading }) {
     setPracticeDate('')
     setPracticeTime('')
     setPracticeLocation('')
+    setPracticeInlineStatus('')
   }
 
   const resetForumPostForm = () => {
@@ -199,6 +407,7 @@ export default function Admin({ user, loading }) {
 
   const handleSubmitPractice = async (e) => {
     e.preventDefault()
+    const isEditingPractice = Boolean(editingPracticeDate)
 
     const payload = { date: practiceDate, time: practiceTime, location: practiceLocation }
 
@@ -247,17 +456,22 @@ export default function Admin({ user, loading }) {
       setMessage(data?.detail || 'Failed to save practice session')
       return
     }
-    setMessage(editingPracticeDate ? 'Practice session updated.' : 'Practice session created.')
+    setMessage(isEditingPractice ? 'Practice session updated.' : 'Practice session created.')
     resetPracticeForm()
+    if (!isEditingPractice) {
+      setPracticeInlineStatus('New Practice Session Added !')
+    }
     loadPracticeSessions()
   }
 
   const handleEditPractice = (s) => {
     setActiveTab('practice')
+    setPracticeInlineStatus('')
     setEditingPracticeDate(s.date)
     setPracticeDate(s.date || '')
     setPracticeTime(s.time || '')
     setPracticeLocation(s.location || '')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleDeletePractice = async (dateStr) => {
@@ -333,6 +547,12 @@ export default function Admin({ user, loading }) {
       setMessage(data?.detail || 'Failed to update user type')
       return
     }
+    setUserTypeStatusByEmail((prev) => ({
+      ...prev,
+      [email]: userType === 'admin'
+        ? 'Updated user to Admin'
+        : 'Updated user to Member'
+    }))
     setMessage(`User type updated to ${userType}.`)
     loadUsers()
   }
@@ -378,6 +598,32 @@ export default function Admin({ user, loading }) {
     loadForumPosts()
   }
 
+  const filteredUsers = [...users]
+    .filter((u) => (u.full_name || '').toLowerCase().includes(userSearchTerm.trim().toLowerCase()))
+    .sort((a, b) => {
+      const aLastLogin = a.last_login ? new Date(a.last_login).getTime() : 0
+      const bLastLogin = b.last_login ? new Date(b.last_login).getTime() : 0
+      return bLastLogin - aLastLogin
+    })
+
+  const formatBirthday = (birthday) => {
+    if (!birthday) return 'Not Set'
+    const parsedDate = new Date(`${birthday}T00:00:00`)
+    if (Number.isNaN(parsedDate.getTime())) return 'Not Set'
+
+    const day = parsedDate.getDate()
+    const month = parsedDate.toLocaleString('en-GB', { month: 'long' })
+    const suffix = (day % 10 === 1 && day % 100 !== 11)
+      ? 'st'
+      : (day % 10 === 2 && day % 100 !== 12)
+        ? 'nd'
+        : (day % 10 === 3 && day % 100 !== 13)
+          ? 'rd'
+          : 'th'
+
+    return `${day}${suffix} ${month}`
+  }
+
   if (!isAdmin) {
     return (
       <div className="container">
@@ -392,57 +638,30 @@ export default function Admin({ user, loading }) {
       <h2>Admin</h2>
       {message && <p>{message}</p>}
 
-      <div style={{ 
-        marginBottom: '1.5rem',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-        gap: '0.75rem',
-        maxWidth: '600px'
-      }}>
-        <button 
-          className={`nav-btn ${activeTab === 'event' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('event')}
-          style={{
-            width: '100%',
-            padding: '0.75rem 1rem',
-            fontSize: '0.95rem'
-          }}
+      <div className="admin-menu-mobile">
+        <select
+          className="admin-menu-select"
+          value={activeTab}
+          onChange={(e) => setActiveTab(e.target.value)}
         >
-          Add Match
-        </button>
-        <button 
-          className={`nav-btn ${activeTab === 'practice' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('practice')}
-          style={{
-            width: '100%',
-            padding: '0.75rem 1rem',
-            fontSize: '0.95rem'
-          }}
-        >
-          Add Practice
-        </button>
-        <button 
-          className={`nav-btn ${activeTab === 'forum' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('forum')}
-          style={{
-            width: '100%',
-            padding: '0.75rem 1rem',
-            fontSize: '0.95rem'
-          }}
-        >
-          Forum Posts
-        </button>
-        <button 
-          className={`nav-btn ${activeTab === 'users' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('users')}
-          style={{
-            width: '100%',
-            padding: '0.75rem 1rem',
-            fontSize: '0.95rem'
-          }}
-        >
-          Users
-        </button>
+          {adminTabs.map((tab) => (
+            <option key={tab.value} value={tab.value}>
+              {tab.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="admin-menu-tabs">
+        {adminTabs.map((tab) => (
+          <button
+            key={tab.value}
+            className={`admin-menu-tab ${activeTab === tab.value ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.value)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {activeTab === 'event' && (
@@ -501,18 +720,22 @@ export default function Admin({ user, loading }) {
           <div style={{ display: 'grid', gap: '1rem' }}>
             {events.sort((a, b) => new Date(b.date) - new Date(a.date)).map((ev) => (
               <div key={ev.id} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <strong style={{ fontSize: '1.05rem' }}>{ev.name}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong>{ev.date}</strong>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ border: '1px solid #d1d5db' }}>
+                      Edit
+                    </button>
+                    <button className="nav-btn" onClick={() => handleDeleteEvent(ev.id)} style={{ background: '#ef4444', color: 'white', border: '1px solid #ef4444' }}>
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <div style={{ opacity: 0.8, marginBottom: '0.75rem', fontSize: '0.9rem' }}>{ev.date} {ev.time || ''}</div>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ flex: '1', minWidth: '100px', border: '1px solid #d1d5db' }}>
-                    Edit
-                  </button>
-                  <button className="nav-btn" onClick={() => handleDeleteEvent(ev.id)} style={{ flex: '1', minWidth: '100px', background: '#ef4444', color: 'white', border: '#ef4444' }}>
-                    Delete
-                  </button>
-                </div>
+                <div style={{ fontWeight: '700', fontSize: '1.05rem', marginBottom: '0.4rem' }}>{ev.name}</div>
+                <div style={{ opacity: 0.8, marginBottom: '0.35rem', fontSize: '0.9rem' }}>Time: {ev.time || 'TBD'}</div>
+                {ev.location && <div style={{ opacity: 0.8, fontSize: '0.9rem' }}>Location: {ev.location}</div>}
               </div>
             ))}
           </div>
@@ -552,6 +775,11 @@ export default function Admin({ user, loading }) {
                 </button>
               )}
             </div>
+            {practiceInlineStatus && (
+              <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500' }}>
+                {practiceInlineStatus}
+              </div>
+            )}
           </form>
 
           <h3 style={{ marginTop: '2rem' }}>Upcoming practice sessions</h3>
@@ -560,14 +788,18 @@ export default function Admin({ user, loading }) {
               .filter(s => new Date(s.date) >= new Date(new Date().setHours(0, 0, 0, 0)))
               .sort((a, b) => new Date(a.date) - new Date(b.date))
               .map((s) => (
-              <div key={s.date} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
+              <div
+                key={s.date}
+                onClick={() => navigate(`/book-practice?date=${encodeURIComponent(s.date)}`)}
+                style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa', cursor: 'pointer' }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <strong>{s.date}</strong>
                   <div>
-                    <button className="nav-btn" onClick={() => handleEditPractice(s)} style={{ marginRight: 8, border: '1px solid #d1d5db' }}>
+                    <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} style={{ marginRight: 8, border: '1px solid #d1d5db' }}>
                       Edit
                     </button>
-                    <button className="nav-btn" onClick={() => handleDeletePractice(s.date)} style={{ background: '#ef4444', color: 'white', border: '#ef4444' }}>
+                    <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleDeletePractice(s.date) }} style={{ background: '#ef4444', color: 'white', border: '#ef4444' }}>
                       Delete
                     </button>
                   </div>
@@ -638,26 +870,35 @@ export default function Admin({ user, loading }) {
         <>
           <h3>Registered Users</h3>
           <div style={{ marginTop: '1rem' }}>
-            {[...users]
-              .sort((a, b) => {
-                const aLastLogin = a.last_login ? new Date(a.last_login).getTime() : 0
-                const bLastLogin = b.last_login ? new Date(b.last_login).getTime() : 0
-                return bLastLogin - aLastLogin
-              })
-              .map((u) => (
+            <input
+              type="text"
+              value={userSearchTerm}
+              onChange={(e) => setUserSearchTerm(e.target.value)}
+              placeholder="Search users by name"
+              style={{
+                width: '100%',
+                padding: '0.875rem 1rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '0.75rem',
+                fontSize: '0.95rem',
+                marginBottom: '1rem',
+                boxSizing: 'border-box'
+              }}
+            />
+            {filteredUsers.map((u) => (
               <div 
                 key={u.email} 
                 style={{ 
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.5rem',
+                  border: u.email === user?.email ? '1px solid #86efac' : '1px solid #d1d5db',
+                  borderRadius: '0.75rem',
                   padding: '1rem',
                   marginBottom: '1rem',
-                  background: 'white'
+                  background: u.email === user?.email ? '#f0fdf4' : 'white'
                 }}
               >
-                <div>
-                  {/* Name and Edit UI */}
-                  <div style={{ marginBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div style={{ flex: '1', minWidth: 0, paddingRight: '0.5rem' }}>
+                    <div style={{ marginBottom: '0.5rem' }}>
                     {editingUserId === u.email ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <input
@@ -715,68 +956,85 @@ export default function Admin({ user, loading }) {
                         </button>
                       </div>
                     ) : (
-                      <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
+                      <div style={{ fontWeight: '700', fontSize: '1.2rem', lineHeight: '1.25' }}>
                         {u.full_name}
                       </div>
                     )}
-                  </div>
-                  
-                  {/* Member/Admin Tags */}
-                  {u.email === user?.email ? (
-                    // Current logged-in user - show only their current role (non-clickable)
-                    <div style={{ marginBottom: '0.5rem' }}>
-                      <span style={{ 
-                        padding: '0.25rem 0.75rem', 
-                        borderRadius: '0.25rem', 
-                        fontSize: '0.875rem',
-                        background: '#10b981',
-                        color: 'white',
-                        fontWeight: '600',
-                        display: 'inline-block'
-                      }}>
-                        {u.user_type === 'admin' ? 'Admin' : 'Member'}
-                      </span>
                     </div>
-                  ) : (
-                    // Other users - show toggle buttons
-                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                      <button
-                        onClick={() => handleUpdateUserType(u.email, 'member')}
-                        style={{
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '0.25rem',
-                          fontSize: '0.875rem',
-                          background: u.user_type === 'member' ? '#10b981' : '#f3f4f6',
-                          color: u.user_type === 'member' ? 'white' : '#374151',
-                          border: u.user_type === 'member' ? '1px solid #10b981' : '1px solid #d1d5db',
-                          cursor: 'pointer',
-                          fontWeight: u.user_type === 'member' ? '600' : '400'
-                        }}
-                      >
+                    <div style={{ color: '#6b7280', fontSize: '0.95rem', wordBreak: 'break-word', marginBottom: '0.75rem' }}>
+                      {u.email}
+                    </div>
+                    <div style={{ color: '#6b7280', fontSize: '0.95rem', marginBottom: '0.75rem' }}>
+                      <strong>Birthday:</strong> {formatBirthday(u.birthday)}
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: '#374151' }}>
+                        <input
+                          type="radio"
+                          name={`user-type-${u.email}`}
+                          checked={u.user_type === 'member'}
+                          disabled={u.email === user?.email}
+                          onChange={() => handleUpdateUserType(u.email, 'member')}
+                        />
                         Member
-                      </button>
-                      <button
-                        onClick={() => handleUpdateUserType(u.email, 'admin')}
-                        style={{
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '0.25rem',
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: '#374151' }}>
+                        <input
+                          type="radio"
+                          name={`user-type-${u.email}`}
+                          checked={u.user_type === 'admin'}
+                          disabled={u.email === user?.email}
+                          onChange={() => handleUpdateUserType(u.email, 'admin')}
+                        />
+                        Admin
+                      </label>
+                    </div>
+                    {userTypeStatusByEmail[u.email] && (
+                      <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.75rem' }}>
+                        {userTypeStatusByEmail[u.email]}
+                      </div>
+                    )}
+                  </div>
+                  {editingUserId !== u.email && (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'nowrap', flexShrink: 0 }}>
+                      <button 
+                        className="nav-btn" 
+                        onClick={() => {
+                          if (u.email === user?.email) {
+                            navigate('/profile')
+                            return
+                          }
+                          setEditingUserId(u.email)
+                          setEditingUserName(u.full_name)
+                        }}
+                        style={{ 
+                          padding: '0.5rem 1rem',
                           fontSize: '0.875rem',
-                          background: u.user_type === 'admin' ? '#10b981' : '#f3f4f6',
-                          color: u.user_type === 'admin' ? 'white' : '#374151',
-                          border: u.user_type === 'admin' ? '1px solid #10b981' : '1px solid #d1d5db',
-                          cursor: 'pointer',
-                          fontWeight: u.user_type === 'admin' ? '600' : '400'
+                          border: u.email === user?.email ? '1px solid #16a34a' : '1px solid #d1d5db',
+                          color: u.email === user?.email ? '#16a34a' : '#374151',
+                          background: 'white'
                         }}
                       >
-                        Admin
+                        {u.email === user?.email ? 'Profile Edit' : 'Edit'}
+                      </button>
+                      <button 
+                        className="nav-btn" 
+                        onClick={() => handleDeleteUser(u.email)}
+                        disabled={u.email === user?.email}
+                        style={{ 
+                          background: u.email === user?.email ? '#f3f4f6' : '#ef4444', 
+                          color: u.email === user?.email ? '#9ca3af' : 'white', 
+                          border: u.email === user?.email ? '1px solid #d1d5db' : '1px solid #ef4444',
+                          padding: '0.5rem 1rem',
+                          fontSize: '0.875rem',
+                          cursor: u.email === user?.email ? 'not-allowed' : 'pointer',
+                          opacity: u.email === user?.email ? 1 : 1
+                        }}
+                      >
+                        Delete
                       </button>
                     </div>
                   )}
-                  
-                  {/* Email */}
-                  <div style={{ color: '#6b7280', fontSize: '0.875rem', wordBreak: 'break-word' }}>
-                    {u.email}
-                  </div>
                 </div>
                 <div style={{ 
                   display: 'flex', 
@@ -795,41 +1053,208 @@ export default function Admin({ user, loading }) {
                       <strong>Last Login:</strong> {u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}
                     </div>
                   </div>
-                  {u.email !== user?.email && (
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button 
-                        className="nav-btn" 
-                        onClick={() => {
-                          setEditingUserId(u.email)
-                          setEditingUserName(u.full_name)
-                        }}
-                        style={{ 
-                          padding: '0.5rem 1rem',
-                          fontSize: '0.875rem',
-                          border: '1px solid #d1d5db'
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button 
-                        className="nav-btn" 
-                        onClick={() => handleDeleteUser(u.email)}
-                        style={{ 
-                          background: '#ef4444', 
-                          color: 'white', 
-                          border: '1px solid #ef4444',
-                          padding: '0.5rem 1rem',
-                          fontSize: '0.875rem'
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
             ))}
-            {users.length === 0 && <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>No users found.</p>}
+            {filteredUsers.length === 0 && <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>No users found.</p>}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'notifications' && isSuperAdmin && (
+        <>
+          <h3>Notifications</h3>
+          <p style={{ color: '#6b7280', maxWidth: '900px' }}>
+            Configure notification delivery across app, email, and WhatsApp. You can control per-type channel enablement,
+            recipient targeting, and the message template used in each platform.
+          </p>
+
+          <div style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
+            {notificationSettings.map((setting) => (
+              <div
+                key={setting.notif_type}
+                style={{
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.75rem',
+                  padding: '1.25rem',
+                  background: 'white',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                  <div>
+                    <div style={{ fontWeight: '700', fontSize: '1.05rem', marginBottom: '0.25rem' }}>{setting.display_name}</div>
+                    <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>{setting.description || 'No description set.'}</div>
+                    <div style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: '0.35rem' }}>Type: {setting.notif_type}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <button
+                      className="nav-btn"
+                      onClick={() => handleSaveNotificationSetting(setting.notif_type)}
+                      disabled={notificationSaving === setting.notif_type}
+                      style={{ background: '#10b981', color: 'white', border: '1px solid #10b981' }}
+                    >
+                      {notificationSaving === setting.notif_type ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      className="nav-btn"
+                      onClick={() => handleResetNotificationSetting(setting.notif_type)}
+                      disabled={notificationSaving === setting.notif_type}
+                      style={{ border: '1px solid #d1d5db' }}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                {notificationSaveStatusByType[setting.notif_type] && (
+                  <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500', marginBottom: '1rem' }}>
+                    {notificationSaveStatusByType[setting.notif_type]}
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label>Display Name</label>
+                    <input
+                      value={setting.display_name}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'display_name', e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label>Target Users</label>
+                    <select
+                      value={setting.target_audience}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'target_audience', e.target.value)}
+                      style={{ width: '100%' }}
+                    >
+                      {notificationMeta.target_audiences.map((audience) => (
+                        <option key={audience.value} value={audience.value}>
+                          {audience.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>Description</label>
+                  <textarea
+                    rows={2}
+                    value={setting.description || ''}
+                    onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'description', e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={setting.app_enabled}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'app_enabled', e.target.checked)}
+                    />
+                    App enabled
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={setting.email_enabled}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'email_enabled', e.target.checked)}
+                    />
+                    Email enabled
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={setting.whatsapp_enabled}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'whatsapp_enabled', e.target.checked)}
+                    />
+                    WhatsApp enabled
+                  </label>
+                </div>
+
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                  <div>
+                    <label>App Template</label>
+                    <textarea
+                      rows={3}
+                      value={setting.app_template}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'app_template', e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                    <div style={{ marginTop: '0.5rem', color: '#6b7280', fontSize: '0.85rem' }}>
+                      Available variables: {getNotificationVariables(setting.notif_type).join(', ') || 'No variables available'}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', background: '#f9fafb', padding: '0.75rem' }}>
+                      <div style={{ fontWeight: '600', marginBottom: '0.35rem', fontSize: '0.9rem' }}>App preview</div>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#111827', fontSize: '0.9rem' }}>
+                        {renderNotificationPreview(setting.app_template, setting.notif_type) || 'No app message preview available.'}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label>Email Subject</label>
+                    <input
+                      value={setting.email_subject}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'email_subject', e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                    <div style={{ marginTop: '0.5rem', color: '#6b7280', fontSize: '0.85rem' }}>
+                      Available variables: {getNotificationVariables(setting.notif_type).join(', ') || 'No variables available'}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', background: '#f9fafb', padding: '0.75rem' }}>
+                      <div style={{ fontWeight: '600', marginBottom: '0.35rem', fontSize: '0.9rem' }}>Email subject preview</div>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#111827', fontSize: '0.9rem' }}>
+                        {renderNotificationPreview(setting.email_subject, setting.notif_type) || 'No email subject preview available.'}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label>Email Template</label>
+                    <textarea
+                      rows={4}
+                      value={setting.email_template}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'email_template', e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                    <div style={{ marginTop: '0.5rem', color: '#6b7280', fontSize: '0.85rem' }}>
+                      Available variables: {getNotificationVariables(setting.notif_type).join(', ') || 'No variables available'}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', background: '#f9fafb', padding: '0.75rem' }}>
+                      <div style={{ fontWeight: '600', marginBottom: '0.35rem', fontSize: '0.9rem' }}>Email body preview</div>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#111827', fontSize: '0.9rem' }}>
+                        {renderNotificationPreview(setting.email_template, setting.notif_type) || 'No email body preview available.'}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label>WhatsApp Template</label>
+                    <textarea
+                      rows={4}
+                      value={setting.whatsapp_template}
+                      onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'whatsapp_template', e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                    <div style={{ marginTop: '0.5rem', color: '#6b7280', fontSize: '0.85rem' }}>
+                      Available variables: {getNotificationVariables(setting.notif_type).join(', ') || 'No variables available'}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', background: '#f9fafb', padding: '0.75rem' }}>
+                      <div style={{ fontWeight: '600', marginBottom: '0.35rem', fontSize: '0.9rem' }}>WhatsApp preview</div>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#111827', fontSize: '0.9rem' }}>
+                        {renderNotificationPreview(setting.whatsapp_template, setting.notif_type) || 'No WhatsApp preview available.'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {notificationSettings.length === 0 && (
+              <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>
+                No notification settings found.
+              </p>
+            )}
           </div>
         </>
       )}

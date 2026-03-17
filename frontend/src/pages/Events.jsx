@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiUrl } from '../api'
+import '../styles/UserActions.css'
 
 const pastelColors = ['#FFE4E1', '#E6E6FA', '#E0FFF4', '#FFF8DC', '#F0FFF0']
 const upcomingPastelColors = ['#E0FFFF', '#FFF0F5', '#F0FFF0', '#FFF5EE', '#F5F5DC']
@@ -170,11 +171,11 @@ export default function Events({ user }) {
   return (
     <div className="container">
       <h2>Matches</h2>
-      <div style={{ marginBottom: '1rem' }}>
-        <button className={`nav-btn ${tab === 'upcoming' ? 'active' : ''}`} onClick={() => setTab('upcoming')}>
+      <div className="tabs">
+        <button className={`tab-btn ${tab === 'upcoming' ? 'active' : ''}`} onClick={() => setTab('upcoming')}>
           Upcoming Matches
         </button>
-        <button className={`nav-btn ${tab === 'past' ? 'active' : ''}`} onClick={() => setTab('past')}>
+        <button className={`tab-btn ${tab === 'past' ? 'active' : ''}`} onClick={() => setTab('past')}>
           Past Matches
         </button>
       </div>
