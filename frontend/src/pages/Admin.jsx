@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { apiUrl } from '../api'
 import '../styles/Admin.css'
+import Reports from './Reports'
 
 export default function Admin({ user, loading }) {
   const navigate = useNavigate()
+  const { tab: routeTab } = useParams()
   const token = localStorage.getItem('token')
   const isSuperAdmin = user?.email === 'super@admin.com'
   const adminTabs = [
@@ -12,14 +14,16 @@ export default function Admin({ user, loading }) {
     { value: 'event', label: 'Add Match' },
     { value: 'forum', label: 'Forum Posts' },
     { value: 'users', label: 'Users' },
+    { value: 'reports', label: 'Reports' },
     ...(isSuperAdmin ? [{ value: 'notifications', label: 'Notifications' }] : []),
   ]
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
   const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
 
-  const [activeTab, setActiveTab] = useState('practice')
   const [message, setMessage] = useState('')
+  const activeTab = adminTabs.some((tab) => tab.value === routeTab) ? routeTab : 'practice'
+  const setActiveTab = (tab) => navigate(`/admin/${tab}`)
 
   // Events
   const [events, setEvents] = useState([])
@@ -147,6 +151,13 @@ export default function Admin({ user, loading }) {
       navigate('/')
     }
   }, [user, loading, navigate, isAdmin])
+
+  useEffect(() => {
+    if (loading || !user || !isAdmin) return
+    if (!routeTab || !adminTabs.some((tab) => tab.value === routeTab)) {
+      navigate('/admin/practice', { replace: true })
+    }
+  }, [routeTab, adminTabs, loading, user, isAdmin, navigate])
 
   const loadEvents = async () => {
     const res = await fetch(apiUrl('/api/events'))
@@ -1059,6 +1070,10 @@ export default function Admin({ user, loading }) {
             {filteredUsers.length === 0 && <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>No users found.</p>}
           </div>
         </>
+      )}
+
+      {activeTab === 'reports' && (
+        <Reports />
       )}
 
       {activeTab === 'notifications' && isSuperAdmin && (

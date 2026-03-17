@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
 import '../styles/UserActions.css'
 
@@ -46,13 +47,15 @@ function getYouTubeEmbedUrl(url) {
 }
 
 export default function Events({ user }) {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [events, setEvents] = useState([])
-  const [tab, setTab] = useState('upcoming')
   const [commentingEventId, setCommentingEventId] = useState(null)
   const [commentText, setCommentText] = useState('')
   const [likesHover, setLikesHover] = useState(null)
   const [myLikedEventIds, setMyLikedEventIds] = useState(new Set())
   const token = localStorage.getItem('token')
+  const tab = location.pathname === '/matches/past' ? 'past' : 'upcoming'
 
   useEffect(() => {
     fetch(apiUrl('/api/events'))
@@ -172,10 +175,10 @@ export default function Events({ user }) {
     <div className="container">
       <h2>Matches</h2>
       <div className="tabs">
-        <button className={`tab-btn ${tab === 'upcoming' ? 'active' : ''}`} onClick={() => setTab('upcoming')}>
+        <button className={`tab-btn ${tab === 'upcoming' ? 'active' : ''}`} onClick={() => navigate('/matches/upcoming')}>
           Upcoming Matches
         </button>
-        <button className={`tab-btn ${tab === 'past' ? 'active' : ''}`} onClick={() => setTab('past')}>
+        <button className={`tab-btn ${tab === 'past' ? 'active' : ''}`} onClick={() => navigate('/matches/past')}>
           Past Matches
         </button>
       </div>

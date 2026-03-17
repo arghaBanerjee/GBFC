@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import Events from './pages/Events'
 import Practice from './pages/Practice'
@@ -10,7 +10,6 @@ import Signup from './pages/Signup'
 import ResetPassword from './pages/ResetPassword'
 import Admin from './pages/Admin'
 import Profile from './pages/Profile'
-import Reports from './pages/Reports'
 import UserActions from './pages/UserActions'
 import ProtectedRoute from './components/ProtectedRoute'
 import { apiUrl } from './api'
@@ -190,6 +189,7 @@ function App() {
 
   const navItems = ['Home', 'Matches', 'Book Practice', 'Forum']
   const isActive = (path) => location.pathname === path
+  const isSectionActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`)
   const isUserActionsActive = location.pathname === '/user-actions' || location.pathname.startsWith('/user-actions/')
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
@@ -259,28 +259,23 @@ function App() {
               const path = item === 'Home' ? '/' : `/${item.toLowerCase().replace(' ', '-')}`
               return (
                 <Link key={item} to={path} className="nav-link">
-                  <button className={`nav-btn ${isActive(path) ? 'active' : ''}`}>
+                  <button className={`nav-btn ${(path === '/matches' ? isSectionActive(path) : isActive(path)) ? 'active' : ''}`}>
                     {item}
                   </button>
                 </Link>
               )
             })}
             {isAdmin && (
-              <>
-                <Link to="/reports" className="nav-link">
-                  <button className={`nav-btn ${isActive('/reports') ? 'active' : ''}`}>Reports</button>
-                </Link>
-                <Link to="/admin" className="nav-link">
-                  <button className={`nav-btn ${isActive('/admin') ? 'active' : ''}`}>Admin</button>
-                </Link>
-              </>
+              <Link to="/admin/practice" className="nav-link">
+                <button className={`nav-btn ${isSectionActive('/admin') ? 'active' : ''}`}>Admin</button>
+              </Link>
             )}
           </div>
 
           <div className="nav-actions">
             {/* User Actions Icon - visible on both desktop and mobile */}
             {user && (
-              <Link to="/user-actions" style={{ textDecoration: 'none' }} title="My Actions">
+              <Link to="/user-actions/events" style={{ textDecoration: 'none' }} title="My Actions">
                 <button
                   className="social-icon nav-action-icon"
                   style={{
@@ -392,7 +387,7 @@ function App() {
                             setNotificationsOpen(false)
                             setMobileMenuOpen(false)
                             if (notif.type === 'forum_post') navigate('/forum')
-                            else if (notif.type === 'match') navigate('/matches')
+                            else if (notif.type === 'match') navigate('/matches/upcoming')
                             else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed') {
                               if (notif.related_date) {
                                 navigate(`/book-practice?date=${notif.related_date}`)
@@ -471,29 +466,20 @@ function App() {
                     className="mobile-nav-link"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <button className={`nav-btn ${isActive(path) ? 'active' : ''}`}>
+                    <button className={`nav-btn ${(path === '/matches' ? isSectionActive(path) : isActive(path)) ? 'active' : ''}`}>
                       {item}
                     </button>
                   </Link>
                 )
               })}
               {isAdmin && (
-                <>
-                  <Link 
-                    to="/reports" 
-                    className="mobile-nav-link"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <button className={`nav-btn ${isActive('/reports') ? 'active' : ''}`}>Reports</button>
-                  </Link>
-                  <Link 
-                    to="/admin" 
-                    className="mobile-nav-link"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <button className={`nav-btn ${isActive('/admin') ? 'active' : ''}`}>Admin</button>
-                  </Link>
-                </>
+                <Link 
+                  to="/admin/practice" 
+                  className="mobile-nav-link"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <button className={`nav-btn ${isSectionActive('/admin') ? 'active' : ''}`}>Admin</button>
+                </Link>
               )}
             </div>
             <div className="mobile-auth">
@@ -535,7 +521,13 @@ function App() {
             <Home user={user} />
           </ProtectedRoute>
         } />
-        <Route path="/matches" element={
+        <Route path="/matches" element={<Navigate to="/matches/upcoming" replace />} />
+        <Route path="/matches/upcoming" element={
+          <ProtectedRoute user={user} loading={loading}>
+            <Events user={user} />
+          </ProtectedRoute>
+        } />
+        <Route path="/matches/past" element={
           <ProtectedRoute user={user} loading={loading}>
             <Events user={user} />
           </ProtectedRoute>
@@ -555,31 +547,30 @@ function App() {
             <Profile user={user} setUser={setUser} loading={loading} />
           </ProtectedRoute>
         } />
-        <Route path="/admin" element={
+        <Route path="/admin" element={<Navigate to="/admin/practice" replace />} />
+        <Route path="/admin/:tab" element={
           <ProtectedRoute user={user} loading={loading}>
             <Admin user={user} loading={loading} />
           </ProtectedRoute>
         } />
         <Route path="/reports" element={
           <ProtectedRoute user={user} loading={loading}>
-            <Reports user={user} loading={loading} />
+            <Navigate to="/admin/reports" replace />
           </ProtectedRoute>
         } />
-        <Route path="/user-actions" element={
+        <Route path="/user-actions" element={<Navigate to="/user-actions/events" replace />} />
+        <Route path="/user-actions/events" element={
           <ProtectedRoute user={user} loading={loading}>
             <UserActions user={user} loading={loading} />
           </ProtectedRoute>
         } />
-        <Route path="/user-actions/upcoming-events" element={
+        <Route path="/user-actions/upcoming-events" element={<Navigate to="/user-actions/events" replace />} />
+        <Route path="/user-actions/payments" element={
           <ProtectedRoute user={user} loading={loading}>
-            <UserActions user={user} loading={loading} initialTab="upcoming" />
+            <UserActions user={user} loading={loading} />
           </ProtectedRoute>
         } />
-        <Route path="/user-actions/pending-payments" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <UserActions user={user} loading={loading} initialTab="payments" />
-          </ProtectedRoute>
-        } />
+        <Route path="/user-actions/pending-payments" element={<Navigate to="/user-actions/payments" replace />} />
       </Routes>
     </div>
   )

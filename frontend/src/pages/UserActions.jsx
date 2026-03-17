@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import '../styles/UserActions.css'
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
-function UserActions({ user, loading, initialTab = 'upcoming' }) {
+function UserActions({ user, loading }) {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState(initialTab)
+  const location = useLocation()
   const [upcomingSessions, setUpcomingSessions] = useState([])
   const [pendingPayments, setPendingPayments] = useState([])
   const [loadingData, setLoadingData] = useState(true)
   const [error, setError] = useState('')
+  const activeTab = location.pathname === '/user-actions/payments' ? 'payments' : 'upcoming'
 
   useEffect(() => {
     if (user) {
@@ -175,7 +176,7 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
       <div className="tabs">
         <button 
           className={`tab-btn ${activeTab === 'upcoming' ? 'active' : ''}`}
-          onClick={() => setActiveTab('upcoming')}
+          onClick={() => navigate('/user-actions/events')}
         >
           Upcoming Events
           {upcomingSessions.length > 0 && (
@@ -184,7 +185,7 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
         </button>
         <button 
           className={`tab-btn ${activeTab === 'payments' ? 'active' : ''}`}
-          onClick={() => setActiveTab('payments')}
+          onClick={() => navigate('/user-actions/payments')}
         >
           Pending Payments
           {pendingPayments.length > 0 && (

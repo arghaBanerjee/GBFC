@@ -14,7 +14,7 @@ export default function Home({ user }) {
             Check upcoming fixtures, training sessions, and relive our best moments.
           </p>
           <div className="hero-grid">
-            <div className="hero-card" onClick={() => navigate('/matches')}>
+            <div className="hero-card" onClick={() => navigate('/matches/upcoming')}>
               <h4>Match Centre</h4>
               <p>See past and upcoming fixtures, results, and match highlights.</p>
             </div>
