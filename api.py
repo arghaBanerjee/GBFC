@@ -23,6 +23,10 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from io import BytesIO
 from apscheduler.schedulers.background import BackgroundScheduler
+from local_env import load_local_env
+
+load_local_env()
+
 from whatsapp_notifier import (
     find_group_chat_id,
     get_instance_state,
@@ -67,13 +71,13 @@ if CLOUDINARY_URL:
 # Set these in your environment or .env file to enable email functionality
 # See EMAIL_SETUP.md for detailed configuration instructions
 # ====================================================================
-SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+SMTP_SERVER = os.environ.get("SMTP_SERVER")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "gbfcadmin@gmail.com")  # Your email address
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "tmogvjjjnhbyeysm")  # App password (NOT regular password)
-FROM_EMAIL = os.environ.get("FROM_EMAIL", "GBFC Admin")
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+FROM_EMAIL = os.environ.get("FROM_EMAIL") or SMTP_USERNAME or ""
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-WHATSAPP_NOTIFICATIONS_ENABLED = os.environ.get("WHATSAPP_NOTIFICATIONS_ENABLED", "true").lower() == "true"
+WHATSAPP_NOTIFICATIONS_ENABLED = os.environ.get("WHATSAPP_NOTIFICATIONS_ENABLED", "false").lower() == "true"
 
 whatsapp_scheduler = BackgroundScheduler()
 
@@ -1215,7 +1219,7 @@ def is_admin(current_user: dict) -> bool:
 app = FastAPI(title="Glasgow Bengali FC API", version="1.0")
 
 # CORS configuration - MUST be before startup event
-FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
+FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN")
 allowed_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -1223,7 +1227,7 @@ allowed_origins = [
     "http://127.0.0.1:5174",
     "https://glasgow-bengali-fc.vercel.app",  # Production frontend
 ]
-if FRONTEND_ORIGIN not in allowed_origins:
+if FRONTEND_ORIGIN and FRONTEND_ORIGIN not in allowed_origins:
     allowed_origins.append(FRONTEND_ORIGIN)
 
 print(f"Configuring CORS with allowed origins: {allowed_origins}")

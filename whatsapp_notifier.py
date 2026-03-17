@@ -2,10 +2,13 @@ import os
 from typing import Any, Dict, List, Optional
 
 import requests
+from local_env import load_local_env
 
-GREEN_API_INSTANCE_ID = os.environ.get("GREEN_API_INSTANCE_ID", "7107550979").strip()
-GREEN_API_TOKEN = os.environ.get("GREEN_API_TOKEN", "8d5c3f5490ed481589e561105643727d8ee3df794f2846219f").strip()
-WHATSAPP_GROUP_ID = os.environ.get("WHATSAPP_GROUP_ID", "120363426831613843@g.us").strip()
+load_local_env()
+
+GREEN_API_INSTANCE_ID = os.environ.get("GREEN_API_INSTANCE_ID", "").strip()
+GREEN_API_TOKEN = os.environ.get("GREEN_API_TOKEN", "").strip()
+WHATSAPP_GROUP_ID = os.environ.get("WHATSAPP_GROUP_ID", "").strip()
 GREEN_API_BASE_URL = f"https://api.green-api.com/waInstance{GREEN_API_INSTANCE_ID}" if GREEN_API_INSTANCE_ID else ""
 
 

@@ -96,6 +96,24 @@ If you want to run it as `./restart-backend.sh`, make it executable once:
 chmod +x restart-backend.sh
 ```
 
+## Local Backend Secrets
+
+Local backend secrets now load automatically from:
+
+```bash
+.backend.local.env
+```
+
+This file is gitignored and should never be committed.
+
+To set up local credentials:
+
+1. Copy `.backend.local.env.example` to `.backend.local.env`
+2. Fill in your local SMTP, email, Green API, and WhatsApp values
+3. Start or restart the backend normally
+
+The backend will automatically read `.backend.local.env` during local runs, so secrets no longer need to be hardcoded in the Python files.
+
 ## Cost
 
 - **Free tier**: $0/month (with backend sleep after 15 min inactivity)

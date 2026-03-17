@@ -55,6 +55,7 @@ export default function Admin({ user, loading }) {
   const [notificationSettings, setNotificationSettings] = useState([])
   const [notificationMeta, setNotificationMeta] = useState({ target_audiences: [], notification_types: [] })
   const [notificationSaving, setNotificationSaving] = useState('')
+  const [notificationSaveStatusByType, setNotificationSaveStatusByType] = useState({})
 
   const notificationPreviewSamples = {
     practice: {
@@ -257,6 +258,10 @@ export default function Admin({ user, loading }) {
       setNotificationSettings((current) =>
         current.map((item) => (item.notif_type === notifType ? data : item))
       )
+      setNotificationSaveStatusByType((current) => ({
+        ...current,
+        [notifType]: 'Template saved successfully!',
+      }))
       setMessage('Notification setting saved.')
     } catch (err) {
       console.error('Error saving notification setting:', err)
@@ -281,7 +286,12 @@ export default function Admin({ user, loading }) {
       setNotificationSettings((current) =>
         current.map((item) => (item.notif_type === notifType ? data : item))
       )
-      setMessage('Notification setting reset.')
+      setNotificationSaveStatusByType((current) => {
+        const next = { ...current }
+        delete next[notifType]
+        return next
+      })
+      setMessage('Notification setting reset to defaults.')
     } catch (err) {
       console.error('Error resetting notification setting:', err)
       setMessage('Error resetting notification setting')
@@ -1078,6 +1088,11 @@ export default function Admin({ user, loading }) {
                     </button>
                   </div>
                 </div>
+                {notificationSaveStatusByType[setting.notif_type] && (
+                  <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500', marginBottom: '1rem' }}>
+                    {notificationSaveStatusByType[setting.notif_type]}
+                  </div>
+                )}
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                   <div>
