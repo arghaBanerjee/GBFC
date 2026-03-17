@@ -807,7 +807,13 @@ export default function Admin({ user, loading }) {
         <>
           <h3>Registered Users</h3>
           <div style={{ marginTop: '1rem' }}>
-            {users.map((u) => (
+            {[...users]
+              .sort((a, b) => {
+                const aLastLogin = a.last_login ? new Date(a.last_login).getTime() : 0
+                const bLastLogin = b.last_login ? new Date(b.last_login).getTime() : 0
+                return bLastLogin - aLastLogin
+              })
+              .map((u) => (
               <div 
                 key={u.email} 
                 style={{ 

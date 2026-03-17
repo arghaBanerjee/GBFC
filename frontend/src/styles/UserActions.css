@@ -326,8 +326,8 @@
   }
 
   .tab-btn {
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
+    padding: 0.625rem 1rem;
+    font-size: 1rem;
   }
 
   .card-header {
@@ -338,11 +338,11 @@
   }
 
   .card-header h3 {
-    font-size: 1rem;
+    font-size: 1.15rem;
   }
 
   .card-header .date {
-    font-size: 0.8125rem;
+    font-size: 0.95rem;
   }
 
   .card-header-meta {
@@ -351,7 +351,7 @@
   }
 
   .card-header-cta {
-    font-size: 0.7rem;
+    font-size: 0.9rem;
   }
 
   .card-body {
@@ -374,9 +374,17 @@
   }
 
   .detail-chip {
-    padding: 0.55rem 0.65rem;
+    padding: 0.75rem 0.85rem;
     min-width: 0;
     flex: 1 1 calc(50% - 0.25rem);
+  }
+
+  .detail-chip .label {
+    font-size: 0.95rem;
+  }
+
+  .detail-chip .value {
+    font-size: 1.1rem;
   }
 
   .availability-buttons {
@@ -388,8 +396,8 @@
   .availability-btn {
     width: 100%;
     min-width: 0;
-    padding: 0.7rem 0.25rem;
-    font-size: 0.75rem;
+    padding: 0.85rem 0.35rem;
+    font-size: 0.95rem;
     border-radius: 0.75rem;
   }
 
@@ -414,7 +422,7 @@
 
   .section-label {
     margin-bottom: 0.45rem;
-    font-size: 0.8125rem;
+    font-size: 1rem;
   }
 
   .checkbox-label {
@@ -423,6 +431,6 @@
   }
 
   .checkbox-label span {
-    font-size: 0.8125rem;
+    font-size: 0.95rem;
   }
 }

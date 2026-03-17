@@ -91,19 +91,21 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
   const handleAvailabilityChange = async (date, status) => {
     try {
       const token = localStorage.getItem('token')
+      const currentStatus = upcomingSessions.find((session) => session.date === date)?.user_status
+      const newStatus = currentStatus === status ? 'none' : status
       const response = await fetch(`${API_URL}/api/practice/${date}/availability`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status: newStatus })
       })
 
       if (response.ok) {
         // Update local state
         setUpcomingSessions(prev => prev.map(session => 
-          session.date === date ? { ...session, user_status: status } : session
+          session.date === date ? { ...session, user_status: newStatus === 'none' ? null : newStatus } : session
         ))
       } else {
         const err = await response.json()
@@ -211,7 +213,6 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
                       <h3>Practice</h3>
                     </div>
                     <div className="card-header-meta">
-                      <span className="date">{formatDate(session.date)}</span>
                       <span className="card-header-cta">View details →</span>
                     </div>
                   </button>
@@ -222,8 +223,8 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
                         <span className="value">{session.location || 'TBD'}</span>
                       </div>
                       <div className="detail-chip">
-                        <span className="label">Time</span>
-                        <span className="value">{session.time || 'TBD'}</span>
+                        <span className="label">Date & Time</span>
+                        <span className="value">{`${formatDate(session.date)}${session.time ? `, ${session.time}` : ', TBD'}`}</span>
                       </div>
                       {session.session_cost && (
                         <div className="detail-chip">
@@ -277,12 +278,15 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
                       <h3>Practice</h3>
                     </div>
                     <div className="card-header-meta">
-                      <span className="date">{formatDate(payment.date)}</span>
                       <span className="card-header-cta">View details →</span>
                     </div>
                   </button>
                   <div className="card-body">
                     <div className="payment-details compact-details">
+                      <div className="detail-chip">
+                        <span className="label">Date & Time</span>
+                        <span className="value">{`${formatDate(payment.date)}${payment.time ? `, ${payment.time}` : ''}`}</span>
+                      </div>
                       <div className="detail-chip">
                         <span className="label">Your Amount</span>
                         <span className="value amount">£{payment.individual_amount}</span>
