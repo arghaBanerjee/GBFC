@@ -6,12 +6,13 @@ import '../styles/Admin.css'
 export default function Admin({ user, loading }) {
   const navigate = useNavigate()
   const token = localStorage.getItem('token')
+  const isSuperAdmin = user?.email === 'super@admin.com'
   const adminTabs = [
     { value: 'event', label: 'Add Match' },
     { value: 'practice', label: 'Add Practice' },
     { value: 'forum', label: 'Forum Posts' },
     { value: 'users', label: 'Users' },
-    { value: 'notifications', label: 'Notifications' },
+    ...(isSuperAdmin ? [{ value: 'notifications', label: 'Notifications' }] : []),
   ]
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
@@ -38,6 +39,7 @@ export default function Admin({ user, loading }) {
   const [practiceDate, setPracticeDate] = useState('')
   const [practiceTime, setPracticeTime] = useState('')
   const [practiceLocation, setPracticeLocation] = useState('')
+  const [practiceInlineStatus, setPracticeInlineStatus] = useState('')
 
   // Forum posts
   const [forumPosts, setForumPosts] = useState([])
@@ -316,6 +318,7 @@ export default function Admin({ user, loading }) {
     setPracticeDate('')
     setPracticeTime('')
     setPracticeLocation('')
+    setPracticeInlineStatus('')
   }
 
   const resetForumPostForm = () => {
@@ -404,6 +407,7 @@ export default function Admin({ user, loading }) {
 
   const handleSubmitPractice = async (e) => {
     e.preventDefault()
+    const isEditingPractice = Boolean(editingPracticeDate)
 
     const payload = { date: practiceDate, time: practiceTime, location: practiceLocation }
 
@@ -452,17 +456,22 @@ export default function Admin({ user, loading }) {
       setMessage(data?.detail || 'Failed to save practice session')
       return
     }
-    setMessage(editingPracticeDate ? 'Practice session updated.' : 'Practice session created.')
+    setMessage(isEditingPractice ? 'Practice session updated.' : 'Practice session created.')
     resetPracticeForm()
+    if (!isEditingPractice) {
+      setPracticeInlineStatus('New Practice Session Added !')
+    }
     loadPracticeSessions()
   }
 
   const handleEditPractice = (s) => {
     setActiveTab('practice')
+    setPracticeInlineStatus('')
     setEditingPracticeDate(s.date)
     setPracticeDate(s.date || '')
     setPracticeTime(s.time || '')
     setPracticeLocation(s.location || '')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleDeletePractice = async (dateStr) => {
@@ -766,6 +775,11 @@ export default function Admin({ user, loading }) {
                 </button>
               )}
             </div>
+            {practiceInlineStatus && (
+              <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500' }}>
+                {practiceInlineStatus}
+              </div>
+            )}
           </form>
 
           <h3 style={{ marginTop: '2rem' }}>Upcoming practice sessions</h3>
@@ -774,14 +788,18 @@ export default function Admin({ user, loading }) {
               .filter(s => new Date(s.date) >= new Date(new Date().setHours(0, 0, 0, 0)))
               .sort((a, b) => new Date(a.date) - new Date(b.date))
               .map((s) => (
-              <div key={s.date} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
+              <div
+                key={s.date}
+                onClick={() => navigate(`/book-practice?date=${encodeURIComponent(s.date)}`)}
+                style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa', cursor: 'pointer' }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <strong>{s.date}</strong>
                   <div>
-                    <button className="nav-btn" onClick={() => handleEditPractice(s)} style={{ marginRight: 8, border: '1px solid #d1d5db' }}>
+                    <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} style={{ marginRight: 8, border: '1px solid #d1d5db' }}>
                       Edit
                     </button>
-                    <button className="nav-btn" onClick={() => handleDeletePractice(s.date)} style={{ background: '#ef4444', color: 'white', border: '#ef4444' }}>
+                    <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleDeletePractice(s.date) }} style={{ background: '#ef4444', color: 'white', border: '#ef4444' }}>
                       Delete
                     </button>
                   </div>
@@ -1043,7 +1061,7 @@ export default function Admin({ user, loading }) {
         </>
       )}
 
-      {activeTab === 'notifications' && (
+      {activeTab === 'notifications' && isSuperAdmin && (
         <>
           <h3>Notifications</h3>
           <p style={{ color: '#6b7280', maxWidth: '900px' }}>
