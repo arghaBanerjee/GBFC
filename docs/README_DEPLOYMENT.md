@@ -62,7 +62,8 @@ All changes are backward compatible:
 - `FRONTEND_ORIGIN` - Your Vercel URL (e.g., `https://your-app.vercel.app`)
 - `GREEN_API_INSTANCE_ID` - Green API instance ID for WhatsApp integration
 - `GREEN_API_TOKEN` - Green API token for WhatsApp integration
-- `WHATSAPP_GROUP_ID` - WhatsApp group chat ID ending in `@g.us`
+- `WHATSAPP_GROUP_NAME` - WhatsApp group name to resolve dynamically per environment
+- `WHATSAPP_GROUP_ID` - Optional WhatsApp group chat ID ending in `@g.us` used as a direct fallback
 - `WHATSAPP_NOTIFICATIONS_ENABLED` - Set to `true` or `false` to toggle WhatsApp broadcasts
 
 ### Frontend (Vercel)
@@ -113,6 +114,13 @@ To set up local credentials:
 3. Start or restart the backend normally
 
 The backend will automatically read `.backend.local.env` during local runs, so secrets no longer need to be hardcoded in the Python files.
+
+For WhatsApp targeting, you can now set:
+
+- `WHATSAPP_GROUP_NAME` to let the backend resolve the correct group ID for that environment
+- `WHATSAPP_GROUP_ID` as an optional direct fallback when you already know the exact chat ID
+
+This is useful when local and production use different WhatsApp groups.
 
 ## Cost
 

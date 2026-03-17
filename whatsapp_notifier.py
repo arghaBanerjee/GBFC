@@ -9,11 +9,12 @@ load_local_env()
 GREEN_API_INSTANCE_ID = os.environ.get("GREEN_API_INSTANCE_ID", "").strip()
 GREEN_API_TOKEN = os.environ.get("GREEN_API_TOKEN", "").strip()
 WHATSAPP_GROUP_ID = os.environ.get("WHATSAPP_GROUP_ID", "").strip()
+WHATSAPP_GROUP_NAME = os.environ.get("WHATSAPP_GROUP_NAME", "").strip()
 GREEN_API_BASE_URL = f"https://api.green-api.com/waInstance{GREEN_API_INSTANCE_ID}" if GREEN_API_INSTANCE_ID else ""
 
 
 def whatsapp_is_configured() -> bool:
-    return bool(GREEN_API_INSTANCE_ID and GREEN_API_TOKEN and WHATSAPP_GROUP_ID)
+    return bool(GREEN_API_INSTANCE_ID and GREEN_API_TOKEN and (WHATSAPP_GROUP_ID or WHATSAPP_GROUP_NAME))
 
 
 def _build_url(method_name: str) -> str:
@@ -36,10 +37,37 @@ def _request(method: str, endpoint: str, *, json_payload: Optional[Dict[str, Any
         return {"success": False, "error": str(exc)}
 
 
+def resolve_group_chat_id() -> Dict[str, Any]:
+    if WHATSAPP_GROUP_ID:
+        return {"success": True, "chat_id": WHATSAPP_GROUP_ID, "source": "group_id"}
+    if not WHATSAPP_GROUP_NAME:
+        return {"success": False, "error": "WhatsApp group is not configured"}
+
+    matches_response = find_group_chat_id(WHATSAPP_GROUP_NAME)
+    if not matches_response.get("success"):
+        return matches_response
+
+    matches = matches_response.get("data") or []
+    if not matches:
+        return {"success": False, "error": f'WhatsApp group "{WHATSAPP_GROUP_NAME}" was not found'}
+    if len(matches) > 1:
+        return {"success": False, "error": f'Multiple WhatsApp groups matched "{WHATSAPP_GROUP_NAME}"'}
+
+    return {
+        "success": True,
+        "chat_id": matches[0].get("id"),
+        "group_name": matches[0].get("name"),
+        "source": "group_name",
+    }
+
+
 def send_group_message(message: str) -> Dict[str, Any]:
     if not whatsapp_is_configured():
         return {"success": False, "error": "WhatsApp service is not configured"}
-    return _request("POST", "sendMessage", json_payload={"chatId": WHATSAPP_GROUP_ID, "message": message})
+    target_group = resolve_group_chat_id()
+    if not target_group.get("success"):
+        return target_group
+    return _request("POST", "sendMessage", json_payload={"chatId": target_group.get("chat_id"), "message": message})
 
 
 def get_instance_state() -> Dict[str, Any]:

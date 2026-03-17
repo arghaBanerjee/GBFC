@@ -31,6 +31,7 @@ from whatsapp_notifier import (
     find_group_chat_id,
     get_instance_state,
     keep_whatsapp_instance_alive,
+    resolve_group_chat_id,
     send_group_message,
     whatsapp_is_configured,
 )
@@ -2910,10 +2911,12 @@ def whatsapp_status(current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     state = get_instance_state()
+    target_group = resolve_group_chat_id()
     return {
         "configured": whatsapp_is_configured(),
         "enabled": WHATSAPP_NOTIFICATIONS_ENABLED,
         "state": state,
+        "target_group": target_group,
     }
 
 @app.post("/api/admin/whatsapp/test")
