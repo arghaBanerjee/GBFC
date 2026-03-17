@@ -1,0 +1,31 @@
+@baseUrl = http://localhost:8000
+@adminEmail = gbfcadmin@gmail.com
+@adminPassword = test1234
+
+### Admin login
+POST {{baseUrl}}/api/token
+Content-Type: application/x-www-form-urlencoded
+
+username={{adminEmail}}&password={{adminPassword}}
+
+### WhatsApp status
+GET {{baseUrl}}/api/admin/whatsapp/status
+Authorization: Bearer c2c1e0de-d1a6-4eee-b4d9-a4b46e76944f
+
+### Find WhatsApp group by name
+POST {{baseUrl}}/api/admin/whatsapp/find-group
+Content-Type: application/json
+Authorization: Bearer 68b83b86-0131-44e9-8227-e0d418d404f3
+
+{
+  "group_name": "GBFC Test"
+}
+
+### Send WhatsApp test message
+POST {{baseUrl}}/api/admin/whatsapp/test
+Content-Type: application/json
+Authorization: Bearer c2c1e0de-d1a6-4eee-b4d9-a4b46e76944f
+
+{
+  "message": "Test message from Glasgow Bengali FC"
+}

@@ -69,9 +69,9 @@ if CLOUDINARY_URL:
 # ====================================================================
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")  # Your email address
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")  # App password (NOT regular password)
-FROM_EMAIL = os.environ.get("FROM_EMAIL", SMTP_USERNAME)
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "gbfcadmin@gmail.com")  # Your email address
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "tmogvjjjnhbyeysm")  # App password (NOT regular password)
+FROM_EMAIL = os.environ.get("FROM_EMAIL", "GBFC Admin")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 WHATSAPP_NOTIFICATIONS_ENABLED = os.environ.get("WHATSAPP_NOTIFICATIONS_ENABLED", "true").lower() == "true"
 
