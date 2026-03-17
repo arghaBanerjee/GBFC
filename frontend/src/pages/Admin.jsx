@@ -8,8 +8,8 @@ export default function Admin({ user, loading }) {
   const token = localStorage.getItem('token')
   const isSuperAdmin = user?.email === 'super@admin.com'
   const adminTabs = [
-    { value: 'event', label: 'Add Match' },
     { value: 'practice', label: 'Add Practice' },
+    { value: 'event', label: 'Add Match' },
     { value: 'forum', label: 'Forum Posts' },
     { value: 'users', label: 'Users' },
     ...(isSuperAdmin ? [{ value: 'notifications', label: 'Notifications' }] : []),
@@ -18,7 +18,7 @@ export default function Admin({ user, loading }) {
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
   const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
 
-  const [activeTab, setActiveTab] = useState('event')
+  const [activeTab, setActiveTab] = useState('practice')
   const [message, setMessage] = useState('')
 
   // Events

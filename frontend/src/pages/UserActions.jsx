@@ -226,12 +226,6 @@ function UserActions({ user, loading, initialTab = 'upcoming' }) {
                         <span className="label">Date & Time</span>
                         <span className="value">{`${formatDate(session.date)}${session.time ? `, ${session.time}` : ', TBD'}`}</span>
                       </div>
-                      {session.session_cost && (
-                        <div className="detail-chip">
-                          <span className="label">Cost</span>
-                          <span className="value">£{session.session_cost}</span>
-                        </div>
-                      )}
                     </div>
                     
                     <div className="availability-section">

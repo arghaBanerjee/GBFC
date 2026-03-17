@@ -14,6 +14,7 @@ import Reports from './pages/Reports'
 import UserActions from './pages/UserActions'
 import ProtectedRoute from './components/ProtectedRoute'
 import { apiUrl } from './api'
+import clubLogo from './assets/club-logo.jpeg'
 import './index.css'
 
 function App() {
@@ -202,7 +203,7 @@ function App() {
           {/* Logo and Social Icons */}
           <div className="logo">
             <Link to="/" className="logo-link">
-              <span className="logo-icon">⚽</span>
+              <img src={clubLogo} alt="Glasgow Bengali FC logo" className="logo-icon" />
               <span className="logo-club-name">GBFC</span>
               <span className="logo-text">Glasgow Bengali FC</span>
             </Link>
