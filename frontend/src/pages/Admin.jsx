@@ -48,6 +48,8 @@ export default function Admin({ user, loading }) {
   const [users, setUsers] = useState([])
   const [editingUserId, setEditingUserId] = useState(null)
   const [editingUserName, setEditingUserName] = useState('')
+  const [userSearchTerm, setUserSearchTerm] = useState('')
+  const [userTypeStatusByEmail, setUserTypeStatusByEmail] = useState({})
 
   // Notifications
   const [notificationSettings, setNotificationSettings] = useState([])
@@ -526,6 +528,12 @@ export default function Admin({ user, loading }) {
       setMessage(data?.detail || 'Failed to update user type')
       return
     }
+    setUserTypeStatusByEmail((prev) => ({
+      ...prev,
+      [email]: userType === 'admin'
+        ? 'Updated user to Admin'
+        : 'Updated user to Member'
+    }))
     setMessage(`User type updated to ${userType}.`)
     loadUsers()
   }
@@ -569,6 +577,32 @@ export default function Admin({ user, loading }) {
     setMessage('User deleted.')
     loadUsers()
     loadForumPosts()
+  }
+
+  const filteredUsers = [...users]
+    .filter((u) => (u.full_name || '').toLowerCase().includes(userSearchTerm.trim().toLowerCase()))
+    .sort((a, b) => {
+      const aLastLogin = a.last_login ? new Date(a.last_login).getTime() : 0
+      const bLastLogin = b.last_login ? new Date(b.last_login).getTime() : 0
+      return bLastLogin - aLastLogin
+    })
+
+  const formatBirthday = (birthday) => {
+    if (!birthday) return 'Not Set'
+    const parsedDate = new Date(`${birthday}T00:00:00`)
+    if (Number.isNaN(parsedDate.getTime())) return 'Not Set'
+
+    const day = parsedDate.getDate()
+    const month = parsedDate.toLocaleString('en-GB', { month: 'long' })
+    const suffix = (day % 10 === 1 && day % 100 !== 11)
+      ? 'st'
+      : (day % 10 === 2 && day % 100 !== 12)
+        ? 'nd'
+        : (day % 10 === 3 && day % 100 !== 13)
+          ? 'rd'
+          : 'th'
+
+    return `${day}${suffix} ${month}`
   }
 
   if (!isAdmin) {
@@ -669,7 +703,7 @@ export default function Admin({ user, loading }) {
               <div key={ev.id} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                   <div>
-                    <strong style={{ fontSize: '1.05rem' }}>{ev.name}</strong>
+                    <strong>{ev.date}</strong>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                     <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ border: '1px solid #d1d5db' }}>
@@ -680,7 +714,8 @@ export default function Admin({ user, loading }) {
                     </button>
                   </div>
                 </div>
-                <div style={{ opacity: 0.8, marginBottom: '0.5rem', fontSize: '0.9rem' }}>{ev.date} {ev.time || ''}</div>
+                <div style={{ fontWeight: '700', fontSize: '1.05rem', marginBottom: '0.4rem' }}>{ev.name}</div>
+                <div style={{ opacity: 0.8, marginBottom: '0.35rem', fontSize: '0.9rem' }}>Time: {ev.time || 'TBD'}</div>
                 {ev.location && <div style={{ opacity: 0.8, fontSize: '0.9rem' }}>Location: {ev.location}</div>}
               </div>
             ))}
@@ -807,25 +842,34 @@ export default function Admin({ user, loading }) {
         <>
           <h3>Registered Users</h3>
           <div style={{ marginTop: '1rem' }}>
-            {[...users]
-              .sort((a, b) => {
-                const aLastLogin = a.last_login ? new Date(a.last_login).getTime() : 0
-                const bLastLogin = b.last_login ? new Date(b.last_login).getTime() : 0
-                return bLastLogin - aLastLogin
-              })
-              .map((u) => (
+            <input
+              type="text"
+              value={userSearchTerm}
+              onChange={(e) => setUserSearchTerm(e.target.value)}
+              placeholder="Search users by name"
+              style={{
+                width: '100%',
+                padding: '0.875rem 1rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '0.75rem',
+                fontSize: '0.95rem',
+                marginBottom: '1rem',
+                boxSizing: 'border-box'
+              }}
+            />
+            {filteredUsers.map((u) => (
               <div 
                 key={u.email} 
                 style={{ 
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.5rem',
+                  border: u.email === user?.email ? '1px solid #86efac' : '1px solid #d1d5db',
+                  borderRadius: '0.75rem',
                   padding: '1rem',
                   marginBottom: '1rem',
-                  background: 'white'
+                  background: u.email === user?.email ? '#f0fdf4' : 'white'
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                  <div style={{ flex: '1', minWidth: '220px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div style={{ flex: '1', minWidth: 0, paddingRight: '0.5rem' }}>
                     <div style={{ marginBottom: '0.5rem' }}>
                     {editingUserId === u.email ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -884,88 +928,79 @@ export default function Admin({ user, loading }) {
                         </button>
                       </div>
                     ) : (
-                      <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>
+                      <div style={{ fontWeight: '700', fontSize: '1.2rem', lineHeight: '1.25' }}>
                         {u.full_name}
                       </div>
                     )}
                     </div>
-                    {u.email === user?.email ? (
-                      <div style={{ marginBottom: '0.5rem' }}>
-                        <span style={{ 
-                          padding: '0.25rem 0.75rem', 
-                          borderRadius: '0.25rem', 
-                          fontSize: '0.875rem',
-                          background: '#10b981',
-                          color: 'white',
-                          fontWeight: '600',
-                          display: 'inline-block'
-                        }}>
-                          {u.user_type === 'admin' ? 'Admin' : 'Member'}
-                        </span>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-                        <button
-                          onClick={() => handleUpdateUserType(u.email, 'member')}
-                          style={{
-                            padding: '0.25rem 0.75rem',
-                            borderRadius: '0.25rem',
-                            fontSize: '0.875rem',
-                            background: u.user_type === 'member' ? '#10b981' : '#f3f4f6',
-                            color: u.user_type === 'member' ? 'white' : '#374151',
-                            border: u.user_type === 'member' ? '1px solid #10b981' : '1px solid #d1d5db',
-                            cursor: 'pointer',
-                            fontWeight: u.user_type === 'member' ? '600' : '400'
-                          }}
-                        >
-                          Member
-                        </button>
-                        <button
-                          onClick={() => handleUpdateUserType(u.email, 'admin')}
-                          style={{
-                            padding: '0.25rem 0.75rem',
-                            borderRadius: '0.25rem',
-                            fontSize: '0.875rem',
-                            background: u.user_type === 'admin' ? '#10b981' : '#f3f4f6',
-                            color: u.user_type === 'admin' ? 'white' : '#374151',
-                            border: u.user_type === 'admin' ? '1px solid #10b981' : '1px solid #d1d5db',
-                            cursor: 'pointer',
-                            fontWeight: u.user_type === 'admin' ? '600' : '400'
-                          }}
-                        >
-                          Admin
-                        </button>
-                      </div>
-                    )}
-                    <div style={{ color: '#6b7280', fontSize: '0.875rem', wordBreak: 'break-word' }}>
+                    <div style={{ color: '#6b7280', fontSize: '0.95rem', wordBreak: 'break-word', marginBottom: '0.75rem' }}>
                       {u.email}
                     </div>
+                    <div style={{ color: '#6b7280', fontSize: '0.95rem', marginBottom: '0.75rem' }}>
+                      <strong>Birthday:</strong> {formatBirthday(u.birthday)}
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: '#374151' }}>
+                        <input
+                          type="radio"
+                          name={`user-type-${u.email}`}
+                          checked={u.user_type === 'member'}
+                          disabled={u.email === user?.email}
+                          onChange={() => handleUpdateUserType(u.email, 'member')}
+                        />
+                        Member
+                      </label>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: '#374151' }}>
+                        <input
+                          type="radio"
+                          name={`user-type-${u.email}`}
+                          checked={u.user_type === 'admin'}
+                          disabled={u.email === user?.email}
+                          onChange={() => handleUpdateUserType(u.email, 'admin')}
+                        />
+                        Admin
+                      </label>
+                    </div>
+                    {userTypeStatusByEmail[u.email] && (
+                      <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.75rem' }}>
+                        {userTypeStatusByEmail[u.email]}
+                      </div>
+                    )}
                   </div>
-                  {u.email !== user?.email && editingUserId !== u.email && (
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  {editingUserId !== u.email && (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'nowrap', flexShrink: 0 }}>
                       <button 
                         className="nav-btn" 
                         onClick={() => {
+                          if (u.email === user?.email) {
+                            navigate('/profile')
+                            return
+                          }
                           setEditingUserId(u.email)
                           setEditingUserName(u.full_name)
                         }}
                         style={{ 
                           padding: '0.5rem 1rem',
                           fontSize: '0.875rem',
-                          border: '1px solid #d1d5db'
+                          border: u.email === user?.email ? '1px solid #16a34a' : '1px solid #d1d5db',
+                          color: u.email === user?.email ? '#16a34a' : '#374151',
+                          background: 'white'
                         }}
                       >
-                        Edit
+                        {u.email === user?.email ? 'Profile Edit' : 'Edit'}
                       </button>
                       <button 
                         className="nav-btn" 
                         onClick={() => handleDeleteUser(u.email)}
+                        disabled={u.email === user?.email}
                         style={{ 
-                          background: '#ef4444', 
-                          color: 'white', 
-                          border: '1px solid #ef4444',
+                          background: u.email === user?.email ? '#f3f4f6' : '#ef4444', 
+                          color: u.email === user?.email ? '#9ca3af' : 'white', 
+                          border: u.email === user?.email ? '1px solid #d1d5db' : '1px solid #ef4444',
                           padding: '0.5rem 1rem',
-                          fontSize: '0.875rem'
+                          fontSize: '0.875rem',
+                          cursor: u.email === user?.email ? 'not-allowed' : 'pointer',
+                          opacity: u.email === user?.email ? 1 : 1
                         }}
                       >
                         Delete
@@ -993,7 +1028,7 @@ export default function Admin({ user, loading }) {
                 </div>
               </div>
             ))}
-            {users.length === 0 && <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>No users found.</p>}
+            {filteredUsers.length === 0 && <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>No users found.</p>}
           </div>
         </>
       )}

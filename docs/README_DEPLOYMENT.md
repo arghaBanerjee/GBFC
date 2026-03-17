@@ -76,6 +76,26 @@ If you want to test Postgres/Cloudinary locally:
 2. Set environment variables in a `.env` file (not committed to git)
 3. Run: `source .env && python api.py`
 
+## Local Backend Restart
+
+For local development, you can restart the backend with a single command from the project root:
+
+```bash
+zsh restart-backend.sh
+```
+
+The script:
+
+- stops any existing backend process on port `8000`
+- uses the project virtualenv Python at `venv/bin/python` when available
+- starts `uvicorn api:app --reload`
+
+If you want to run it as `./restart-backend.sh`, make it executable once:
+
+```bash
+chmod +x restart-backend.sh
+```
+
 ## Cost
 
 - **Free tier**: $0/month (with backend sleep after 15 min inactivity)

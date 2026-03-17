@@ -1542,7 +1542,7 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
     
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
+        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
         users = []
         for row in cur.fetchall():
             user_dict = dict(row)
@@ -1562,6 +1562,14 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
                     user_dict["last_login"] = str(user_dict["last_login"])
             else:
                 user_dict["last_login"] = None
+            # Convert birthday date to ISO string if needed, or set to None
+            if user_dict.get("birthday"):
+                if hasattr(user_dict["birthday"], 'isoformat'):
+                    user_dict["birthday"] = user_dict["birthday"].isoformat()
+                else:
+                    user_dict["birthday"] = str(user_dict["birthday"])
+            else:
+                user_dict["birthday"] = None
             # Ensure user_type has a default
             if not user_dict.get("user_type"):
                 user_dict["user_type"] = "member"
