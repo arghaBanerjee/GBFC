@@ -1,10 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
+import '../styles/Admin.css'
 
 export default function Admin({ user, loading }) {
   const navigate = useNavigate()
   const token = localStorage.getItem('token')
+  const adminTabs = [
+    { value: 'event', label: 'Add Match' },
+    { value: 'practice', label: 'Add Practice' },
+    { value: 'forum', label: 'Forum Posts' },
+    { value: 'users', label: 'Users' },
+    { value: 'notifications', label: 'Notifications' },
+  ]
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
   const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
@@ -45,6 +53,83 @@ export default function Admin({ user, loading }) {
   const [notificationSettings, setNotificationSettings] = useState([])
   const [notificationMeta, setNotificationMeta] = useState({ target_audiences: [], notification_types: [] })
   const [notificationSaving, setNotificationSaving] = useState('')
+
+  const notificationPreviewSamples = {
+    practice: {
+      date: '2026-03-20',
+      time: '7:30 PM',
+      location: 'Glasgow Green',
+      event_name: '',
+      author_name: '',
+      content: '',
+      content_preview: '',
+      time_suffix: ' at 7:30 PM',
+      location_suffix: ' at Glasgow Green',
+      location_comma_suffix: ', Glasgow Green',
+      time_line: '🕐 7:30 PM\n',
+      location_line: '📍 Glasgow Green\n',
+    },
+    match: {
+      date: '2026-03-28',
+      time: '2:00 PM',
+      location: 'Toryglen Regional Football Centre',
+      event_name: 'GBFC vs Rivals FC',
+      author_name: '',
+      content: '',
+      content_preview: '',
+      time_suffix: ' at 2:00 PM',
+      location_suffix: ' at Toryglen Regional Football Centre',
+      location_comma_suffix: ', Toryglen Regional Football Centre',
+      time_line: '🕐 2:00 PM\n',
+      location_line: '📍 Toryglen Regional Football Centre\n',
+    },
+    forum_post: {
+      date: '',
+      time: '',
+      location: '',
+      event_name: '',
+      author_name: 'Argha Banerjee',
+      content: 'Please confirm who can join training this Thursday and whether we should arrange bibs.',
+      content_preview: 'Please confirm who can join training this Thursday and whether we should arrange bibs.',
+      time_suffix: '',
+      location_suffix: '',
+      location_comma_suffix: '',
+      time_line: '',
+      location_line: '',
+    },
+    payment_request: {
+      date: '2026-03-13',
+      time: '8:00 PM',
+      location: 'Scotstoun Sports Campus',
+      event_name: '',
+      author_name: '',
+      content: '',
+      content_preview: '',
+      time_suffix: ' at 8:00 PM',
+      location_suffix: ' at Scotstoun Sports Campus',
+      location_comma_suffix: ', Scotstoun Sports Campus',
+      time_line: '🕐 8:00 PM\n',
+      location_line: '📍 Scotstoun Sports Campus\n',
+    },
+  }
+
+  const notificationVariableMap = {
+    practice: ['{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    match: ['{{event_name}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    forum_post: ['{{author_name}}', '{{content}}', '{{content_preview}}'],
+    payment_request: ['{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+  }
+
+  const renderNotificationPreview = (template, notifType) => {
+    const context = notificationPreviewSamples[notifType] || {}
+    let rendered = template || ''
+    Object.entries(context).forEach(([key, value]) => {
+      rendered = rendered.replaceAll(`{{${key}}}`, value ?? '')
+    })
+    return rendered
+  }
+
+  const getNotificationVariables = (notifType) => notificationVariableMap[notifType] || []
 
   useEffect(() => {
     // Wait for loading to complete before checking authentication
@@ -500,68 +585,30 @@ export default function Admin({ user, loading }) {
       <h2>Admin</h2>
       {message && <p>{message}</p>}
 
-      <div style={{ 
-        marginBottom: '1.5rem',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-        gap: '0.75rem',
-        maxWidth: '600px'
-      }}>
-        <button 
-          className={`nav-btn ${activeTab === 'event' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('event')}
-          style={{
-            width: '100%',
-            padding: '0.75rem 1rem',
-            fontSize: '0.95rem'
-          }}
+      <div className="admin-menu-mobile">
+        <select
+          className="admin-menu-select"
+          value={activeTab}
+          onChange={(e) => setActiveTab(e.target.value)}
         >
-          Add Match
-        </button>
-        <button 
-          className={`nav-btn ${activeTab === 'practice' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('practice')}
-          style={{
-            width: '100%',
-            padding: '0.75rem 1rem',
-            fontSize: '0.95rem'
-          }}
-        >
-          Add Practice
-        </button>
-        <button 
-          className={`nav-btn ${activeTab === 'forum' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('forum')}
-          style={{
-            width: '100%',
-            padding: '0.75rem 1rem',
-            fontSize: '0.95rem'
-          }}
-        >
-          Forum Posts
-        </button>
-        <button 
-          className={`nav-btn ${activeTab === 'users' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('users')}
-          style={{
-            width: '100%',
-            padding: '0.75rem 1rem',
-            fontSize: '0.95rem'
-          }}
-        >
-          Users
-        </button>
-        <button 
-          className={`nav-btn ${activeTab === 'notifications' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('notifications')}
-          style={{
-            width: '100%',
-            padding: '0.75rem 1rem',
-            fontSize: '0.95rem'
-          }}
-        >
-          Notifications
-        </button>
+          {adminTabs.map((tab) => (
+            <option key={tab.value} value={tab.value}>
+              {tab.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="admin-menu-tabs">
+        {adminTabs.map((tab) => (
+          <button
+            key={tab.value}
+            className={`admin-menu-tab ${activeTab === tab.value ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.value)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {activeTab === 'event' && (
@@ -620,18 +667,21 @@ export default function Admin({ user, loading }) {
           <div style={{ display: 'grid', gap: '1rem' }}>
             {events.sort((a, b) => new Date(b.date) - new Date(a.date)).map((ev) => (
               <div key={ev.id} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <strong style={{ fontSize: '1.05rem' }}>{ev.name}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong style={{ fontSize: '1.05rem' }}>{ev.name}</strong>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ border: '1px solid #d1d5db' }}>
+                      Edit
+                    </button>
+                    <button className="nav-btn" onClick={() => handleDeleteEvent(ev.id)} style={{ background: '#ef4444', color: 'white', border: '1px solid #ef4444' }}>
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <div style={{ opacity: 0.8, marginBottom: '0.75rem', fontSize: '0.9rem' }}>{ev.date} {ev.time || ''}</div>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ flex: '1', minWidth: '100px', border: '1px solid #d1d5db' }}>
-                    Edit
-                  </button>
-                  <button className="nav-btn" onClick={() => handleDeleteEvent(ev.id)} style={{ flex: '1', minWidth: '100px', background: '#ef4444', color: 'white', border: '#ef4444' }}>
-                    Delete
-                  </button>
-                </div>
+                <div style={{ opacity: 0.8, marginBottom: '0.5rem', fontSize: '0.9rem' }}>{ev.date} {ev.time || ''}</div>
+                {ev.location && <div style={{ opacity: 0.8, fontSize: '0.9rem' }}>Location: {ev.location}</div>}
               </div>
             ))}
           </div>
@@ -768,9 +818,9 @@ export default function Admin({ user, loading }) {
                   background: 'white'
                 }}
               >
-                <div>
-                  {/* Name and Edit UI */}
-                  <div style={{ marginBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                  <div style={{ flex: '1', minWidth: '220px' }}>
+                    <div style={{ marginBottom: '0.5rem' }}>
                     {editingUserId === u.email ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <input
@@ -832,84 +882,61 @@ export default function Admin({ user, loading }) {
                         {u.full_name}
                       </div>
                     )}
-                  </div>
-                  
-                  {/* Member/Admin Tags */}
-                  {u.email === user?.email ? (
-                    // Current logged-in user - show only their current role (non-clickable)
-                    <div style={{ marginBottom: '0.5rem' }}>
-                      <span style={{ 
-                        padding: '0.25rem 0.75rem', 
-                        borderRadius: '0.25rem', 
-                        fontSize: '0.875rem',
-                        background: '#10b981',
-                        color: 'white',
-                        fontWeight: '600',
-                        display: 'inline-block'
-                      }}>
-                        {u.user_type === 'admin' ? 'Admin' : 'Member'}
-                      </span>
                     </div>
-                  ) : (
-                    // Other users - show toggle buttons
-                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                      <button
-                        onClick={() => handleUpdateUserType(u.email, 'member')}
-                        style={{
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '0.25rem',
+                    {u.email === user?.email ? (
+                      <div style={{ marginBottom: '0.5rem' }}>
+                        <span style={{ 
+                          padding: '0.25rem 0.75rem', 
+                          borderRadius: '0.25rem', 
                           fontSize: '0.875rem',
-                          background: u.user_type === 'member' ? '#10b981' : '#f3f4f6',
-                          color: u.user_type === 'member' ? 'white' : '#374151',
-                          border: u.user_type === 'member' ? '1px solid #10b981' : '1px solid #d1d5db',
-                          cursor: 'pointer',
-                          fontWeight: u.user_type === 'member' ? '600' : '400'
-                        }}
-                      >
-                        Member
-                      </button>
-                      <button
-                        onClick={() => handleUpdateUserType(u.email, 'admin')}
-                        style={{
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '0.25rem',
-                          fontSize: '0.875rem',
-                          background: u.user_type === 'admin' ? '#10b981' : '#f3f4f6',
-                          color: u.user_type === 'admin' ? 'white' : '#374151',
-                          border: u.user_type === 'admin' ? '1px solid #10b981' : '1px solid #d1d5db',
-                          cursor: 'pointer',
-                          fontWeight: u.user_type === 'admin' ? '600' : '400'
-                        }}
-                      >
-                        Admin
-                      </button>
-                    </div>
-                  )}
-                  
-                  {/* Email */}
-                  <div style={{ color: '#6b7280', fontSize: '0.875rem', wordBreak: 'break-word' }}>
-                    {u.email}
-                  </div>
-                </div>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '0.5rem',
-                  paddingTop: '0.75rem',
-                  borderTop: '1px solid #e5e7eb'
-                }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                    <div>
-                      <strong>Registered:</strong> {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
-                    </div>
-                    <div>
-                      <strong>Last Login:</strong> {u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}
+                          background: '#10b981',
+                          color: 'white',
+                          fontWeight: '600',
+                          display: 'inline-block'
+                        }}>
+                          {u.user_type === 'admin' ? 'Admin' : 'Member'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => handleUpdateUserType(u.email, 'member')}
+                          style={{
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.875rem',
+                            background: u.user_type === 'member' ? '#10b981' : '#f3f4f6',
+                            color: u.user_type === 'member' ? 'white' : '#374151',
+                            border: u.user_type === 'member' ? '1px solid #10b981' : '1px solid #d1d5db',
+                            cursor: 'pointer',
+                            fontWeight: u.user_type === 'member' ? '600' : '400'
+                          }}
+                        >
+                          Member
+                        </button>
+                        <button
+                          onClick={() => handleUpdateUserType(u.email, 'admin')}
+                          style={{
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.875rem',
+                            background: u.user_type === 'admin' ? '#10b981' : '#f3f4f6',
+                            color: u.user_type === 'admin' ? 'white' : '#374151',
+                            border: u.user_type === 'admin' ? '1px solid #10b981' : '1px solid #d1d5db',
+                            cursor: 'pointer',
+                            fontWeight: u.user_type === 'admin' ? '600' : '400'
+                          }}
+                        >
+                          Admin
+                        </button>
+                      </div>
+                    )}
+                    <div style={{ color: '#6b7280', fontSize: '0.875rem', wordBreak: 'break-word' }}>
+                      {u.email}
                     </div>
                   </div>
-                  {u.email !== user?.email && (
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {u.email !== user?.email && editingUserId !== u.email && (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                       <button 
                         className="nav-btn" 
                         onClick={() => {
@@ -939,6 +966,24 @@ export default function Admin({ user, loading }) {
                       </button>
                     </div>
                   )}
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid #e5e7eb'
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                    <div>
+                      <strong>Registered:</strong> {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
+                    </div>
+                    <div>
+                      <strong>Last Login:</strong> {u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1064,6 +1109,15 @@ export default function Admin({ user, loading }) {
                       onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'app_template', e.target.value)}
                       style={{ width: '100%' }}
                     />
+                    <div style={{ marginTop: '0.5rem', color: '#6b7280', fontSize: '0.85rem' }}>
+                      Available variables: {getNotificationVariables(setting.notif_type).join(', ') || 'No variables available'}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', background: '#f9fafb', padding: '0.75rem' }}>
+                      <div style={{ fontWeight: '600', marginBottom: '0.35rem', fontSize: '0.9rem' }}>App preview</div>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#111827', fontSize: '0.9rem' }}>
+                        {renderNotificationPreview(setting.app_template, setting.notif_type) || 'No app message preview available.'}
+                      </div>
+                    </div>
                   </div>
                   <div>
                     <label>Email Subject</label>
@@ -1072,6 +1126,15 @@ export default function Admin({ user, loading }) {
                       onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'email_subject', e.target.value)}
                       style={{ width: '100%' }}
                     />
+                    <div style={{ marginTop: '0.5rem', color: '#6b7280', fontSize: '0.85rem' }}>
+                      Available variables: {getNotificationVariables(setting.notif_type).join(', ') || 'No variables available'}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', background: '#f9fafb', padding: '0.75rem' }}>
+                      <div style={{ fontWeight: '600', marginBottom: '0.35rem', fontSize: '0.9rem' }}>Email subject preview</div>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#111827', fontSize: '0.9rem' }}>
+                        {renderNotificationPreview(setting.email_subject, setting.notif_type) || 'No email subject preview available.'}
+                      </div>
+                    </div>
                   </div>
                   <div>
                     <label>Email Template</label>
@@ -1081,6 +1144,15 @@ export default function Admin({ user, loading }) {
                       onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'email_template', e.target.value)}
                       style={{ width: '100%' }}
                     />
+                    <div style={{ marginTop: '0.5rem', color: '#6b7280', fontSize: '0.85rem' }}>
+                      Available variables: {getNotificationVariables(setting.notif_type).join(', ') || 'No variables available'}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', background: '#f9fafb', padding: '0.75rem' }}>
+                      <div style={{ fontWeight: '600', marginBottom: '0.35rem', fontSize: '0.9rem' }}>Email body preview</div>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#111827', fontSize: '0.9rem' }}>
+                        {renderNotificationPreview(setting.email_template, setting.notif_type) || 'No email body preview available.'}
+                      </div>
+                    </div>
                   </div>
                   <div>
                     <label>WhatsApp Template</label>
@@ -1090,6 +1162,15 @@ export default function Admin({ user, loading }) {
                       onChange={(e) => handleNotificationFieldChange(setting.notif_type, 'whatsapp_template', e.target.value)}
                       style={{ width: '100%' }}
                     />
+                    <div style={{ marginTop: '0.5rem', color: '#6b7280', fontSize: '0.85rem' }}>
+                      Available variables: {getNotificationVariables(setting.notif_type).join(', ') || 'No variables available'}
+                    </div>
+                    <div style={{ marginTop: '0.5rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', background: '#f9fafb', padding: '0.75rem' }}>
+                      <div style={{ fontWeight: '600', marginBottom: '0.35rem', fontSize: '0.9rem' }}>WhatsApp preview</div>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#111827', fontSize: '0.9rem' }}>
+                        {renderNotificationPreview(setting.whatsapp_template, setting.notif_type) || 'No WhatsApp preview available.'}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
