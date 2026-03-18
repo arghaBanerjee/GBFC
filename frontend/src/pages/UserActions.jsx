@@ -69,7 +69,7 @@ function UserActions({ user, loading }) {
       }
       
       // Fetch pending payments
-      const paymentsRes = await fetch(`${API_URL}/api/user-actions/pending-payments`, {
+      const paymentsRes = await fetch(`${API_URL}/api/user-actions/payments`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       
