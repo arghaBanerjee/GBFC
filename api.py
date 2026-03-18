@@ -1227,6 +1227,8 @@ allowed_origins = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",
     "https://glasgow-bengali-fc.vercel.app",  # Production frontend
+    "https://gbfc.onrender.com",  # Backend domain (for potential same-origin requests)
+    "https://www.glasgow-bengali-fc.vercel.app",  # WWW subdomain
 ]
 if FRONTEND_ORIGIN and FRONTEND_ORIGIN not in allowed_origins:
     allowed_origins.append(FRONTEND_ORIGIN)

@@ -276,7 +276,7 @@ function App() {
           <div className="nav-actions">
             {/* User Actions Icon - visible on both desktop and mobile */}
             {user && (
-              <Link to="/user-actions/upcoming" style={{ textDecoration: 'none' }} title="My Actions">
+              <Link to="/user-actions/events" style={{ textDecoration: 'none' }} title="My Actions">
                 <button
                   className="social-icon nav-action-icon"
                   style={{
@@ -560,14 +560,14 @@ function App() {
               <Navigate to="/admin/reports" replace />
             </ProtectedRoute>
           } />
-          <Route path="/user-actions" element={<Navigate to="/user-actions/upcoming" replace />} />
-          <Route path="/user-actions/upcoming" element={
+          <Route path="/user-actions" element={<Navigate to="/user-actions/events" replace />} />
+          <Route path="/user-actions/upcoming" element={<Navigate to="/user-actions/events" replace />} />
+          <Route path="/user-actions/events" element={
             <ProtectedRoute user={user} loading={loading}>
               <UserActions user={user} loading={loading} />
             </ProtectedRoute>
           } />
-          <Route path="/user-actions/events" element={<Navigate to="/user-actions/upcoming" replace />} />
-          <Route path="/user-actions/upcoming-events" element={<Navigate to="/user-actions/upcoming" replace />} />
+          <Route path="/user-actions/upcoming-events" element={<Navigate to="/user-actions/events" replace />} />
           <Route path="/user-actions/payments" element={
             <ProtectedRoute user={user} loading={loading}>
               <UserActions user={user} loading={loading} />

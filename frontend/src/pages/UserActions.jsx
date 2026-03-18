@@ -186,8 +186,8 @@ function UserActions({ user, loading }) {
       {/* Tabs */}
       <div className="tabs">
         <button 
-          className={`tab-btn ${activeTab === 'upcoming' ? 'active' : ''}`}
-          onClick={() => navigate('/user-actions/upcoming')}
+          className={`tab-btn ${activeTab === 'events' ? 'active' : ''}`}
+          onClick={() => navigate('/user-actions/events')}
         >
           Upcoming Events
           {upcomingSessions.length > 0 && (
@@ -209,7 +209,7 @@ function UserActions({ user, loading }) {
       <div className="tab-content">
         {loadingData ? (
           <p>Loading...</p>
-        ) : activeTab === 'upcoming' ? (
+        ) : activeTab === 'events' ? (
           <div className="upcoming-sessions">
             {upcomingSessions.length === 0 ? (
               <p className="empty-message">No upcoming practice sessions</p>
