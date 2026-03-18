@@ -13,17 +13,19 @@ from datetime import datetime, timedelta
 # Set test mode before importing api
 os.environ["TEST_MODE"] = "true"
 
-from api import app, init_db, hash_password, USE_POSTGRES, get_connection, PLACEHOLDER
+from api import app, init_db, hash_password, USE_POSTGRES, get_connection, PLACEHOLDER, notify_practice_slots_available
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
 def setup_test_data():
     """Create test data for user actions"""
+    init_db()
     with get_connection() as conn:
         cur = conn.cursor()
         
         # Clear existing data
+        cur.execute("DELETE FROM notifications")
         cur.execute("DELETE FROM practice_payments")
         cur.execute("DELETE FROM practice_availability")
         cur.execute("DELETE FROM practice_sessions")
@@ -34,6 +36,7 @@ def setup_test_data():
             ("user1@test.com", "User One", hash_password("pass123")),
             ("user2@test.com", "User Two", hash_password("pass123")),
             ("payer@test.com", "Payer User", hash_password("pass123")),
+            ("user3@test.com", "User Three", hash_password("pass123")),
         ]
         
         for email, name, pwd in users:
@@ -47,46 +50,54 @@ def setup_test_data():
         
         # Future sessions (upcoming)
         future_sessions = [
-            (str(today + timedelta(days=5)), "18:00", "Location A", 20.0, None, False),
-            (str(today + timedelta(days=10)), "19:00", "Location B", 30.0, None, False),
-            (str(today + timedelta(days=15)), "20:00", "Location C", 25.0, "payer@test.com", True),
+            (str(today + timedelta(days=5)), "18:00", "Location A", 20.0, None, False, 5),
+            (str(today + timedelta(days=10)), "19:00", "Location B", 30.0, None, False, 2),
+            (str(today + timedelta(days=15)), "20:00", "Location C", 25.0, "payer@test.com", True, 100),
         ]
         
-        for date, time, location, cost, paid_by, payment_requested in future_sessions:
+        for date, time, location, cost, paid_by, payment_requested, maximum_capacity in future_sessions:
             cur.execute(
-                f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested) "
-                f"VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (date, time, location, cost, paid_by, payment_requested if USE_POSTGRES else (1 if payment_requested else 0))
+                f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested, maximum_capacity) "
+                f"VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (date, time, location, cost, paid_by, payment_requested if USE_POSTGRES else (1 if payment_requested else 0), maximum_capacity)
             )
         
         # Past sessions with payment requested
         past_sessions = [
-            (str(today - timedelta(days=5)), "18:00", "Location D", 20.0, "payer@test.com", True),
-            (str(today - timedelta(days=10)), "19:00", "Location E", 30.0, "payer@test.com", True),
+            (str(today - timedelta(days=5)), "18:00", "Location D", 20.0, "payer@test.com", True, 100),
+            (str(today - timedelta(days=10)), "19:00", "Location E", 30.0, "payer@test.com", True, 100),
         ]
         
-        for date, time, location, cost, paid_by, payment_requested in past_sessions:
+        for date, time, location, cost, paid_by, payment_requested, maximum_capacity in past_sessions:
             cur.execute(
-                f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested) "
-                f"VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (date, time, location, cost, paid_by, payment_requested if USE_POSTGRES else (1 if payment_requested else 0))
+                f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested, maximum_capacity) "
+                f"VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (date, time, location, cost, paid_by, payment_requested if USE_POSTGRES else (1 if payment_requested else 0), maximum_capacity)
             )
         
         # Add availability for user1
         # Future sessions - user1 available for first two
         cur.execute(
-            f"INSERT INTO practice_availability (date, user_email, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, 'available')",
-            (str(today + timedelta(days=5)), "user1@test.com")
+            f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, 'available')",
+            (str(today + timedelta(days=5)), "user1@test.com", "User One")
+        )
+        cur.execute(
+            f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, 'available')",
+            (str(today + timedelta(days=10)), "user2@test.com", "User Two")
+        )
+        cur.execute(
+            f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, 'available')",
+            (str(today + timedelta(days=10)), "user3@test.com", "User Three")
         )
         
         # Past sessions - user1 was available
         cur.execute(
-            f"INSERT INTO practice_availability (date, user_email, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, 'available')",
-            (str(today - timedelta(days=5)), "user1@test.com")
+            f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, 'available')",
+            (str(today - timedelta(days=5)), "user1@test.com", "User One")
         )
         cur.execute(
-            f"INSERT INTO practice_availability (date, user_email, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, 'available')",
-            (str(today - timedelta(days=10)), "user1@test.com")
+            f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, 'available')",
+            (str(today - timedelta(days=10)), "user1@test.com", "User One")
         )
         
         # Add payment confirmation for one past session
@@ -127,9 +138,17 @@ def test_get_upcoming_sessions():
     
     # First session should have user's availability status
     assert sessions[0]["user_status"] == "available"
+    assert sessions[0]["maximum_capacity"] == 5
+    assert sessions[0]["available_count"] == 1
+    assert sessions[0]["remaining_slots"] == 4
+    assert sessions[0]["capacity_reached"] is False
     
     # Second session should have no status (user hasn't voted)
     assert sessions[1]["user_status"] is None
+    assert sessions[1]["maximum_capacity"] == 2
+    assert sessions[1]["available_count"] == 2
+    assert sessions[1]["remaining_slots"] == 0
+    assert sessions[1]["capacity_reached"] is True
     
     print("✓ Get upcoming sessions works correctly")
 
@@ -306,7 +325,8 @@ def test_confirm_payment_from_user_actions():
 def test_individual_amount_calculation():
     """Test that individual amount is calculated correctly"""
     print("Testing individual amount calculation...")
-    
+
+    init_db()
     with get_connection() as conn:
         cur = conn.cursor()
         
@@ -363,6 +383,171 @@ def test_individual_amount_calculation():
     
     print("✓ Individual amount calculation is correct")
 
+def test_cannot_mark_available_when_capacity_reached():
+    """A new available vote should be rejected when the session is already full"""
+    setup_test_data()
+
+    response = client.post("/api/login", data={
+        "username": "user1@test.com",
+        "password": "pass123"
+    })
+    token = response.json()["access_token"]
+
+    today = datetime.now().date()
+    full_session_date = str(today + timedelta(days=10))
+
+    response = client.post(
+        f"/api/practice/{full_session_date}/availability",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"status": "available"}
+    )
+
+    assert response.status_code == 403
+    assert "Maximum capacity" in response.json()["detail"]
+
+def test_reopening_slot_does_not_send_realtime_notification_and_allows_new_available_vote():
+    """Removing an available vote from a full session should reopen a slot without sending an immediate notification"""
+    setup_test_data()
+
+    today = datetime.now().date()
+    full_session_date = str(today + timedelta(days=10))
+
+    user2_login = client.post("/api/login", data={
+        "username": "user2@test.com",
+        "password": "pass123"
+    })
+    user2_token = user2_login.json()["access_token"]
+
+    response = client.post(
+        f"/api/practice/{full_session_date}/availability",
+        headers={"Authorization": f"Bearer {user2_token}"},
+        json={"status": "none"}
+    )
+    assert response.status_code == 200
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT type, related_date FROM notifications WHERE type = {PLACEHOLDER} AND related_date = {PLACEHOLDER}",
+            ("practice_slot_available", full_session_date)
+        )
+        notifications = cur.fetchall()
+        assert len(notifications) == 0
+
+    user1_login = client.post("/api/login", data={
+        "username": "user1@test.com",
+        "password": "pass123"
+    })
+    user1_token = user1_login.json()["access_token"]
+
+    response = client.post(
+        f"/api/practice/{full_session_date}/availability",
+        headers={"Authorization": f"Bearer {user1_token}"},
+        json={"status": "available"}
+    )
+    assert response.status_code == 200
+
+    response = client.get(
+        "/api/user-actions/upcoming-sessions",
+        headers={"Authorization": f"Bearer {user1_token}"}
+    )
+    sessions = response.json()["sessions"]
+    session = next((s for s in sessions if s["date"] == full_session_date), None)
+    assert session is not None
+    assert session["user_status"] == "available"
+    assert session["capacity_reached"] is True
+
+def test_slot_available_scheduler_notifies_only_nearest_upcoming_session():
+    """The 9 AM scheduler should notify only for the nearest upcoming session with open slots"""
+    setup_test_data()
+
+    today = datetime.now().date()
+    nearest_session_date = str(today + timedelta(days=1))
+    later_session_date = str(today + timedelta(days=2))
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"DELETE FROM notifications WHERE type = {PLACEHOLDER}",
+            ("practice_slot_available",)
+        )
+        cur.execute(
+            f"DELETE FROM practice_availability WHERE date IN ({PLACEHOLDER}, {PLACEHOLDER})",
+            (nearest_session_date, later_session_date)
+        )
+        cur.execute(
+            f"DELETE FROM practice_sessions WHERE date IN ({PLACEHOLDER}, {PLACEHOLDER})",
+            (nearest_session_date, later_session_date)
+        )
+        cur.execute(
+            f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (nearest_session_date, "18:00", "Nearest Location", None, None, False if USE_POSTGRES else 0, 5)
+        )
+        cur.execute(
+            f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (later_session_date, "19:00", "Later Location", None, None, False if USE_POSTGRES else 0, 4)
+        )
+        cur.execute(
+            f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, 'available')",
+            (nearest_session_date, "user1@test.com", "User One")
+        )
+        cur.execute(
+            f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, 'available')",
+            (later_session_date, "user2@test.com", "User Two")
+        )
+        conn.commit()
+
+    notify_practice_slots_available()
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT related_date FROM notifications WHERE type = {PLACEHOLDER} ORDER BY related_date ASC",
+            ("practice_slot_available",)
+        )
+        notifications = cur.fetchall()
+        assert len(notifications) >= 1
+        related_dates = [row["related_date"] for row in notifications]
+        assert nearest_session_date in related_dates
+        assert later_session_date not in related_dates
+
+def test_capacity_reached_creates_notification_record():
+    """When the last slot is taken, a session_capacity_reached notification should be created"""
+    setup_test_data()
+
+    today = datetime.now().date()
+    limited_session_date = str(today + timedelta(days=5))
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE practice_sessions SET maximum_capacity = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
+            (2, limited_session_date)
+        )
+        conn.commit()
+
+    response = client.post("/api/login", data={
+        "username": "user2@test.com",
+        "password": "pass123"
+    })
+    token = response.json()["access_token"]
+
+    response = client.post(
+        "/api/practice/availability",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"date": limited_session_date, "status": "available"}
+    )
+    assert response.status_code == 200
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT type, related_date FROM notifications WHERE type = {PLACEHOLDER} AND related_date = {PLACEHOLDER}",
+            ("session_capacity_reached", limited_session_date)
+        )
+        notifications = cur.fetchall()
+        assert len(notifications) >= 1
+
 def run_all_tests():
     """Run all user actions tests"""
     print("\n" + "="*80)
@@ -377,6 +562,10 @@ def run_all_tests():
         test_set_availability_from_user_actions,
         test_confirm_payment_from_user_actions,
         test_individual_amount_calculation,
+        test_cannot_mark_available_when_capacity_reached,
+        test_reopening_slot_does_not_send_realtime_notification_and_allows_new_available_vote,
+        test_slot_available_scheduler_notifies_only_nearest_upcoming_session,
+        test_capacity_reached_creates_notification_record,
     ]
     
     passed = 0

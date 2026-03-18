@@ -57,6 +57,7 @@ export default function Admin({ user, loading }) {
   const [practiceDate, setPracticeDate] = useState('')
   const [practiceTime, setPracticeTime] = useState('')
   const [practiceLocation, setPracticeLocation] = useState('')
+  const [practiceMaximumCapacity, setPracticeMaximumCapacity] = useState('100')
   const [practiceInlineStatus, setPracticeInlineStatus] = useState('')
 
   // Forum posts
@@ -124,7 +125,7 @@ export default function Admin({ user, loading }) {
       location_line: '',
     },
     payment_request: {
-      date: '2026-03-13',
+      date: '2026-04-02',
       time: '8:00 PM',
       location: 'Scotstoun Sports Campus',
       event_name: '',
@@ -137,6 +138,32 @@ export default function Admin({ user, loading }) {
       time_line: '🕐 8:00 PM\n',
       location_line: '📍 Scotstoun Sports Campus\n',
     },
+    session_capacity_reached: {
+      date: '2026-04-10',
+      time: '7:00 PM',
+      location: 'Glasgow Green',
+      maximum_capacity: '18',
+      available_count: '18',
+      remaining_slots: '0',
+      time_suffix: ' at 7:00 PM',
+      location_suffix: ' at Glasgow Green',
+      location_comma_suffix: ', Glasgow Green',
+      time_line: '🕐 7:00 PM\n',
+      location_line: '📍 Glasgow Green\n',
+    },
+    practice_slot_available: {
+      date: '2026-04-12',
+      time: '8:30 PM',
+      location: 'Scotstoun Sports Campus',
+      maximum_capacity: '20',
+      available_count: '14',
+      remaining_slots: '6',
+      time_suffix: ' at 8:30 PM',
+      location_suffix: ' at Scotstoun Sports Campus',
+      location_comma_suffix: ', Scotstoun Sports Campus',
+      time_line: '🕐 8:30 PM\n',
+      location_line: '📍 Scotstoun Sports Campus\n',
+    },
   }
 
   const notificationVariableMap = {
@@ -144,6 +171,8 @@ export default function Admin({ user, loading }) {
     match: ['{{event_name}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     forum_post: ['{{author_name}}', '{{content}}', '{{content_preview}}'],
     payment_request: ['{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    session_capacity_reached: ['{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    practice_slot_available: ['{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
   }
 
   const renderNotificationPreview = (template, notifType) => {
@@ -376,6 +405,7 @@ export default function Admin({ user, loading }) {
     setPracticeDate('')
     setPracticeTime('')
     setPracticeLocation('')
+    setPracticeMaximumCapacity('100')
     setPracticeInlineStatus('')
   }
 
@@ -467,7 +497,12 @@ export default function Admin({ user, loading }) {
     e.preventDefault()
     const isEditingPractice = Boolean(editingPracticeDate)
 
-    const payload = { date: practiceDate, time: practiceTime, location: practiceLocation }
+    const payload = {
+      date: practiceDate,
+      time: practiceTime,
+      location: practiceLocation,
+      maximum_capacity: practiceMaximumCapacity ? parseInt(practiceMaximumCapacity, 10) : 100,
+    }
 
     let res
     // If admin changes the date while editing, treat it as delete old + create new
@@ -529,6 +564,7 @@ export default function Admin({ user, loading }) {
     setPracticeDate(s.date || '')
     setPracticeTime(s.time || '')
     setPracticeLocation(s.location || '')
+    setPracticeMaximumCapacity((s.maximum_capacity || 100).toString())
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -825,9 +861,13 @@ export default function Admin({ user, loading }) {
               <label>Practice Location</label>
               <input value={practiceLocation} onChange={(e) => setPracticeLocation(e.target.value)} style={{ width: '100%' }} />
             </div>
+            <div>
+              <label>Maximum Capacity</label>
+              <input type="number" min="1" value={practiceMaximumCapacity} onChange={(e) => setPracticeMaximumCapacity(e.target.value)} style={{ width: '100%' }} />
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>{editingPracticeDate ? 'Update Practice' : 'Add Practice'}</button>
-              {(editingPracticeDate || practiceDate || practiceTime || practiceLocation) && (
+              {(editingPracticeDate || practiceDate || practiceTime || practiceLocation || practiceMaximumCapacity !== '100') && (
                 <button className="nav-btn" type="button" onClick={resetPracticeForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
                   Clear
                 </button>
@@ -864,6 +904,7 @@ export default function Admin({ user, loading }) {
                 </div>
                 <div style={{ opacity: 0.8, marginTop: 6 }}>Time: {s.time || 'TBD'}</div>
                 <div style={{ opacity: 0.8 }}>Location: {s.location || 'TBD'}</div>
+                <div style={{ opacity: 0.8 }}>Maximum Capacity: {s.maximum_capacity || 100}</div>
               </div>
             ))}
           </div>

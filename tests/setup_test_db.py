@@ -46,7 +46,8 @@ def setup_test_database():
             location TEXT,
             session_cost REAL,
             paid_by TEXT,
-            payment_requested BOOLEAN DEFAULT FALSE
+            payment_requested BOOLEAN DEFAULT FALSE,
+            maximum_capacity INTEGER DEFAULT 100
         )
     """)
     

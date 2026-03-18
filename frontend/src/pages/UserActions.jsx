@@ -12,6 +12,7 @@ function UserActions({ user, loading }) {
   const [pendingPayments, setPendingPayments] = useState([])
   const [loadingData, setLoadingData] = useState(true)
   const [error, setError] = useState('')
+  const [updatingAvailabilityDates, setUpdatingAvailabilityDates] = useState({})
   
   // Validate route tab and redirect if invalid
   const pathTab = location.pathname.split('/').pop()
@@ -100,11 +101,50 @@ function UserActions({ user, loading }) {
     }
   }
 
+  const refreshUpcomingSessions = async () => {
+    const token = localStorage.getItem('token')
+    if (!token) return
+
+    const upcomingRes = await fetch(`${API_URL}/api/user-actions/upcoming-sessions`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+
+    if (upcomingRes.ok) {
+      const upcomingData = await upcomingRes.json()
+      setUpcomingSessions(upcomingData.sessions || [])
+    }
+  }
+
   const handleAvailabilityChange = async (date, status) => {
+    if (updatingAvailabilityDates[date]) return
+
+    let previousSessions = upcomingSessions
+
     try {
       const token = localStorage.getItem('token')
       const currentStatus = upcomingSessions.find((session) => session.date === date)?.user_status
       const newStatus = currentStatus === status ? 'none' : status
+      previousSessions = upcomingSessions
+      setError('')
+      setUpdatingAvailabilityDates(prev => ({ ...prev, [date]: true }))
+
+      setUpcomingSessions(prev => prev.map(session => {
+        if (session.date !== date) return session
+
+        const previousWasAvailable = session.user_status === 'available'
+        const nextIsAvailable = newStatus === 'available'
+        const availableCount = (session.available_count || 0) + (nextIsAvailable ? 1 : 0) - (previousWasAvailable ? 1 : 0)
+        const maximumCapacity = session.maximum_capacity || 100
+
+        return {
+          ...session,
+          user_status: newStatus === 'none' ? null : newStatus,
+          available_count: availableCount,
+          remaining_slots: Math.max(maximumCapacity - availableCount, 0),
+          capacity_reached: availableCount >= maximumCapacity,
+        }
+      }))
+
       const response = await fetch(`${API_URL}/api/practice/${date}/availability`, {
         method: 'POST',
         headers: {
@@ -115,17 +155,18 @@ function UserActions({ user, loading }) {
       })
 
       if (response.ok) {
-        // Update local state
-        setUpcomingSessions(prev => prev.map(session => 
-          session.date === date ? { ...session, user_status: newStatus === 'none' ? null : newStatus } : session
-        ))
+        await refreshUpcomingSessions()
       } else {
         const err = await response.json()
+        setUpcomingSessions(previousSessions)
         setError(err.detail || 'Failed to update availability')
       }
     } catch (err) {
+      setUpcomingSessions(previousSessions)
       setError('Failed to update availability')
       console.error(err)
+    } finally {
+      setUpdatingAvailabilityDates(prev => ({ ...prev, [date]: false }))
     }
   }
 
@@ -242,26 +283,38 @@ function UserActions({ user, loading }) {
                     
                     <div className="availability-section">
                       <p className="section-label">Availability</p>
+                      <p style={{ marginBottom: '0.5rem', fontSize: '0.8125rem', color: session.capacity_reached ? '#92400e' : '#166534' }}>
+                        Capacity: {session.available_count || 0}/{session.maximum_capacity || 100} available
+                        {session.remaining_slots > 0 ? ` · ${session.remaining_slots} slot${session.remaining_slots === 1 ? '' : 's'} left` : ' · Full'}
+                      </p>
                       <div className="availability-buttons">
                         <button
                           className={`availability-btn available ${session.user_status === 'available' ? 'selected' : ''}`}
                           onClick={() => handleAvailabilityChange(session.date, 'available')}
+                          disabled={updatingAvailabilityDates[session.date] || (session.capacity_reached && session.user_status !== 'available')}
                         >
-                          Available
+                          {updatingAvailabilityDates[session.date] && session.user_status === 'available' ? 'Updating...' : 'Available'}
                         </button>
                         <button
                           className={`availability-btn tentative ${session.user_status === 'tentative' ? 'selected' : ''}`}
                           onClick={() => handleAvailabilityChange(session.date, 'tentative')}
+                          disabled={updatingAvailabilityDates[session.date]}
                         >
-                          Tentative
+                          {updatingAvailabilityDates[session.date] && session.user_status === 'tentative' ? 'Updating...' : 'Tentative'}
                         </button>
                         <button
                           className={`availability-btn not-available ${session.user_status === 'not_available' ? 'selected' : ''}`}
                           onClick={() => handleAvailabilityChange(session.date, 'not_available')}
+                          disabled={updatingAvailabilityDates[session.date]}
                         >
-                          Unavailable
+                          {updatingAvailabilityDates[session.date] && session.user_status === 'not_available' ? 'Updating...' : 'Unavailable'}
                         </button>
                       </div>
+                      {session.capacity_reached && session.user_status !== 'available' && (
+                        <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#92400e' }}>
+                          Maximum capacity reached. Available is disabled until a slot opens up.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

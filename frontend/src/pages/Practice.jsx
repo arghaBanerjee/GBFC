@@ -18,12 +18,17 @@ export default function Practice({ user }) {
   const [adminSelectedStatus, setAdminSelectedStatus] = useState('available')
   const [sessionCost, setSessionCost] = useState('')
   const [paidBy, setPaidBy] = useState('')
+  const [maximumCapacity, setMaximumCapacity] = useState('100')
   const [payments, setPayments] = useState({})
   const [paymentUpdatePending, setPaymentUpdatePending] = useState(false)
   const [showPaymentConfirm, setShowPaymentConfirm] = useState(false)
   const [paymentInfoSaved, setPaymentInfoSaved] = useState(false)
   const [adminControlsOpen, setAdminControlsOpen] = useState(false)
   const [adminUsersLoading, setAdminUsersLoading] = useState(false)
+  const [availabilityUpdating, setAvailabilityUpdating] = useState(false)
+  const [adminAvailabilityUpdating, setAdminAvailabilityUpdating] = useState(false)
+  const [availabilityError, setAvailabilityError] = useState('')
+  const [adminAvailabilityError, setAdminAvailabilityError] = useState('')
   const token = localStorage.getItem('token')
 
   const formatDateStr = (dt) => {
@@ -59,6 +64,79 @@ export default function Practice({ user }) {
         session.date === updatedSession.date ? { ...session, ...updatedSession } : session
       )
     })
+  }
+
+  const updateSessionCapacityState = (dateStr, updater) => {
+    if (!dateStr) return
+    setVoteSummary((prev) => {
+      if (!prev) return prev
+      const next = updater(prev)
+      if (!next) return prev
+      return {
+        ...next,
+        available_count: next.available?.length ?? 0,
+        remaining_slots: Math.max((next.maximum_capacity ?? 100) - (next.available?.length ?? 0), 0),
+        capacity_reached: (next.available?.length ?? 0) >= (next.maximum_capacity ?? 100),
+      }
+    })
+    setAdminSessions((prev) => prev.map((session) => {
+      if (session.date !== dateStr) return session
+      const availableCount = voteSummary?.available_count ?? session.available_count ?? 0
+      const maximumCapacityValue = voteSummary?.maximum_capacity ?? session.maximum_capacity ?? 100
+      const nextSummary = updater({
+        available: Array.from({ length: availableCount }),
+        maximum_capacity: maximumCapacityValue,
+      })
+      const nextAvailableCount = nextSummary?.available?.length ?? availableCount
+      return {
+        ...session,
+        available_count: nextAvailableCount,
+        remaining_slots: Math.max(maximumCapacityValue - nextAvailableCount, 0),
+        capacity_reached: nextAvailableCount >= maximumCapacityValue,
+      }
+    }))
+  }
+
+  const refreshSelectedDateData = (dateStr, { refreshAvailabilityMap = false, refreshPayments = false } = {}) => {
+    const requests = [
+      fetch(apiUrl(`/api/practice/availability/${dateStr}`))
+        .then(r => r.json())
+        .then((data) => {
+          setVoteSummary(data)
+          mergeUpdatedSession({
+            date: dateStr,
+            maximum_capacity: data.maximum_capacity,
+            available_count: data.available_count,
+            remaining_slots: data.remaining_slots,
+            capacity_reached: data.capacity_reached,
+          })
+        })
+        .catch(() => {}),
+    ]
+
+    if (refreshAvailabilityMap && token) {
+      requests.push(
+        fetch(apiUrl('/api/practice/availability'), {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then(r => r.json())
+          .then(data => setAvailability(data || {}))
+          .catch(() => {})
+      )
+    }
+
+    if (refreshPayments && token) {
+      requests.push(
+        fetch(apiUrl(`/api/practice/sessions/${dateStr}/payments`), {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then(r => r.json())
+          .then(data => setPayments(data || {}))
+          .catch(() => setPayments({}))
+      )
+    }
+
+    return Promise.all(requests)
   }
 
   // Sync from URL -> selected date
@@ -161,14 +239,50 @@ export default function Practice({ user }) {
   }
 
   const handleAvailability = (status) => {
-    if (!user) return
+    if (!user || availabilityUpdating) return
     
     const dateStr = formatDateStr(selectedDate)
     const currentStatus = availability[dateStr]
+    const previousAvailability = availability
+    const previousVoteSummary = voteSummary
     
     // Toggle: if clicking the same button, deselect (remove availability)
     const isDeselecting = currentStatus === status
     const newStatus = isDeselecting ? 'none' : status
+    setAvailabilityError('')
+    setAvailabilityUpdating(true)
+
+    if (isDeselecting) {
+      setAvailability(prev => {
+        const updated = { ...prev }
+        delete updated[dateStr]
+        return updated
+      })
+    } else {
+      setAvailability(prev => ({ ...prev, [dateStr]: newStatus }))
+    }
+
+    if (currentStatus === 'available' || newStatus === 'available') {
+      updateSessionCapacityState(dateStr, (prev) => {
+        const available = [...(prev.available || [])]
+        const currentName = user.full_name || user.email
+        const filteredAvailable = available.filter((name) => {
+          const email = prev.user_emails?.[name] || name
+          return email !== user.email
+        })
+        if (newStatus === 'available') {
+          filteredAvailable.push(currentName)
+        }
+        return {
+          ...prev,
+          available: filteredAvailable,
+          user_emails: {
+            ...(prev.user_emails || {}),
+            [currentName]: user.email,
+          },
+        }
+      })
+    }
     
     fetch(apiUrl(`/api/practice/availability`), {
       method: 'POST',
@@ -186,63 +300,16 @@ export default function Practice({ user }) {
         }
         return r.json()
       })
-      .then(data => {
-        // Update local state: remove if deselecting, otherwise set new status
-        if (isDeselecting) {
-          setAvailability(prev => {
-            const updated = { ...prev }
-            delete updated[dateStr]
-            return updated
-          })
-        } else {
-          setAvailability(prev => ({ ...prev, [dateStr]: newStatus }))
-        }
-        // Refresh vote summary so UI table updates immediately
-        return fetch(apiUrl(`/api/practice/availability/${dateStr}`))
-          .then(r => r.json())
-          .then(setVoteSummary)
+      .then(() => {
+        return refreshSelectedDateData(dateStr)
       })
       .catch(err => {
+        setAvailability(previousAvailability)
+        setVoteSummary(previousVoteSummary)
+        setAvailabilityError(err.message || 'Failed to update availability')
         console.error('Failed to update availability:', err)
       })
-  }
-
-  const handleUpdateSessionPaymentInfo = () => {
-    if (!selectedSession) return
-    
-    fetch(apiUrl(`/api/practice/sessions/${selectedDateStr}`), {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        date: selectedDateStr,
-        time: selectedSession.time,
-        location: selectedSession.location,
-        session_cost: sessionCost ? parseFloat(sessionCost) : null,
-        paid_by: paidBy || null,
-      }),
-    })
-      .then(r => {
-        if (!r.ok) {
-          return r.json().then(err => {
-            throw new Error(err.detail || 'Failed to update session info')
-          })
-        }
-        return r.json()
-      })
-      .then((updatedSession) => {
-        mergeUpdatedSession(updatedSession)
-        setSessionCost(updatedSession.session_cost != null ? updatedSession.session_cost.toString() : '')
-        setPaidBy(updatedSession.paid_by || '')
-        setPaymentInfoSaved(Boolean(updatedSession.session_cost != null && updatedSession.paid_by))
-        // Refresh admin sessions
-        return fetch(apiUrl('/api/practice/sessions'))
-          .then(r => r.json())
-          .then(data => setAdminSessions(data || []))
-      })
-      .catch(err => console.error('Failed to update session info:', err))
+      .finally(() => setAvailabilityUpdating(false))
   }
 
   const handleSavePaymentInfo = () => {
@@ -260,6 +327,7 @@ export default function Practice({ user }) {
         location: selectedSession.location,
         session_cost: sessionCost ? parseFloat(sessionCost) : null,
         paid_by: paidBy || null,
+        maximum_capacity: maximumCapacity ? parseInt(maximumCapacity, 10) : 100,
       }),
     })
       .then(r => {
@@ -274,8 +342,8 @@ export default function Practice({ user }) {
         mergeUpdatedSession(updatedSession)
         setSessionCost(updatedSession.session_cost != null ? updatedSession.session_cost.toString() : '')
         setPaidBy(updatedSession.paid_by || '')
+        setMaximumCapacity((updatedSession.maximum_capacity || 100).toString())
         setPaymentInfoSaved(Boolean(updatedSession.session_cost != null && updatedSession.paid_by))
-        // Refresh admin sessions
         return fetch(apiUrl('/api/practice/sessions'))
           .then(r => r.json())
           .then(data => setAdminSessions(data || []))
@@ -367,10 +435,12 @@ export default function Practice({ user }) {
   }
 
   const handleAdminSetAvailability = () => {
-    if (!selectedUserEmail) {
+    if (!selectedUserEmail || adminAvailabilityUpdating) {
       return
     }
     const selectedDateValue = formatDateStr(selectedDate)
+    setAdminAvailabilityError('')
+    setAdminAvailabilityUpdating(true)
     
     fetch(apiUrl('/api/admin/practice/availability'), {
       method: 'POST',
@@ -393,27 +463,16 @@ export default function Practice({ user }) {
         return r.json()
       })
       .then(() => {
-        // Refresh vote summary
-        return fetch(apiUrl(`/api/practice/availability/${selectedDateValue}`))
-          .then(r => r.json())
-          .then(setVoteSummary)
-      })
-      .then(() => {
-        // If admin set their own availability, refresh their availability state
-        if (selectedUserEmail === user?.email) {
-          return fetch(apiUrl('/api/practice/availability'), {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-            .then(r => r.json())
-            .then(data => setAvailability(data || {}))
-        }
+        return refreshSelectedDateData(selectedDateValue, { refreshAvailabilityMap: selectedUserEmail === user?.email })
       })
       .then(() => {
         setSelectedUserEmail('')
       })
       .catch(err => {
+        setAdminAvailabilityError(err.message || 'Failed to set availability')
         console.error('Failed to set availability:', err)
       })
+      .finally(() => setAdminAvailabilityUpdating(false))
   }
 
   const handleAdminDeleteAvailability = (userEmail) => {
@@ -421,6 +480,8 @@ export default function Practice({ user }) {
       return
     }
     const selectedDateValue = formatDateStr(selectedDate)
+    setAdminAvailabilityError('')
+    setAdminAvailabilityUpdating(true)
     
     fetch(apiUrl('/api/admin/practice/availability'), {
       method: 'POST',
@@ -443,24 +504,13 @@ export default function Practice({ user }) {
         return r.json()
       })
       .then(() => {
-        // Refresh vote summary
-        return fetch(apiUrl(`/api/practice/availability/${selectedDateValue}`))
-          .then(r => r.json())
-          .then(setVoteSummary)
-      })
-      .then(() => {
-        // If admin deleted their own availability, refresh their availability state
-        if (userEmail === user?.email) {
-          return fetch(apiUrl('/api/practice/availability'), {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-            .then(r => r.json())
-            .then(data => setAvailability(data || {}))
-        }
+        return refreshSelectedDateData(selectedDateValue, { refreshAvailabilityMap: userEmail === user?.email })
       })
       .catch(err => {
+        setAdminAvailabilityError(err.message || 'Failed to delete availability')
         console.error('Failed to delete availability:', err)
       })
+      .finally(() => setAdminAvailabilityUpdating(false))
   }
 
   const voteBtnStyle = (btnStatus) => {
@@ -594,14 +644,25 @@ export default function Practice({ user }) {
     if (selectedSession) {
       setSessionCost(selectedSession.session_cost != null ? selectedSession.session_cost.toString() : '')
       setPaidBy(selectedSession.paid_by || '')
+      setMaximumCapacity((selectedSession.maximum_capacity || 100).toString())
       // Check if payment info is already saved (both fields have values in DB)
       setPaymentInfoSaved(Boolean(selectedSession.session_cost != null && selectedSession.paid_by))
     } else {
       setSessionCost('')
       setPaidBy('')
+      setMaximumCapacity('100')
       setPaymentInfoSaved(false)
     }
   }, [selectedSession])
+
+  const sessionMaximumCapacity = selectedSession?.maximum_capacity || voteSummary?.maximum_capacity || 100
+  const sessionAvailableCount = voteSummary?.available_count ?? voteSummary?.available?.length ?? selectedSession?.available_count ?? 0
+  const sessionRemainingSlots = voteSummary?.remaining_slots ?? Math.max(sessionMaximumCapacity - sessionAvailableCount, 0)
+  const isCapacityReached = Boolean(voteSummary?.capacity_reached ?? selectedSession?.capacity_reached ?? (sessionAvailableCount >= sessionMaximumCapacity))
+  const canSelectAvailable = selectedStatus === 'available' || !isCapacityReached
+  const canSavePaymentInfo = Boolean(sessionCost && paidBy && maximumCapacity && Number(maximumCapacity) > 0)
+  const availablePlayersForPayment = voteSummary?.available?.length || 0
+  const adminAvailableBlockedByCapacity = adminSelectedStatus === 'available' && isCapacityReached
 
   return (
     <div className="container">
@@ -697,6 +758,10 @@ export default function Practice({ user }) {
                 </svg>
                 <span>Location: {selectedSession.location || 'TBD'}</span>
               </div>
+              <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#166534', fontWeight: '600' }}>
+                Capacity: {sessionAvailableCount}/{sessionMaximumCapacity} available
+                {sessionRemainingSlots > 0 ? ` · ${sessionRemainingSlots} slot${sessionRemainingSlots === 1 ? '' : 's'} left` : ' · Full'}
+              </div>
             </div>
           ) : (
             <p>
@@ -710,15 +775,20 @@ export default function Practice({ user }) {
               <div style={{ marginTop: '1rem' }}>
                 <strong>Your Selection</strong>
                 <div style={{ marginTop: '0.5rem' }}>
-                  <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || selectedSession?.payment_requested}>Available</button>
-                  <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || selectedSession?.payment_requested}>Tentative</button>
-                  <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || selectedSession?.payment_requested}>Unavailable</button>
+                  <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
+                  <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || selectedSession?.payment_requested || availabilityUpdating}>Tentative</button>
+                  <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
                 </div>
                 {!user && <p style={{ marginTop: '0.5rem', color: '#dc2626' }}>Log in to vote your availability.</p>}
                 {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after payment request.</p>}
+                {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && (
+                  <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>
+                    Maximum capacity reached. Available is temporarily disabled until a slot opens up.
+                  </p>
+                )}
+                {availabilityError && <p style={{ marginTop: '0.5rem', color: '#dc2626', fontSize: '0.875rem' }}>{availabilityError}</p>}
               </div>
 
-              {/* Payment Request Section for Users (including admin who paid) */}
               {selectedSession?.payment_requested && user && isUserAvailable && voteSummary?.available?.length > 0 && (
                 <div style={{ marginTop: '1rem', padding: '1rem', background: '#fef3c7', borderRadius: '0.5rem', border: '1px solid #fbbf24' }}>
                   <strong style={{ color: '#92400e' }}>Payment Request</strong>
@@ -747,10 +817,8 @@ export default function Practice({ user }) {
                         style={{ width: '18px', height: '18px', cursor: paymentUpdatePending ? 'wait' : 'pointer' }}
                       />
                       <label htmlFor="payment-checkbox" style={{ fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>
-                        {selectedSession.session_cost != null ? (
-                          <>Paid £{(selectedSession.session_cost / voteSummary.available.length).toFixed(2)} to {
-                            selectedSession.paid_by_name || selectedSession.paid_by || 'Unknown User'
-                          }</>
+                        {selectedSession.session_cost != null && availablePlayersForPayment > 0 ? (
+                          <>Paid £{(selectedSession.session_cost / availablePlayersForPayment).toFixed(2)} to {selectedSession.paid_by_name || selectedSession.paid_by || 'Unknown User'}</>
                         ) : (
                           'Confirm payment made'
                         )}
@@ -792,185 +860,118 @@ export default function Practice({ user }) {
 
                   <div style={{ maxHeight: adminControlsOpen ? '1200px' : '0', opacity: adminControlsOpen ? 1 : 0, overflow: 'hidden', transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
                     <div style={{ padding: adminControlsOpen ? '0 1rem 1rem 1rem' : '0 1rem', transform: adminControlsOpen ? 'translateY(0)' : 'translateY(-8px)', transition: 'padding 0.25s ease, transform 0.25s ease' }}>
-                  {/* Payment Information */}
-                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fff', borderRadius: '0.375rem', border: '1px solid #e5e7eb' }}>
-                    <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Payment Information</div>
-                    <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
-                      <div style={{ flex: '0 0 100px' }}>
-                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
-                          Session Cost (£)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={sessionCost}
-                          onChange={(e) => {
-                            setSessionCost(e.target.value)
-                            setPaymentInfoSaved(false)
-                          }}
-                          placeholder="0.00"
-                          disabled={selectedSession?.payment_requested}
-                          style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem', opacity: selectedSession?.payment_requested ? 0.6 : 1, cursor: selectedSession?.payment_requested ? 'not-allowed' : 'text' }}
-                        />
-                      </div>
-                      <div style={{ flex: '1' }}>
-                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
-                          Paid By
-                        </label>
-                        {selectedSession?.payment_requested ? (
-                          <input
-                            type="text"
-                            value={selectedSession.paid_by_name || selectedSession.paid_by || 'Not set'}
-                            disabled
-                            style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.75rem', opacity: 0.6, cursor: 'not-allowed', backgroundColor: '#f9fafb' }}
-                          />
-                        ) : (
-                          <select
-                            value={paidBy}
-                            onChange={(e) => {
-                              setPaidBy(e.target.value)
-                              setPaymentInfoSaved(false)
-                            }}
-                            style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem', cursor: 'pointer' }}
-                          >
-                            <option value="">Select user...</option>
-                            {allUsers.map((u) => (
-                              <option key={u.email} value={u.email}>
-                                {u.full_name}
-                              </option>
-                            ))}
-                          </select>
+                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fff', borderRadius: '0.375rem', border: '1px solid #e5e7eb' }}>
+                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Payment Information</div>
+                        <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
+                          <div style={{ flex: '0 0 100px' }}>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Session Cost (£)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={sessionCost}
+                              onChange={(e) => {
+                                setSessionCost(e.target.value)
+                                setPaymentInfoSaved(false)
+                              }}
+                              placeholder="0.00"
+                              disabled={selectedSession?.payment_requested}
+                              style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem', opacity: selectedSession?.payment_requested ? 0.6 : 1, cursor: selectedSession?.payment_requested ? 'not-allowed' : 'text' }}
+                            />
+                          </div>
+                          <div style={{ flex: '1' }}>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Paid By</label>
+                            {selectedSession?.payment_requested ? (
+                              <input
+                                type="text"
+                                value={selectedSession.paid_by_name || selectedSession.paid_by || 'Not set'}
+                                disabled
+                                style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.75rem', opacity: 0.6, cursor: 'not-allowed', backgroundColor: '#f9fafb' }}
+                              />
+                            ) : (
+                              <select
+                                value={paidBy}
+                                onChange={(e) => {
+                                  setPaidBy(e.target.value)
+                                  setPaymentInfoSaved(false)
+                                }}
+                                style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem', cursor: 'pointer' }}
+                              >
+                                <option value="">Select user...</option>
+                                {allUsers.map((u) => (
+                                  <option key={u.email} value={u.email}>{u.full_name}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        </div>
+                        {!selectedSession?.payment_requested && paidBy && !hasPaidByBankDetails && !adminUsersLoading && (
+                          <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }}>
+                            Bank Details not available for the user
+                          </div>
+                        )}
+                        {adminUsersLoading && <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: '#6b7280' }}>Loading users...</div>}
+                        {hasPaidByBankDetails && (
+                          <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '0.375rem', border: '1px solid #e5e7eb' }}>
+                            <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.75rem', color: '#374151' }}>Bank Details</div>
+                            <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8125rem', color: '#4b5563' }}>
+                              <div><strong>Account Holder:</strong> {paidByBankDetails.full_name || 'Unknown User'}</div>
+                              <div><strong>Bank Name:</strong> {paidByBankDetails.bank_name}</div>
+                              <div><strong>Sort Code:</strong> {paidByBankDetails.sort_code}</div>
+                              <div><strong>Account Number:</strong> {paidByBankDetails.account_number}</div>
+                            </div>
+                          </div>
+                        )}
+                        {!selectedSession?.payment_requested && (
+                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                            <button onClick={handleSavePaymentInfo} disabled={!canSavePaymentInfo} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: !canSavePaymentInfo ? '#d1d5db' : paymentInfoSaved ? '#10b981' : '#7c3aed', color: 'white', border: 'none', cursor: !canSavePaymentInfo ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                              {paymentInfoSaved ? '✓ Saved - Click to Update' : 'Save Payment Info'}
+                            </button>
+                            <button onClick={handleRequestPayment} disabled={!paymentInfoSaved || new Date(selectedDateStr) >= new Date()} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!paymentInfoSaved || new Date(selectedDateStr) >= new Date()) ? '#d1d5db' : '#dc2626', color: 'white', border: 'none', cursor: (!paymentInfoSaved || new Date(selectedDateStr) >= new Date()) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                              {new Date(selectedDateStr) >= new Date() ? 'Available after session' : !paymentInfoSaved ? 'Save payment info first' : '⚠️ Request Payment'}
+                            </button>
+                          </div>
+                        )}
+                        {selectedSession?.payment_requested && (
+                          <div style={{ padding: '0.5rem', background: '#dcfce7', borderRadius: '0.375rem', fontSize: '0.875rem', color: '#16a34a', fontWeight: '600', textAlign: 'center' }}>
+                            ✓ Payment Requested
+                          </div>
                         )}
                       </div>
-                    </div>
-                    {!selectedSession?.payment_requested && paidBy && !hasPaidByBankDetails && !adminUsersLoading && (
-                      <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }}>
-                        Bank Details not available for the user
-                      </div>
-                    )}
-                    {adminUsersLoading && (
-                      <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: '#6b7280' }}>
-                        Loading users...
-                      </div>
-                    )}
-                    {hasPaidByBankDetails && (
-                      <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '0.375rem', border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.75rem', color: '#374151' }}>Bank Details</div>
-                        <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8125rem', color: '#4b5563' }}>
-                          <div><strong>Account Holder:</strong> {paidByBankDetails.full_name || 'Unknown User'}</div>
-                          <div><strong>Bank Name:</strong> {paidByBankDetails.bank_name}</div>
-                          <div><strong>Sort Code:</strong> {paidByBankDetails.sort_code}</div>
-                          <div><strong>Account Number:</strong> {paidByBankDetails.account_number}</div>
-                        </div>
-                      </div>
-                    )}
-                    {!selectedSession?.payment_requested && (
-                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                        <button
-                          onClick={handleSavePaymentInfo}
-                          disabled={!sessionCost || !paidBy}
-                          style={{ 
-                            flex: '1',
-                            padding: '0.5rem 1rem', 
-                            borderRadius: '0.375rem', 
-                            background: (!sessionCost || !paidBy) ? '#d1d5db' : paymentInfoSaved ? '#10b981' : '#7c3aed', 
-                            color: 'white', 
-                            border: 'none', 
-                            cursor: (!sessionCost || !paidBy) ? 'not-allowed' : 'pointer', 
-                            fontWeight: '600',
-                            fontSize: '0.875rem',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          {paymentInfoSaved ? '✓ Saved - Click to Update' : 'Save Payment Info'}
-                        </button>
-                        <button
-                          onClick={handleRequestPayment}
-                          disabled={!paymentInfoSaved || new Date(selectedDateStr) >= new Date()}
-                          style={{ 
-                            flex: '1',
-                            padding: '0.5rem 1rem', 
-                            borderRadius: '0.375rem', 
-                            background: (!paymentInfoSaved || new Date(selectedDateStr) >= new Date()) ? '#d1d5db' : '#dc2626', 
-                            color: 'white', 
-                            border: 'none', 
-                            cursor: (!paymentInfoSaved || new Date(selectedDateStr) >= new Date()) ? 'not-allowed' : 'pointer', 
-                            fontWeight: '600',
-                            fontSize: '0.875rem',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          {new Date(selectedDateStr) >= new Date() ? 'Available after session' : !paymentInfoSaved ? 'Save payment info first' : '⚠️ Request Payment'}
-                        </button>
-                      </div>
-                    )}
-                    {selectedSession?.payment_requested && (
-                      <div style={{ padding: '0.5rem', background: '#dcfce7', borderRadius: '0.375rem', fontSize: '0.875rem', color: '#16a34a', fontWeight: '600', textAlign: 'center' }}>
-                        ✓ Payment Requested
-                      </div>
-                    )}
-                  </div>
 
-                  {/* User Availability Management */}
-                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fff', borderRadius: '0.375rem', border: '1px solid #e5e7eb', opacity: selectedSession?.payment_requested ? 0.6 : 1, pointerEvents: selectedSession?.payment_requested ? 'none' : 'auto' }}>
-                    <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Set Player Availability</div>
-                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
-                      <div style={{ flex: '0 0 140px' }}>
-                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
-                          Availability
-                        </label>
-                        <select
-                          value={adminSelectedStatus}
-                          onChange={(e) => setAdminSelectedStatus(e.target.value)}
-                          disabled={selectedSession?.payment_requested}
-                          style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem' }}
-                        >
-                          <option value="available">Available</option>
-                          <option value="tentative">Tentative</option>
-                          <option value="not_available">Unavailable</option>
-                        </select>
+                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fff', borderRadius: '0.375rem', border: '1px solid #e5e7eb', opacity: selectedSession?.payment_requested ? 0.6 : 1, pointerEvents: selectedSession?.payment_requested ? 'none' : 'auto' }}>
+                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Set Player Availability</div>
+                        <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
+                          <div style={{ flex: '0 0 140px' }}>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Availability</label>
+                            <select value={adminSelectedStatus} onChange={(e) => setAdminSelectedStatus(e.target.value)} disabled={selectedSession?.payment_requested || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem' }}>
+                              <option value="available">Available</option>
+                              <option value="tentative">Tentative</option>
+                              <option value="not_available">Unavailable</option>
+                            </select>
+                          </div>
+                          <div style={{ flex: '1' }}>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Select Player</label>
+                            <select value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)} disabled={selectedSession?.payment_requested || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem' }}>
+                              <option value="">Select a user...</option>
+                              {allUsers.map((u) => (
+                                <option key={u.email} value={u.email}>{u.full_name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <button onClick={handleAdminSetAvailability} disabled={!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity} style={{ width: '100%', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? '#d1d5db' : '#7c3aed', color: 'white', border: 'none', cursor: (!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                          {adminAvailabilityUpdating ? 'Updating...' : 'Set Availability'}
+                        </button>
+                        {adminAvailableBlockedByCapacity && !selectedSession?.payment_requested && (
+                          <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#92400e' }}>
+                            Capacity is reached for this session, so no more players can be added as Available right now. Choose Tentative or Unavailable, or wait until a slot opens.
+                          </p>
+                        )}
+                        {adminAvailabilityError && <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#dc2626' }}>{adminAvailabilityError}</p>}
+                        <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                          {selectedSession?.payment_requested ? 'Cannot change availability after payment request.' : 'Admins can add or modify any player\'s availability.'}
+                        </p>
                       </div>
-                      <div style={{ flex: '1' }}>
-                        <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
-                          Select Player
-                        </label>
-                        <select
-                          value={selectedUserEmail}
-                          onChange={(e) => setSelectedUserEmail(e.target.value)}
-                          disabled={selectedSession?.payment_requested}
-                          style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem' }}
-                        >
-                          <option value="">Select a user...</option>
-                          {allUsers.map((u) => (
-                            <option key={u.email} value={u.email}>
-                              {u.full_name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleAdminSetAvailability}
-                      disabled={!selectedUserEmail || selectedSession?.payment_requested}
-                      style={{ 
-                        width: '100%',
-                        padding: '0.5rem 1rem', 
-                        borderRadius: '0.375rem', 
-                        background: (!selectedUserEmail || selectedSession?.payment_requested) ? '#d1d5db' : '#7c3aed', 
-                        color: 'white', 
-                        border: 'none', 
-                        cursor: (!selectedUserEmail || selectedSession?.payment_requested) ? 'not-allowed' : 'pointer', 
-                        fontWeight: '600',
-                        fontSize: '0.875rem',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      Set Availability
-                    </button>
-                    <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
-                      {selectedSession?.payment_requested ? 'Cannot change availability after payment request.' : 'Admins can add or modify any player\'s availability.'}
-                    </p>
-                  </div>
                     </div>
                   </div>
                 </div>
@@ -981,9 +982,7 @@ export default function Practice({ user }) {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '0.75rem' }}>
                   <div style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem', background: '#f0fdf4' }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>Available</div>
-                    {(voteSummary?.available || []).length > 0 && (
-                      <div style={{ fontSize: '0.875rem', color: '#16a34a', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.available || []).length})</div>
-                    )}
+                    {(voteSummary?.available || []).length > 0 && <div style={{ fontSize: '0.875rem', color: '#16a34a', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.available || []).length})</div>}
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.available || []).map((n, idx) => {
                         const userEmail = voteSummary?.user_emails?.[n] || n
@@ -992,19 +991,9 @@ export default function Practice({ user }) {
                           <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <span>{n.split(' ')[0]}</span>
-                              {selectedSession?.payment_requested && hasPaid && (
-                                <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>
-                              )}
+                              {selectedSession?.payment_requested && hasPaid && <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>}
                             </div>
-                            {isAdmin && !selectedSession?.payment_requested && (
-                              <button
-                                onClick={() => handleAdminDeleteAvailability(userEmail)}
-                                style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}
-                                title="Remove"
-                              >
-                                ×
-                              </button>
-                            )}
+                            {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(userEmail)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                           </div>
                         )
                       })}
@@ -1012,44 +1001,24 @@ export default function Practice({ user }) {
                   </div>
                   <div style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem', background: '#fffbeb' }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>Tentative</div>
-                    {(voteSummary?.tentative || []).length > 0 && (
-                      <div style={{ fontSize: '0.875rem', color: '#eab308', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.tentative || []).length})</div>
-                    )}
+                    {(voteSummary?.tentative || []).length > 0 && <div style={{ fontSize: '0.875rem', color: '#eab308', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.tentative || []).length})</div>}
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.tentative || []).map((n, idx) => (
                         <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
                           <span>{n.split(' ')[0]}</span>
-                          {isAdmin && !selectedSession?.payment_requested && (
-                            <button
-                              onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)}
-                              style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}
-                              title="Remove"
-                            >
-                              ×
-                            </button>
-                          )}
+                          {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                         </div>
                       ))}
                     </div>
                   </div>
                   <div style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem', background: '#fef2f2' }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>Unavailable</div>
-                    {(voteSummary?.not_available || []).length > 0 && (
-                      <div style={{ fontSize: '0.875rem', color: '#dc2626', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.not_available || []).length})</div>
-                    )}
+                    {(voteSummary?.not_available || []).length > 0 && <div style={{ fontSize: '0.875rem', color: '#dc2626', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.not_available || []).length})</div>}
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.not_available || []).map((n, idx) => (
                         <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
                           <span>{n.split(' ')[0]}</span>
-                          {isAdmin && !selectedSession?.payment_requested && (
-                            <button
-                              onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)}
-                              style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}
-                              title="Remove"
-                            >
-                              ×
-                            </button>
-                          )}
+                          {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                         </div>
                       ))}
                     </div>

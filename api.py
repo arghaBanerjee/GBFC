@@ -132,6 +132,30 @@ NOTIFICATION_TYPE_DEFAULTS = {
         "email_template": "Payment has been requested for the practice session on {{date}}{{time_suffix}}{{location_comma_suffix}}.\n\nPlease confirm your payment in the app.",
         "whatsapp_template": "💷 *PRACTICE PAYMENT REQUEST*\n\n📅 {{date}}\n{{time_line}}{{location_line}}\nAvailable players should confirm payment in the app.",
     },
+    "session_capacity_reached": {
+        "display_name": "Session Capacity Reached",
+        "description": "Sent when the final available slot is taken for a practice session.",
+        "app_enabled": True,
+        "email_enabled": False,
+        "whatsapp_enabled": True,
+        "target_audience": "all_active_users",
+        "app_template": "Practice session capacity reached for {{date}}{{time_suffix}}{{location_comma_suffix}}. Maximum capacity is {{maximum_capacity}} players, so no more Available selections are allowed right now.",
+        "email_subject": "Practice session capacity reached for {{date}}",
+        "email_template": "The practice session on {{date}}{{time_suffix}}{{location_comma_suffix}} has reached its maximum capacity of {{maximum_capacity}} players. No more Available selections are allowed right now. We will notify players if slots become available before the session.",
+        "whatsapp_template": "⛔ *PRACTICE SESSION FULL*\n\n📅 {{date}}\n{{time_line}}{{location_line}}👥 Maximum capacity reached: {{maximum_capacity}}\nNo more *Available* selections are allowed right now. We will notify everyone if slots open up before the session.",
+    },
+    "practice_slot_available": {
+        "display_name": "Practice Slot Available",
+        "description": "Sent when upcoming practice slots are still available within 72 hours of the session.",
+        "app_enabled": True,
+        "email_enabled": False,
+        "whatsapp_enabled": True,
+        "target_audience": "all_active_users",
+        "app_template": "There are {{remaining_slots}} practice slots available for {{date}}{{time_suffix}}{{location_comma_suffix}}. Maximum capacity: {{maximum_capacity}}.",
+        "email_subject": "Practice slots available for {{date}}",
+        "email_template": "There are {{remaining_slots}} slots available for the practice session on {{date}}{{time_suffix}}{{location_comma_suffix}}. Maximum capacity: {{maximum_capacity}}.",
+        "whatsapp_template": "✅ *PRACTICE SLOTS AVAILABLE*\n\n📅 {{date}}\n{{time_line}}{{location_line}}👥 Slots available: {{remaining_slots}} of {{maximum_capacity}}\nBook your place in the app if you want to join.",
+    },
 }
 
 @contextmanager
@@ -412,6 +436,30 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not add payment_requested column: {e}")
                 conn.rollback()
+
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='practice_sessions' AND column_name='maximum_capacity'
+                        ) THEN
+                            ALTER TABLE practice_sessions ADD COLUMN maximum_capacity INTEGER DEFAULT 100;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add maximum_capacity column: {e}")
+                conn.rollback()
+
+            try:
+                cur.execute("UPDATE practice_sessions SET maximum_capacity = 100 WHERE maximum_capacity IS NULL")
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not backfill maximum_capacity values: {e}")
+                conn.rollback()
             
             # Add user_full_name to forum_posts if it doesn't exist
             try:
@@ -554,7 +602,8 @@ def init_db():
                 location TEXT,
                 session_cost DECIMAL(10, 2),
                 paid_by VARCHAR(255),
-                payment_requested BOOLEAN DEFAULT FALSE
+                payment_requested BOOLEAN DEFAULT FALSE,
+                maximum_capacity INTEGER DEFAULT 100
             )
             """)
             cur.execute("""
@@ -725,6 +774,15 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add payment_requested column: {e}")
+            try:
+                cur.execute("ALTER TABLE practice_sessions ADD COLUMN maximum_capacity INTEGER DEFAULT 100")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add maximum_capacity column: {e}")
+            try:
+                cur.execute("UPDATE practice_sessions SET maximum_capacity = 100 WHERE maximum_capacity IS NULL")
+            except sqlite3.OperationalError as e:
+                print(f"Warning: Could not backfill maximum_capacity values: {e}")
             # Add user_full_name to forum_posts if it doesn't exist
             try:
                 cur.execute("ALTER TABLE forum_posts ADD COLUMN user_full_name TEXT")
@@ -796,7 +854,8 @@ def init_db():
                 location TEXT,
                 session_cost REAL,
                 paid_by TEXT,
-                payment_requested INTEGER DEFAULT 0
+                payment_requested INTEGER DEFAULT 0,
+                maximum_capacity INTEGER DEFAULT 100
             );
             CREATE TABLE IF NOT EXISTS practice_payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -942,6 +1001,9 @@ def build_notification_context(payload: dict) -> dict:
         "date": date_value,
         "time": time_value,
         "location": location_value,
+        "maximum_capacity": payload.get("maximum_capacity") if payload.get("maximum_capacity") is not None else "",
+        "available_count": payload.get("available_count") if payload.get("available_count") is not None else "",
+        "remaining_slots": payload.get("remaining_slots") if payload.get("remaining_slots") is not None else "",
         "event_name": payload.get("event_name") or payload.get("name") or "",
         "author_name": payload.get("author_name") or "",
         "content": content_value,
@@ -1091,6 +1153,114 @@ def deliver_notification(notif_type: str, payload: dict, related_date: str = Non
         whatsapp_message = render_notification_template(setting["whatsapp_template"], context)
         send_whatsapp_notification(whatsapp_message)
 
+def normalize_maximum_capacity(value) -> int:
+    if value is None or value == "":
+        return 100
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Maximum capacity must be a whole number")
+    if normalized <= 0:
+        raise HTTPException(status_code=400, detail="Maximum capacity must be greater than 0")
+    return normalized
+
+def get_available_count_for_session(cur, date_str: str) -> int:
+    cur.execute(
+        f"SELECT COUNT(*) as count FROM practice_availability WHERE date = {PLACEHOLDER} AND status = {PLACEHOLDER}",
+        (date_str, "available"),
+    )
+    row = cur.fetchone()
+    if not row:
+        return 0
+    row_dict = dict(row)
+    return int(row_dict.get("count", 0))
+
+def get_practice_session_with_capacity(cur, date_str: str) -> Optional[dict]:
+    cur.execute(
+        f"""
+        SELECT 
+            ps.date,
+            ps.time,
+            ps.location,
+            ps.session_cost,
+            ps.paid_by,
+            ps.payment_requested,
+            COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
+            u.full_name as paid_by_name,
+            u.bank_name as paid_by_bank_name,
+            u.sort_code as paid_by_sort_code,
+            u.account_number as paid_by_account_number
+        FROM practice_sessions ps
+        LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+        WHERE ps.date = {PLACEHOLDER}
+        """,
+        (date_str,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    session = dict(row)
+    available_count = get_available_count_for_session(cur, date_str)
+    maximum_capacity = normalize_maximum_capacity(session.get("maximum_capacity"))
+    session["maximum_capacity"] = maximum_capacity
+    session["available_count"] = available_count
+    session["remaining_slots"] = max(maximum_capacity - available_count, 0)
+    session["capacity_reached"] = available_count >= maximum_capacity
+    return session
+
+def notify_practice_slots_available():
+    now = datetime.now()
+    window_end = now + timedelta(hours=72)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                f"""
+                SELECT date
+                FROM practice_sessions
+                WHERE date::timestamp >= {PLACEHOLDER}
+                  AND date::timestamp <= {PLACEHOLDER}
+                ORDER BY date ASC
+                LIMIT 1
+                """,
+                (now.date().isoformat(), window_end.date().isoformat()),
+            )
+        else:
+            cur.execute(
+                f"""
+                SELECT date
+                FROM practice_sessions
+                WHERE date >= {PLACEHOLDER}
+                  AND date <= {PLACEHOLDER}
+                ORDER BY date ASC
+                LIMIT 1
+                """,
+                (now.date().isoformat(), window_end.date().isoformat()),
+            )
+        row = cur.fetchone()
+        if not row:
+            return
+
+        row_dict = dict(row)
+        session = get_practice_session_with_capacity(cur, row_dict["date"])
+        if not session:
+            return
+        if session["remaining_slots"] <= 0:
+            return
+
+        deliver_notification(
+            "practice_slot_available",
+            {
+                "date": session["date"],
+                "time": session.get("time"),
+                "location": session.get("location"),
+                "maximum_capacity": session["maximum_capacity"],
+                "available_count": session["available_count"],
+                "remaining_slots": session["remaining_slots"],
+            },
+            related_date=session["date"],
+        )
+
 def serialize_notification_setting(row: dict) -> dict:
     return {
         "notif_type": row["notif_type"],
@@ -1237,6 +1407,7 @@ class PracticeSessionCreate(BaseModel):
     location: Optional[str] = None
     session_cost: Optional[float] = None
     paid_by: Optional[str] = None
+    maximum_capacity: int = 100
 
 class PracticeSessionOut(BaseModel):
     date: str
@@ -1244,6 +1415,10 @@ class PracticeSessionOut(BaseModel):
     location: Optional[str] = None
     session_cost: Optional[float] = None
     paid_by: Optional[str] = None
+    maximum_capacity: int = 100
+    available_count: Optional[int] = 0
+    remaining_slots: Optional[int] = 100
+    capacity_reached: Optional[bool] = False
     paid_by_name: Optional[str] = None
     paid_by_bank_name: Optional[str] = None
     paid_by_sort_code: Optional[str] = None
@@ -1305,8 +1480,13 @@ async def startup_event():
     print("Database initialized successfully")
     if whatsapp_is_configured() and not whatsapp_scheduler.running:
         whatsapp_scheduler.add_job(keep_whatsapp_instance_alive, "interval", minutes=30, id="whatsapp_keepalive", replace_existing=True)
+        whatsapp_scheduler.add_job(notify_practice_slots_available, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
         whatsapp_scheduler.start()
         print("WhatsApp keep-alive scheduler started")
+    elif not whatsapp_scheduler.running:
+        whatsapp_scheduler.add_job(notify_practice_slots_available, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
+        whatsapp_scheduler.start()
+        print("Notification scheduler started")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -1418,6 +1598,10 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         token = str(uuid.uuid4())
         SESSIONS[token] = {"email": user["email"], "full_name": user["full_name"], "id": user["id"]}
         return {"access_token": token, "token_type": "bearer"}
+
+@app.post("/api/login", response_model=Token)
+def login_alias(form_data: OAuth2PasswordRequestForm = Depends()):
+    return login(form_data)
 
 # ========== FORGOT PASSWORD FEATURE - API Endpoint ==========
 # This endpoint handles password recovery requests
@@ -2076,34 +2260,32 @@ def get_uploaded_file(filename: str):
 def list_practice_sessions():
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT 
-                ps.date, 
-                ps.time, 
-                ps.location, 
-                ps.session_cost, 
-                ps.paid_by, 
-                ps.payment_requested,
-                u.full_name as paid_by_name,
-                u.bank_name as paid_by_bank_name,
-                u.sort_code as paid_by_sort_code,
-                u.account_number as paid_by_account_number
-            FROM practice_sessions ps
-            LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-            ORDER BY ps.date ASC
-        """)
-        return [PracticeSessionOut(**dict(r)) for r in cur.fetchall()]
+        cur.execute(f"SELECT date FROM practice_sessions ORDER BY date ASC")
+        sessions = []
+        for row in cur.fetchall():
+            row_dict = dict(row)
+            session = get_practice_session_with_capacity(cur, row_dict["date"])
+            if session:
+                sessions.append(PracticeSessionOut(**session))
+        return sessions
 
 @app.post("/api/practice/sessions", response_model=PracticeSessionOut)
 def create_practice_session(session: PracticeSessionCreate, current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
+    maximum_capacity = normalize_maximum_capacity(session.maximum_capacity)
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(
-            f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date) DO UPDATE SET time = EXCLUDED.time, location = EXCLUDED.location, session_cost = EXCLUDED.session_cost, paid_by = EXCLUDED.paid_by",
-            (session.date, session.time, session.location, session.session_cost, session.paid_by),
-        )
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date) DO UPDATE SET time = EXCLUDED.time, location = EXCLUDED.location, session_cost = EXCLUDED.session_cost, paid_by = EXCLUDED.paid_by, maximum_capacity = EXCLUDED.maximum_capacity",
+                (session.date, session.time, session.location, session.session_cost, session.paid_by, maximum_capacity),
+            )
+        else:
+            cur.execute(
+                f"INSERT OR REPLACE INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, COALESCE((SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}), 0), {PLACEHOLDER})",
+                (session.date, session.time, session.location, session.session_cost, session.paid_by, session.date, maximum_capacity),
+            )
         conn.commit()
         
         deliver_notification(
@@ -2112,52 +2294,30 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
                 "date": session.date,
                 "time": session.time,
                 "location": session.location,
+                "maximum_capacity": maximum_capacity,
             },
             related_date=session.date
         )
-        
-        return PracticeSessionOut(**session.model_dump())
+
+        created_session = get_practice_session_with_capacity(cur, session.date)
+        return PracticeSessionOut(**created_session)
 
 @app.put("/api/practice/sessions/{date_str}", response_model=PracticeSessionOut)
 def update_practice_session(date_str: str, session: PracticeSessionCreate, current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
+    maximum_capacity = normalize_maximum_capacity(session.maximum_capacity)
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE practice_sessions SET time = {PLACEHOLDER}, location = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, paid_by = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
-            (session.time, session.location, session.session_cost, session.paid_by, date_str),
+            f"UPDATE practice_sessions SET time = {PLACEHOLDER}, location = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
+            (session.time, session.location, session.session_cost, session.paid_by, maximum_capacity, date_str),
         )
         conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Practice session not found")
-        paid_by_name = None
-        paid_by_bank_name = None
-        paid_by_sort_code = None
-        paid_by_account_number = None
-        if session.paid_by:
-            cur.execute(
-                f"SELECT full_name, bank_name, sort_code, account_number FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
-                (session.paid_by,)
-            )
-            paid_by_user = cur.fetchone()
-            if paid_by_user:
-                paid_by_user_dict = dict(paid_by_user)
-                paid_by_name = paid_by_user_dict.get("full_name")
-                paid_by_bank_name = paid_by_user_dict.get("bank_name")
-                paid_by_sort_code = paid_by_user_dict.get("sort_code")
-                paid_by_account_number = paid_by_user_dict.get("account_number")
-        return PracticeSessionOut(
-            date=date_str,
-            time=session.time,
-            location=session.location,
-            session_cost=session.session_cost,
-            paid_by=session.paid_by,
-            paid_by_name=paid_by_name,
-            paid_by_bank_name=paid_by_bank_name,
-            paid_by_sort_code=paid_by_sort_code,
-            paid_by_account_number=paid_by_account_number,
-        )
+        updated_session = get_practice_session_with_capacity(cur, date_str)
+        return PracticeSessionOut(**updated_session)
 
 @app.post("/api/practice/sessions/{date_str}/request-payment")
 def request_payment(date_str: str, current_user: dict = Depends(get_current_user)):
@@ -2686,6 +2846,20 @@ def set_practice_availability_by_date(date: str, status: dict, current_user: dic
         cur = conn.cursor()
         
         availability_status = status.get("status")
+        cur.execute(
+            f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (date, current_user["email"]),
+        )
+        existing_row = cur.fetchone()
+        previous_status = dict(existing_row).get("status") if existing_row else None
+
+        session_details = get_practice_session_with_capacity(cur, date)
+        if not session_details:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+
+        is_new_available_vote = availability_status == 'available' and previous_status != 'available'
+        if is_new_available_vote and session_details["capacity_reached"]:
+            raise HTTPException(status_code=403, detail="Maximum capacity has been reached for this session. No more Available selections are allowed right now.")
         
         # If status is 'none', delete the availability record (deselection)
         if availability_status == 'none':
@@ -2708,6 +2882,21 @@ def set_practice_availability_by_date(date: str, status: dict, current_user: dic
                 (date, current_user["email"], current_user["full_name"], availability_status),
             )
         conn.commit()
+        updated_session = get_practice_session_with_capacity(cur, date)
+        if is_new_available_vote and updated_session and updated_session["capacity_reached"]:
+            deliver_notification(
+                "session_capacity_reached",
+                {
+                    "date": updated_session["date"],
+                    "time": updated_session.get("time"),
+                    "location": updated_session.get("location"),
+                    "maximum_capacity": updated_session["maximum_capacity"],
+                    "available_count": updated_session["available_count"],
+                    "remaining_slots": updated_session["remaining_slots"],
+                },
+                related_date=date,
+                exclude_email=current_user["email"],
+            )
         return {"message": "Availability set"}
 
 @app.post("/api/practice/availability")
@@ -2733,6 +2922,20 @@ def set_my_practice_availability(avail: PracticeAvailability, current_user: dict
     
     with get_connection() as conn:
         cur = conn.cursor()
+        cur.execute(
+            f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (avail.date, current_user["email"]),
+        )
+        existing_row = cur.fetchone()
+        previous_status = dict(existing_row).get("status") if existing_row else None
+
+        session_details = get_practice_session_with_capacity(cur, avail.date)
+        if not session_details:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+
+        is_new_available_vote = avail.status == 'available' and previous_status != 'available'
+        if is_new_available_vote and session_details["capacity_reached"]:
+            raise HTTPException(status_code=403, detail="Maximum capacity has been reached for this session. No more Available selections are allowed right now.")
         
         # If status is 'none', delete the availability record (deselection)
         if avail.status == 'none':
@@ -2756,6 +2959,21 @@ def set_my_practice_availability(avail: PracticeAvailability, current_user: dict
                 (avail.date, current_user["email"], current_user["full_name"], avail.status),
             )
         conn.commit()
+        updated_session = get_practice_session_with_capacity(cur, avail.date)
+        if is_new_available_vote and updated_session and updated_session["capacity_reached"]:
+            deliver_notification(
+                "session_capacity_reached",
+                {
+                    "date": updated_session["date"],
+                    "time": updated_session.get("time"),
+                    "location": updated_session.get("location"),
+                    "maximum_capacity": updated_session["maximum_capacity"],
+                    "available_count": updated_session["available_count"],
+                    "remaining_slots": updated_session["remaining_slots"],
+                },
+                related_date=avail.date,
+                exclude_email=current_user["email"],
+            )
         return {"message": "Availability set"}
 
 @app.post("/api/admin/practice/availability")
@@ -2783,6 +3001,21 @@ def admin_set_practice_availability(avail: AdminPracticeAvailability, current_us
             raise HTTPException(status_code=404, detail="User not found")
         
         user_full_name = user_row["full_name"]
+
+        cur.execute(
+            f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (avail.date, avail.user_email),
+        )
+        existing_row = cur.fetchone()
+        previous_status = dict(existing_row).get("status") if existing_row else None
+
+        session = get_practice_session_with_capacity(cur, avail.date)
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+
+        is_new_available_vote = avail.status == "available" and previous_status != "available"
+        if is_new_available_vote and session["capacity_reached"]:
+            raise HTTPException(status_code=403, detail="Maximum capacity has been reached for this session. No more Available selections are allowed right now.")
         
         # Set or update availability
         if USE_POSTGRES:
@@ -2796,6 +3029,21 @@ def admin_set_practice_availability(avail: AdminPracticeAvailability, current_us
                 (avail.date, avail.user_email, user_full_name, avail.status),
             )
         conn.commit()
+
+        updated_session = get_practice_session_with_capacity(cur, avail.date)
+        if is_new_available_vote and updated_session and updated_session["capacity_reached"]:
+            deliver_notification(
+                "session_capacity_reached",
+                {
+                    "date": updated_session["date"],
+                    "time": updated_session.get("time"),
+                    "location": updated_session.get("location"),
+                    "maximum_capacity": updated_session["maximum_capacity"],
+                    "available_count": updated_session["available_count"],
+                    "remaining_slots": updated_session["remaining_slots"],
+                },
+                related_date=avail.date,
+            )
         return {"message": "Availability set by admin"}
 
 @app.get("/api/practice/availability/{date_str}")
@@ -2834,12 +3082,21 @@ def get_practice_availability_summary(date_str: str):
             elif r["status"] == "not_available":
                 not_available.append(name)
 
+        session = get_practice_session_with_capacity(cur, date_str)
+        maximum_capacity = session["maximum_capacity"] if session else 100
+        available_count = len(available)
+        remaining_slots = max(maximum_capacity - available_count, 0)
+
         # Return with email mapping for admin delete functionality
         return {
             "available": available,
             "tentative": tentative,
             "not_available": not_available,
-            "user_emails": {r["user_full_name"] or r["user_email"]: r["user_email"] for r in rows}
+            "user_emails": {r["user_full_name"] or r["user_email"]: r["user_email"] for r in rows},
+            "maximum_capacity": maximum_capacity,
+            "available_count": available_count,
+            "remaining_slots": remaining_slots,
+            "capacity_reached": available_count >= maximum_capacity,
         }
 
 # --- Notifications ---
@@ -3402,6 +3659,7 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
             cur.execute(
                 """
                 SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
+                       COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
                        pa.status as user_status
                 FROM practice_sessions ps
                 LEFT JOIN practice_availability pa 
@@ -3415,6 +3673,7 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
             cur.execute(
                 """
                 SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
+                       COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
                        pa.status as user_status
                 FROM practice_sessions ps
                 LEFT JOIN practice_availability pa 
@@ -3429,22 +3688,34 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
         sessions = []
         for row in rows:
             if USE_POSTGRES:
+                available_count = get_available_count_for_session(cur, row["date"])
+                maximum_capacity = normalize_maximum_capacity(row["maximum_capacity"])
                 sessions.append({
                     "date": row["date"],
                     "time": row["time"],
                     "location": row["location"],
                     "session_cost": row["session_cost"],
                     "paid_by": row["paid_by"],
-                    "user_status": row["user_status"]
+                    "user_status": row["user_status"],
+                    "maximum_capacity": maximum_capacity,
+                    "available_count": available_count,
+                    "remaining_slots": max(maximum_capacity - available_count, 0),
+                    "capacity_reached": available_count >= maximum_capacity,
                 })
             else:
+                available_count = get_available_count_for_session(cur, row[0])
+                maximum_capacity = normalize_maximum_capacity(row[5])
                 sessions.append({
                     "date": row[0],
                     "time": row[1],
                     "location": row[2],
                     "session_cost": row[3],
                     "paid_by": row[4],
-                    "user_status": row[5]
+                    "user_status": row[6],
+                    "maximum_capacity": maximum_capacity,
+                    "available_count": available_count,
+                    "remaining_slots": max(maximum_capacity - available_count, 0),
+                    "capacity_reached": available_count >= maximum_capacity,
                 })
         
         return {"sessions": sessions}
@@ -3562,6 +3833,10 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                 })
         
         return {"payments": payments}
+
+@app.get("/api/user-actions/pending-payments")
+def get_pending_payments_alias(current_user: dict = Depends(get_current_user)):
+    return get_pending_payments(current_user)
 
 # --- About Us ---
 @app.get("/api/about")
