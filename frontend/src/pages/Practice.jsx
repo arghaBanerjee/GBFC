@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
 
 export default function Practice({ user }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const adminControlsRef = useRef(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(null)
   const [availability, setAvailability] = useState({})
@@ -18,8 +19,11 @@ export default function Practice({ user }) {
   const [sessionCost, setSessionCost] = useState('')
   const [paidBy, setPaidBy] = useState('')
   const [payments, setPayments] = useState({})
+  const [paymentUpdatePending, setPaymentUpdatePending] = useState(false)
   const [showPaymentConfirm, setShowPaymentConfirm] = useState(false)
   const [paymentInfoSaved, setPaymentInfoSaved] = useState(false)
+  const [adminControlsOpen, setAdminControlsOpen] = useState(false)
+  const [adminUsersLoading, setAdminUsersLoading] = useState(false)
   const token = localStorage.getItem('token')
 
   const formatDateStr = (dt) => {
@@ -42,6 +46,19 @@ export default function Practice({ user }) {
     const rt = formatDateStr(dt)
     if (rt !== dateStr) return null
     return dt
+  }
+
+  const mergeUpdatedSession = (updatedSession) => {
+    if (!updatedSession?.date) return
+    setAdminSessions((prev) => {
+      const existingIndex = prev.findIndex((session) => session.date === updatedSession.date)
+      if (existingIndex === -1) {
+        return [...prev, updatedSession]
+      }
+      return prev.map((session) =>
+        session.date === updatedSession.date ? { ...session, ...updatedSession } : session
+      )
+    })
   }
 
   // Sync from URL -> selected date
@@ -83,39 +100,34 @@ export default function Practice({ user }) {
       })
         .then(r => r.json())
         .then(data => setAvailability(data || {}))
-      
-      // Check if user is admin, then fetch users if admin
-      fetch(apiUrl('/api/me'), {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-        .then(r => r.json())
-        .then(data => {
-          const isUserAdmin = data.user_type === 'admin'
-          setIsAdmin(isUserAdmin)
-          
-          // Fetch all users only for admins (non-admins get 403)
-          // Non-admins will use voteSummary.user_emails for name lookups
-          if (isUserAdmin) {
-            fetch(apiUrl('/api/users'), {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            })
-              .then(r => r.json())
-              .then(data => setAllUsers(data || []))
-              .catch(() => setAllUsers([]))
-          } else {
-            setAllUsers([])
-          }
-        })
     } else {
       setAvailability({})
-      setIsAdmin(false)
       setAllUsers([])
     }
   }, [user, token])
+
+  useEffect(() => {
+    setIsAdmin(user?.user_type === 'admin')
+    if (user?.user_type !== 'admin') {
+      setAdminControlsOpen(false)
+      setAllUsers([])
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (!isAdmin || !adminControlsOpen || !token || allUsers.length > 0 || adminUsersLoading) return
+
+    setAdminUsersLoading(true)
+    fetch(apiUrl('/api/users'), {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(r => r.json())
+      .then(data => setAllUsers(data || []))
+      .catch(() => setAllUsers([]))
+      .finally(() => setAdminUsersLoading(false))
+  }, [isAdmin, adminControlsOpen, token, allUsers.length, adminUsersLoading])
 
   const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
@@ -141,6 +153,11 @@ export default function Practice({ user }) {
     const params = new URLSearchParams(location.search)
     params.set('date', dateStr)
     navigate({ pathname: location.pathname, search: params.toString() }, { replace: false })
+  }
+
+  const handleToggleAdminControls = () => {
+    adminControlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setAdminControlsOpen((prev) => !prev)
   }
 
   const handleAvailability = (status) => {
@@ -207,8 +224,19 @@ export default function Practice({ user }) {
         paid_by: paidBy || null,
       }),
     })
-      .then(r => r.json())
-      .then(() => {
+      .then(r => {
+        if (!r.ok) {
+          return r.json().then(err => {
+            throw new Error(err.detail || 'Failed to update session info')
+          })
+        }
+        return r.json()
+      })
+      .then((updatedSession) => {
+        mergeUpdatedSession(updatedSession)
+        setSessionCost(updatedSession.session_cost != null ? updatedSession.session_cost.toString() : '')
+        setPaidBy(updatedSession.paid_by || '')
+        setPaymentInfoSaved(Boolean(updatedSession.session_cost != null && updatedSession.paid_by))
         // Refresh admin sessions
         return fetch(apiUrl('/api/practice/sessions'))
           .then(r => r.json())
@@ -242,8 +270,11 @@ export default function Practice({ user }) {
         }
         return r.json()
       })
-      .then(() => {
-        setPaymentInfoSaved(true)
+      .then((updatedSession) => {
+        mergeUpdatedSession(updatedSession)
+        setSessionCost(updatedSession.session_cost != null ? updatedSession.session_cost.toString() : '')
+        setPaidBy(updatedSession.paid_by || '')
+        setPaymentInfoSaved(Boolean(updatedSession.session_cost != null && updatedSession.paid_by))
         // Refresh admin sessions
         return fetch(apiUrl('/api/practice/sessions'))
           .then(r => r.json())
@@ -293,6 +324,13 @@ export default function Practice({ user }) {
 
   const handlePaymentConfirmation = (paid) => {
     if (!selectedSession) return
+    if (!user?.email) return
+    const previousPaid = Boolean(payments[user.email])
+    setPaymentUpdatePending(true)
+    setPayments((prev) => ({
+      ...prev,
+      [user.email]: paid,
+    }))
     
     fetch(apiUrl(`/api/practice/sessions/${selectedDateStr}/payment`), {
       method: 'POST',
@@ -318,7 +356,14 @@ export default function Practice({ user }) {
           .then(r => r.json())
           .then(data => setPayments(data || {}))
       })
-      .catch(err => console.error('Failed to update payment:', err))
+      .catch(err => {
+        setPayments((prev) => ({
+          ...prev,
+          [user.email]: previousPaid,
+        }))
+        console.error('Failed to update payment:', err)
+      })
+      .finally(() => setPaymentUpdatePending(false))
   }
 
   const handleAdminSetAvailability = () => {
@@ -495,7 +540,24 @@ export default function Practice({ user }) {
   const selectedSession = adminSessions.find(s => s.date === selectedDateStr)
   const selectedMatch = matches.find(m => m.date === selectedDateStr)
   const selectedStatus = selectedDateStr ? availability[selectedDateStr] : null
-  
+  const selectedPaidByUser = allUsers.find((u) => u.email === paidBy)
+  const paidByBankDetails = selectedSession?.payment_requested
+    ? {
+        full_name: selectedSession?.paid_by_name || selectedSession?.paid_by,
+        bank_name: selectedSession?.paid_by_bank_name,
+        sort_code: selectedSession?.paid_by_sort_code,
+        account_number: selectedSession?.paid_by_account_number,
+      }
+    : {
+        full_name: selectedPaidByUser?.full_name || selectedPaidByUser?.email,
+        bank_name: selectedPaidByUser?.bank_name,
+        sort_code: selectedPaidByUser?.sort_code,
+        account_number: selectedPaidByUser?.account_number,
+      }
+  const hasPaidByBankDetails = Boolean(
+    paidByBankDetails.bank_name && paidByBankDetails.sort_code && paidByBankDetails.account_number
+  )
+
   // Check if current user is in the available list (for payment card visibility)
   // voteSummary.available is an array of names (strings), use user_emails mapping to check
   const isUserAvailable = user && voteSummary?.user_emails && voteSummary?.available 
@@ -527,19 +589,19 @@ export default function Practice({ user }) {
     }
   }, [selectedDateStr, token])
   
-  // Update session cost and paid_by when a session is selected (only when date changes)
+  // Update session cost and paid_by when selected session data changes
   useEffect(() => {
     if (selectedSession) {
-      setSessionCost(selectedSession.session_cost ? selectedSession.session_cost.toString() : '')
+      setSessionCost(selectedSession.session_cost != null ? selectedSession.session_cost.toString() : '')
       setPaidBy(selectedSession.paid_by || '')
       // Check if payment info is already saved (both fields have values in DB)
-      setPaymentInfoSaved(!!(selectedSession.session_cost && selectedSession.paid_by))
+      setPaymentInfoSaved(Boolean(selectedSession.session_cost != null && selectedSession.paid_by))
     } else {
       setSessionCost('')
       setPaidBy('')
       setPaymentInfoSaved(false)
     }
-  }, [selectedDateStr])
+  }, [selectedSession])
 
   return (
     <div className="container">
@@ -663,33 +725,73 @@ export default function Practice({ user }) {
                   <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#78350f' }}>
                     The admin has requested payment for this session.
                   </p>
-                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fff', borderRadius: '0.375rem', border: '1px solid #fbbf24' }}>
+                  {hasPaidByBankDetails && (
+                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fffaf0', borderRadius: '0.375rem', border: '1px solid #fcd34d' }}>
+                      <div style={{ fontWeight: '600', fontSize: '0.875rem', color: '#92400e', marginBottom: '0.5rem' }}>Bank Details</div>
+                      <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.875rem', color: '#78350f' }}>
+                        <div><strong>Account Holder:</strong> {paidByBankDetails.full_name || 'Unknown User'}</div>
+                        <div><strong>Bank Name:</strong> {paidByBankDetails.bank_name}</div>
+                        <div><strong>Sort Code:</strong> {paidByBankDetails.sort_code}</div>
+                        <div><strong>Account Number:</strong> {paidByBankDetails.account_number}</div>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fffaf0', borderRadius: '0.375rem', border: '1px solid #fcd34d' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <input
                         type="checkbox"
                         id="payment-checkbox"
                         checked={payments[user.email] || false}
                         onChange={(e) => handlePaymentConfirmation(e.target.checked)}
-                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                        disabled={paymentUpdatePending}
+                        style={{ width: '18px', height: '18px', cursor: paymentUpdatePending ? 'wait' : 'pointer' }}
                       />
                       <label htmlFor="payment-checkbox" style={{ fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>
-                        {selectedSession.session_cost ? (
+                        {selectedSession.session_cost != null ? (
                           <>Paid £{(selectedSession.session_cost / voteSummary.available.length).toFixed(2)} to {
                             selectedSession.paid_by_name || selectedSession.paid_by || 'Unknown User'
                           }</>
                         ) : (
-                          'Confirm payment for this session'
+                          'Confirm payment made'
                         )}
                       </label>
                     </div>
+                    {paymentUpdatePending && (
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                        Updating payment status...
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
               {isAdmin && (
-                <div style={{ marginTop: '1rem', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem', border: '1px solid #e5e7eb' }}>
-                  <strong style={{ color: '#7c3aed' }}>Admin Controls</strong>
-                  
+                <div ref={adminControlsRef} style={{ marginTop: '1rem', background: '#fef2f2', borderRadius: '0.5rem', border: '1px solid #fecaca', overflow: 'hidden', boxShadow: adminControlsOpen ? '0 8px 24px rgba(220, 38, 38, 0.12)' : 'none', transition: 'all 0.25s ease' }}>
+                  <button
+                    type="button"
+                    onClick={handleToggleAdminControls}
+                    style={{
+                      width: '100%',
+                      padding: '1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: adminControlsOpen ? '#fee2e2' : 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'background 0.25s ease',
+                    }}
+                  >
+                    <strong style={{ color: '#b91c1c' }}>Admin Controls</strong>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#7f1d1d', fontSize: '0.875rem', fontWeight: '600' }}>
+                      {adminControlsOpen ? 'Hide' : 'Show'}
+                      <span style={{ display: 'inline-block', transform: adminControlsOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.25s ease' }}>⌄</span>
+                    </span>
+                  </button>
+
+                  <div style={{ maxHeight: adminControlsOpen ? '1200px' : '0', opacity: adminControlsOpen ? 1 : 0, overflow: 'hidden', transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
+                    <div style={{ padding: adminControlsOpen ? '0 1rem 1rem 1rem' : '0 1rem', transform: adminControlsOpen ? 'translateY(0)' : 'translateY(-8px)', transition: 'padding 0.25s ease, transform 0.25s ease' }}>
                   {/* Payment Information */}
                   <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fff', borderRadius: '0.375rem', border: '1px solid #e5e7eb' }}>
                     <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Payment Information</div>
@@ -741,6 +843,27 @@ export default function Practice({ user }) {
                         )}
                       </div>
                     </div>
+                    {!selectedSession?.payment_requested && paidBy && !hasPaidByBankDetails && !adminUsersLoading && (
+                      <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }}>
+                        Bank Details not available for the user
+                      </div>
+                    )}
+                    {adminUsersLoading && (
+                      <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: '#6b7280' }}>
+                        Loading users...
+                      </div>
+                    )}
+                    {hasPaidByBankDetails && (
+                      <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '0.375rem', border: '1px solid #e5e7eb' }}>
+                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.75rem', color: '#374151' }}>Bank Details</div>
+                        <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8125rem', color: '#4b5563' }}>
+                          <div><strong>Account Holder:</strong> {paidByBankDetails.full_name || 'Unknown User'}</div>
+                          <div><strong>Bank Name:</strong> {paidByBankDetails.bank_name}</div>
+                          <div><strong>Sort Code:</strong> {paidByBankDetails.sort_code}</div>
+                          <div><strong>Account Number:</strong> {paidByBankDetails.account_number}</div>
+                        </div>
+                      </div>
+                    )}
                     {!selectedSession?.payment_requested && (
                       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
                         <button
@@ -783,7 +906,7 @@ export default function Practice({ user }) {
                     )}
                     {selectedSession?.payment_requested && (
                       <div style={{ padding: '0.5rem', background: '#dcfce7', borderRadius: '0.375rem', fontSize: '0.875rem', color: '#16a34a', fontWeight: '600', textAlign: 'center' }}>
-                        ✓ Payment Request Enabled
+                        ✓ Payment Requested
                       </div>
                     )}
                   </div>
@@ -847,6 +970,8 @@ export default function Practice({ user }) {
                     <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
                       {selectedSession?.payment_requested ? 'Cannot change availability after payment request.' : 'Admins can add or modify any player\'s availability.'}
                     </p>
+                  </div>
+                    </div>
                   </div>
                 </div>
               )}

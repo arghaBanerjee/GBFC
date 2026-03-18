@@ -174,6 +174,9 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_login TIMESTAMP,
                 birthday DATE,
+                bank_name VARCHAR(255),
+                sort_code VARCHAR(20),
+                account_number VARCHAR(20),
                 is_deleted BOOLEAN DEFAULT FALSE,
                 deleted_at TIMESTAMP,
                 deleted_by VARCHAR(255)
@@ -304,6 +307,57 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not add birthday column: {e}")
                 conn.rollback()
+
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='bank_name'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN bank_name VARCHAR(255);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add bank_name column: {e}")
+                conn.rollback()
+
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='sort_code'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN sort_code VARCHAR(20);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add sort_code column: {e}")
+                conn.rollback()
+
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='account_number'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN account_number VARCHAR(20);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add account_number column: {e}")
+                conn.rollback()
             
             # Add session_cost column to practice_sessions if it doesn't exist
             try:
@@ -394,8 +448,7 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not add user_full_name to forum_comments: {e}")
                 conn.rollback()
-            
-            # Add user_full_name to event_comments if it doesn't exist
+
             try:
                 cur.execute("""
                     DO $$ 
@@ -413,29 +466,6 @@ def init_db():
                 print(f"Warning: Could not add user_full_name to event_comments: {e}")
                 conn.rollback()
 
-            try:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS notification_settings (
-                        notif_type VARCHAR(100) PRIMARY KEY,
-                        display_name VARCHAR(255) NOT NULL,
-                        description TEXT,
-                        app_enabled BOOLEAN DEFAULT TRUE,
-                        email_enabled BOOLEAN DEFAULT FALSE,
-                        whatsapp_enabled BOOLEAN DEFAULT FALSE,
-                        target_audience VARCHAR(100) NOT NULL DEFAULT 'all_active_users',
-                        app_template TEXT NOT NULL,
-                        email_subject TEXT NOT NULL,
-                        email_template TEXT NOT NULL,
-                        whatsapp_template TEXT NOT NULL,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                conn.commit()
-            except Exception as e:
-                print(f"Warning: Could not create notification_settings table: {e}")
-                conn.rollback()
-            
-            # Add user_full_name to practice_availability if it doesn't exist
             try:
                 cur.execute("""
                     DO $$ 
@@ -603,6 +633,9 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_login TIMESTAMP,
                 birthday DATE,
+                bank_name TEXT,
+                sort_code TEXT,
+                account_number TEXT,
                 is_deleted BOOLEAN DEFAULT 0,
                 deleted_at TIMESTAMP,
                 deleted_by TEXT
@@ -659,6 +692,21 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add birthday column: {e}")
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN bank_name TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add bank_name column: {e}")
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN sort_code TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add sort_code column: {e}")
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN account_number TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add account_number column: {e}")
             # Add session_cost column to practice_sessions if it doesn't exist
             try:
                 cur.execute("ALTER TABLE practice_sessions ADD COLUMN session_cost REAL")
@@ -1073,6 +1121,9 @@ class UserOut(BaseModel):
     created_at: Optional[str] = None
     last_login: Optional[str] = None
     birthday: Optional[str] = None
+    bank_name: Optional[str] = None
+    sort_code: Optional[str] = None
+    account_number: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -1194,6 +1245,9 @@ class PracticeSessionOut(BaseModel):
     session_cost: Optional[float] = None
     paid_by: Optional[str] = None
     paid_by_name: Optional[str] = None
+    paid_by_bank_name: Optional[str] = None
+    paid_by_sort_code: Optional[str] = None
+    paid_by_account_number: Optional[str] = None
     payment_requested: Optional[bool] = False
 
 # --- Helper Functions ---
@@ -1484,7 +1538,7 @@ def me(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"SELECT full_name, user_type, is_deleted, created_at, last_login, birthday FROM users WHERE email = {PLACEHOLDER}", 
+            f"SELECT full_name, user_type, is_deleted, created_at, last_login, birthday, bank_name, sort_code, account_number FROM users WHERE email = {PLACEHOLDER}", 
             (current_user["email"],)
         )
         row = cur.fetchone()
@@ -1519,12 +1573,18 @@ def me(current_user: dict = Depends(get_current_user)):
                     birthday = row_dict["birthday"].isoformat()
                 else:
                     birthday = str(row_dict["birthday"])
+            bank_name = row_dict.get("bank_name")
+            sort_code = row_dict.get("sort_code")
+            account_number = row_dict.get("account_number")
         else:
             full_name = current_user["full_name"]
             user_type = "member"
             created_at = None
             last_login = None
             birthday = None
+            bank_name = None
+            sort_code = None
+            account_number = None
     
     return UserOut(
         id=current_user["id"], 
@@ -1533,7 +1593,10 @@ def me(current_user: dict = Depends(get_current_user)):
         user_type=user_type,
         created_at=created_at,
         last_login=last_login,
-        birthday=birthday
+        birthday=birthday,
+        bank_name=bank_name,
+        sort_code=sort_code,
+        account_number=account_number
     )
 
 @app.post("/api/logout")
@@ -1549,7 +1612,7 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
     
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
+        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday, bank_name, sort_code, account_number FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
         users = []
         for row in cur.fetchall():
             user_dict = dict(row)
@@ -1577,6 +1640,9 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
                     user_dict["birthday"] = str(user_dict["birthday"])
             else:
                 user_dict["birthday"] = None
+            user_dict["bank_name"] = user_dict.get("bank_name") or None
+            user_dict["sort_code"] = user_dict.get("sort_code") or None
+            user_dict["account_number"] = user_dict.get("account_number") or None
             # Ensure user_type has a default
             if not user_dict.get("user_type"):
                 user_dict["user_type"] = "member"
@@ -1736,6 +1802,49 @@ def update_own_birthday(data: dict, current_user: dict = Depends(get_current_use
         conn.commit()
         
         return {"message": "Birthday updated successfully", "birthday": birthday if birthday else None}
+
+@app.put("/api/profile/bank-details")
+def update_own_bank_details(data: dict, current_user: dict = Depends(get_current_user)):
+    bank_name = (data.get("bank_name") or "").strip()
+    sort_code = (data.get("sort_code") or "").strip()
+    account_number = (data.get("account_number") or "").strip()
+
+    if bank_name and len(bank_name) > 100:
+        raise HTTPException(status_code=400, detail="Bank name must be 100 characters or less")
+
+    if sort_code:
+        normalized_sort_code = sort_code.replace("-", "").replace(" ", "")
+        if not normalized_sort_code.isdigit() or len(normalized_sort_code) != 6:
+            raise HTTPException(status_code=400, detail="Sort code must be 6 digits")
+        sort_code = f"{normalized_sort_code[0:2]}-{normalized_sort_code[2:4]}-{normalized_sort_code[4:6]}"
+    else:
+        sort_code = None
+
+    if account_number:
+        normalized_account_number = account_number.replace(" ", "")
+        if not normalized_account_number.isdigit() or len(normalized_account_number) < 6 or len(normalized_account_number) > 8:
+            raise HTTPException(status_code=400, detail="Account number must be 6 to 8 digits")
+        account_number = normalized_account_number
+    else:
+        account_number = None
+
+    if any([bank_name, sort_code, account_number]) and not all([bank_name, sort_code, account_number]):
+        raise HTTPException(status_code=400, detail="Bank name, sort code, and account number must all be provided together")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE users SET bank_name = {PLACEHOLDER}, sort_code = {PLACEHOLDER}, account_number = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+            (bank_name or None, sort_code, account_number, current_user["email"])
+        )
+        conn.commit()
+
+    return {
+        "message": "Bank details updated successfully",
+        "bank_name": bank_name or None,
+        "sort_code": sort_code,
+        "account_number": account_number,
+    }
 
 @app.delete("/api/users/{email}")
 def delete_user(email: str, current_user: dict = Depends(get_current_user)):
@@ -1975,7 +2084,10 @@ def list_practice_sessions():
                 ps.session_cost, 
                 ps.paid_by, 
                 ps.payment_requested,
-                u.full_name as paid_by_name
+                u.full_name as paid_by_name,
+                u.bank_name as paid_by_bank_name,
+                u.sort_code as paid_by_sort_code,
+                u.account_number as paid_by_account_number
             FROM practice_sessions ps
             LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
             ORDER BY ps.date ASC
@@ -2019,7 +2131,33 @@ def update_practice_session(date_str: str, session: PracticeSessionCreate, curre
         conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Practice session not found")
-        return PracticeSessionOut(date=date_str, time=session.time, location=session.location, session_cost=session.session_cost, paid_by=session.paid_by)
+        paid_by_name = None
+        paid_by_bank_name = None
+        paid_by_sort_code = None
+        paid_by_account_number = None
+        if session.paid_by:
+            cur.execute(
+                f"SELECT full_name, bank_name, sort_code, account_number FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+                (session.paid_by,)
+            )
+            paid_by_user = cur.fetchone()
+            if paid_by_user:
+                paid_by_user_dict = dict(paid_by_user)
+                paid_by_name = paid_by_user_dict.get("full_name")
+                paid_by_bank_name = paid_by_user_dict.get("bank_name")
+                paid_by_sort_code = paid_by_user_dict.get("sort_code")
+                paid_by_account_number = paid_by_user_dict.get("account_number")
+        return PracticeSessionOut(
+            date=date_str,
+            time=session.time,
+            location=session.location,
+            session_cost=session.session_cost,
+            paid_by=session.paid_by,
+            paid_by_name=paid_by_name,
+            paid_by_bank_name=paid_by_bank_name,
+            paid_by_sort_code=paid_by_sort_code,
+            paid_by_account_number=paid_by_account_number,
+        )
 
 @app.post("/api/practice/sessions/{date_str}/request-payment")
 def request_payment(date_str: str, current_user: dict = Depends(get_current_user)):
@@ -2078,7 +2216,7 @@ def request_payment(date_str: str, current_user: dict = Depends(get_current_user
             related_date=date_str
         )
         
-        return {"message": "Payment request enabled successfully"}
+        return {"message": "Payment requested successfully"}
 
 @app.get("/api/practice/sessions/{date_str}/payments")
 def get_session_payments(date_str: str, current_user: dict = Depends(get_current_user)):
@@ -3327,6 +3465,9 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                 """
                 SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
                        u.full_name as paid_by_name,
+                       u.bank_name as paid_by_bank_name,
+                       u.sort_code as paid_by_sort_code,
+                       u.account_number as paid_by_account_number,
                        pa.status,
                        COALESCE(pp.paid, FALSE) as paid
                 FROM practice_sessions ps
@@ -3348,6 +3489,9 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                 """
                 SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
                        u.full_name as paid_by_name,
+                       u.bank_name as paid_by_bank_name,
+                       u.sort_code as paid_by_sort_code,
+                       u.account_number as paid_by_account_number,
                        pa.status,
                        COALESCE(pp.paid, 0) as paid
                 FROM practice_sessions ps
@@ -3377,16 +3521,20 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                 )
                 count_row = cur.fetchone()
                 available_count = count_row["count"] if count_row and "count" in count_row else 0
-                individual_amount = row["session_cost"] / available_count if available_count > 0 else 0
+                session_cost = row["session_cost"] or 0
+                individual_amount = session_cost / available_count if available_count > 0 else 0
                 
                 payments.append({
                     "date": row["date"],
                     "time": row["time"],
                     "location": row["location"],
-                    "session_cost": row["session_cost"],
+                    "session_cost": session_cost,
                     "individual_amount": round(individual_amount, 2),
                     "paid_by": row["paid_by"],
                     "paid_by_name": row["paid_by_name"],
+                    "paid_by_bank_name": row["paid_by_bank_name"],
+                    "paid_by_sort_code": row["paid_by_sort_code"],
+                    "paid_by_account_number": row["paid_by_account_number"],
                     "paid": row["paid"]
                 })
             else:
@@ -3396,17 +3544,21 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                     (row[0],)
                 )
                 available_count = cur.fetchone()[0]
-                individual_amount = row[3] / available_count if available_count > 0 else 0
+                session_cost = row[3] or 0
+                individual_amount = session_cost / available_count if available_count > 0 else 0
                 
                 payments.append({
                     "date": row[0],
                     "time": row[1],
                     "location": row[2],
-                    "session_cost": row[3],
+                    "session_cost": session_cost,
                     "individual_amount": round(individual_amount, 2),
                     "paid_by": row[4],
                     "paid_by_name": row[5],
-                    "paid": bool(row[7])
+                    "paid_by_bank_name": row[6],
+                    "paid_by_sort_code": row[7],
+                    "paid_by_account_number": row[8],
+                    "paid": bool(row[10])
                 })
         
         return {"payments": payments}
