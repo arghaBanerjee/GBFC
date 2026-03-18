@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import '../styles/UserActions.css'
+import { validateUserActionsTab } from '../utils/routeValidation'
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
@@ -11,7 +12,17 @@ function UserActions({ user, loading }) {
   const [pendingPayments, setPendingPayments] = useState([])
   const [loadingData, setLoadingData] = useState(true)
   const [error, setError] = useState('')
-  const activeTab = location.pathname === '/user-actions/payments' ? 'payments' : 'upcoming'
+  
+  // Validate route tab and redirect if invalid
+  const pathTab = location.pathname.split('/').pop()
+  const validatedTab = validateUserActionsTab(pathTab)
+  const activeTab = validatedTab
+  
+  useEffect(() => {
+    if (pathTab !== validatedTab) {
+      navigate(`/user-actions/${validatedTab}`, { replace: true })
+    }
+  }, [pathTab, validatedTab, navigate])
 
   useEffect(() => {
     if (user) {

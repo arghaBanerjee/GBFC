@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
 import '../styles/UserActions.css'
+import { validateMatchTab } from '../utils/routeValidation'
 
 const pastelColors = ['#FFE4E1', '#E6E6FA', '#E0FFF4', '#FFF8DC', '#F0FFF0']
 const upcomingPastelColors = ['#E0FFFF', '#FFF0F5', '#F0FFF0', '#FFF5EE', '#F5F5DC']
@@ -55,7 +56,17 @@ export default function Events({ user }) {
   const [likesHover, setLikesHover] = useState(null)
   const [myLikedEventIds, setMyLikedEventIds] = useState(new Set())
   const token = localStorage.getItem('token')
-  const tab = location.pathname === '/matches/past' ? 'past' : 'upcoming'
+  
+  // Validate route tab and redirect if invalid
+  const pathTab = location.pathname.split('/').pop()
+  const validatedTab = validateMatchTab(pathTab)
+  const tab = validatedTab
+  
+  useEffect(() => {
+    if (pathTab !== validatedTab) {
+      navigate(`/matches/${validatedTab}`, { replace: true })
+    }
+  }, [pathTab, validatedTab, navigate])
 
   useEffect(() => {
     fetch(apiUrl('/api/events'))
@@ -122,7 +133,7 @@ export default function Events({ user }) {
   }
 
   const renderCommentWithLinks = (text) => {
-    // Detect URLs and convert to clickable links
+    // Text is already sanitized from server, but we still need to handle URLs safely
     const urlRegex = /(https?:\/\/[^\s]+)/g
     const parts = text.split(urlRegex)
     
@@ -155,14 +166,16 @@ export default function Events({ user }) {
       return alert('Comment must be 100 characters or less')
     }
     
-    // Send comment without sanitization - renderCommentWithLinks handles safe rendering
+    // Sanitize comment input before sending
+    const sanitizedComment = sanitizeInput(commentText.trim())
+    
     await fetch(apiUrl(`/api/events/${commentingEventId}/comments`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ comment: commentText }),
+      body: JSON.stringify({ comment: sanitizedComment }),
     })
     setCommentText('')
     setCommentingEventId(null)

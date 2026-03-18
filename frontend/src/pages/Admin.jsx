@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { apiUrl } from '../api'
 import '../styles/Admin.css'
 import Reports from './Reports'
+import { validateAdminTab, createRouteValidator } from '../utils/routeValidation'
 
 export default function Admin({ user, loading }) {
   const navigate = useNavigate()
@@ -22,8 +23,21 @@ export default function Admin({ user, loading }) {
   const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
 
   const [message, setMessage] = useState('')
-  const activeTab = adminTabs.some((tab) => tab.value === routeTab) ? routeTab : 'practice'
+  
+  // Route validation
+  const validatedTab = validateAdminTab(routeTab)
+  const activeTab = validatedTab || 'practice'
   const setActiveTab = (tab) => navigate(`/admin/${tab}`)
+
+  // Route validator for handling invalid tabs
+  const routeValidator = createRouteValidator({
+    validator: validateAdminTab,
+    redirectTo: '/admin/practice',
+    onInvalidRoute: (invalidTab, redirectTo) => {
+      setMessage(`Invalid admin tab: "${invalidTab}". Redirecting to practice tab.`)
+      setTimeout(() => setMessage(''), 3000)
+    }
+  })
 
   // Events
   const [events, setEvents] = useState([])
@@ -62,6 +76,9 @@ export default function Admin({ user, loading }) {
   const [notificationMeta, setNotificationMeta] = useState({ target_audiences: [], notification_types: [] })
   const [notificationSaving, setNotificationSaving] = useState('')
   const [notificationSaveStatusByType, setNotificationSaveStatusByType] = useState({})
+
+  // Track which data has been loaded to prevent unnecessary reloads
+  const [loadedTabs, setLoadedTabs] = useState(new Set())
 
   const notificationPreviewSamples = {
     practice: {
@@ -154,10 +171,13 @@ export default function Admin({ user, loading }) {
 
   useEffect(() => {
     if (loading || !user || !isAdmin) return
-    if (!routeTab || !adminTabs.some((tab) => tab.value === routeTab)) {
-      navigate('/admin/practice', { replace: true })
+    
+    // Validate the current route tab
+    const validation = routeValidator(routeTab)
+    if (!validation.isValid && validation.redirectTo) {
+      navigate(validation.redirectTo, { replace: true })
     }
-  }, [routeTab, adminTabs, loading, user, isAdmin, navigate])
+  }, [routeTab, loading, user, isAdmin, navigate, routeValidator])
 
   const loadEvents = async () => {
     const res = await fetch(apiUrl('/api/events'))
@@ -193,6 +213,14 @@ export default function Admin({ user, loading }) {
     }
   }
 
+  const refreshTabData = (tabName) => {
+    if (tabName === 'event') loadEvents()
+    else if (tabName === 'practice') loadPracticeSessions()
+    else if (tabName === 'forum') loadForumPosts()
+    else if (tabName === 'users') loadUsers()
+    else if (tabName === 'notifications' && isSuperAdmin) loadNotificationSettings()
+  }
+
   const loadNotificationSettings = async () => {
     try {
       const [settingsRes, metaRes] = await Promise.all([
@@ -223,12 +251,31 @@ export default function Admin({ user, loading }) {
 
   useEffect(() => {
     if (!isAdmin) return
-    loadEvents()
-    loadPracticeSessions()
-    loadForumPosts()
-    loadUsers()
-    loadNotificationSettings()
-  }, [isAdmin])
+    
+    // Only load data for the active tab if not already loaded
+    if (!loadedTabs.has(activeTab)) {
+      const newLoadedTabs = new Set(loadedTabs)
+      
+      if (activeTab === 'event') {
+        loadEvents()
+        newLoadedTabs.add('event')
+      } else if (activeTab === 'practice') {
+        loadPracticeSessions()
+        newLoadedTabs.add('practice')
+      } else if (activeTab === 'forum') {
+        loadForumPosts()
+        newLoadedTabs.add('forum')
+      } else if (activeTab === 'users') {
+        loadUsers()
+        newLoadedTabs.add('users')
+      } else if (activeTab === 'notifications' && isSuperAdmin) {
+        loadNotificationSettings()
+        newLoadedTabs.add('notifications')
+      }
+      
+      setLoadedTabs(newLoadedTabs)
+    }
+  }, [isAdmin, activeTab, isSuperAdmin, loadedTabs])
 
   const handleNotificationFieldChange = (notifType, field, value) => {
     setNotificationSettings((current) =>
@@ -386,7 +433,7 @@ export default function Admin({ user, loading }) {
     }
     setMessage(editingEventId ? 'Event updated.' : 'Event created.')
     resetEventForm()
-    loadEvents()
+    refreshTabData('event')
   }
 
   const handleEditEvent = (ev) => {
@@ -413,7 +460,7 @@ export default function Admin({ user, loading }) {
       return
     }
     setMessage('Event deleted.')
-    loadEvents()
+    refreshTabData('event')
   }
 
   const handleSubmitPractice = async (e) => {
@@ -472,7 +519,7 @@ export default function Admin({ user, loading }) {
     if (!isEditingPractice) {
       setPracticeInlineStatus('New Practice Session Added !')
     }
-    loadPracticeSessions()
+    refreshTabData('practice')
   }
 
   const handleEditPractice = (s) => {
@@ -497,7 +544,7 @@ export default function Admin({ user, loading }) {
       return
     }
     setMessage('Practice session deleted.')
-    loadPracticeSessions()
+    refreshTabData('practice')
   }
 
   const handleEditForumPost = (p) => {
@@ -525,7 +572,7 @@ export default function Admin({ user, loading }) {
     }
     setMessage('Post updated.')
     resetForumPostForm()
-    loadForumPosts()
+    refreshTabData('forum')
   }
 
   const handleDeleteForumPost = async (postId) => {
@@ -541,7 +588,7 @@ export default function Admin({ user, loading }) {
     }
     setMessage('Post deleted.')
     if (editingForumPostId === postId) resetForumPostForm()
-    loadForumPosts()
+    refreshTabData('forum')
   }
 
   const handleUpdateUserType = async (email, userType) => {
@@ -565,7 +612,7 @@ export default function Admin({ user, loading }) {
         : 'Updated user to Member'
     }))
     setMessage(`User type updated to ${userType}.`)
-    loadUsers()
+    refreshTabData('users')
   }
 
   const handleSaveUserName = async (email) => {
@@ -590,7 +637,7 @@ export default function Admin({ user, loading }) {
     setMessage('User name updated successfully.')
     setEditingUserId(null)
     setEditingUserName('')
-    loadUsers()
+    refreshTabData('users')
   }
 
   const handleDeleteUser = async (email) => {
@@ -605,8 +652,8 @@ export default function Admin({ user, loading }) {
       return
     }
     setMessage('User deleted.')
-    loadUsers()
-    loadForumPosts()
+    refreshTabData('users')
+    refreshTabData('forum')
   }
 
   const filteredUsers = [...users]

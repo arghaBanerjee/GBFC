@@ -12,6 +12,7 @@ import Admin from './pages/Admin'
 import Profile from './pages/Profile'
 import UserActions from './pages/UserActions'
 import ProtectedRoute from './components/ProtectedRoute'
+import RouteErrorBoundary from './components/RouteErrorBoundary'
 import { apiUrl } from './api'
 import clubLogo from './assets/club-logo.jpeg'
 import './index.css'
@@ -508,70 +509,72 @@ function App() {
       </nav>
 
       {/* Page Content */}
-      <Routes>
-        {/* Public routes */}
-        <Route path="/login" element={<Login setUser={setUser} />} />
-        <Route path="/signup" element={<Signup setUser={setUser} />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/about-us" element={<About />} />
-        
-        {/* Protected routes - require authentication */}
-        <Route path="/" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <Home user={user} />
-          </ProtectedRoute>
-        } />
-        <Route path="/matches" element={<Navigate to="/matches/upcoming" replace />} />
-        <Route path="/matches/upcoming" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <Events user={user} />
-          </ProtectedRoute>
-        } />
-        <Route path="/matches/past" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <Events user={user} />
-          </ProtectedRoute>
-        } />
-        <Route path="/book-practice" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <Practice user={user} />
-          </ProtectedRoute>
-        } />
-        <Route path="/forum" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <Forum user={user} />
-          </ProtectedRoute>
-        } />
-        <Route path="/profile" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <Profile user={user} setUser={setUser} loading={loading} />
-          </ProtectedRoute>
-        } />
-        <Route path="/admin" element={<Navigate to="/admin/practice" replace />} />
-        <Route path="/admin/:tab" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <Admin user={user} loading={loading} />
-          </ProtectedRoute>
-        } />
-        <Route path="/reports" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <Navigate to="/admin/reports" replace />
-          </ProtectedRoute>
-        } />
-        <Route path="/user-actions" element={<Navigate to="/user-actions/events" replace />} />
-        <Route path="/user-actions/events" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <UserActions user={user} loading={loading} />
-          </ProtectedRoute>
-        } />
-        <Route path="/user-actions/upcoming-events" element={<Navigate to="/user-actions/events" replace />} />
-        <Route path="/user-actions/payments" element={
-          <ProtectedRoute user={user} loading={loading}>
-            <UserActions user={user} loading={loading} />
-          </ProtectedRoute>
-        } />
-        <Route path="/user-actions/pending-payments" element={<Navigate to="/user-actions/payments" replace />} />
-      </Routes>
+      <RouteErrorBoundary>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<Login setUser={setUser} />} />
+          <Route path="/signup" element={<Signup setUser={setUser} />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/about-us" element={<About />} />
+          
+          {/* Protected routes - require authentication */}
+          <Route path="/" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <Home user={user} />
+            </ProtectedRoute>
+          } />
+          <Route path="/matches" element={<Navigate to="/matches/upcoming" replace />} />
+          <Route path="/matches/upcoming" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <Events user={user} />
+            </ProtectedRoute>
+          } />
+          <Route path="/matches/past" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <Events user={user} />
+            </ProtectedRoute>
+          } />
+          <Route path="/book-practice" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <Practice user={user} />
+            </ProtectedRoute>
+          } />
+          <Route path="/forum" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <Forum user={user} />
+            </ProtectedRoute>
+          } />
+          <Route path="/profile" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <Profile user={user} setUser={setUser} loading={loading} />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin" element={<Navigate to="/admin/practice" replace />} />
+          <Route path="/admin/:tab" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <Admin user={user} loading={loading} />
+            </ProtectedRoute>
+          } />
+          <Route path="/reports" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <Navigate to="/admin/reports" replace />
+            </ProtectedRoute>
+          } />
+          <Route path="/user-actions" element={<Navigate to="/user-actions/events" replace />} />
+          <Route path="/user-actions/events" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <UserActions user={user} loading={loading} />
+            </ProtectedRoute>
+          } />
+          <Route path="/user-actions/upcoming-events" element={<Navigate to="/user-actions/events" replace />} />
+          <Route path="/user-actions/payments" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <UserActions user={user} loading={loading} />
+            </ProtectedRoute>
+          } />
+          <Route path="/user-actions/pending-payments" element={<Navigate to="/user-actions/payments" replace />} />
+        </Routes>
+      </RouteErrorBoundary>
     </div>
   )
 }

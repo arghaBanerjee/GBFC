@@ -29,25 +29,6 @@ export default function Home({ user }) {
           </div>
         </div>
       </div>
-
-      <div className="metrics">
-        <div className="metric-card">
-          <div className="metric-value">32</div>
-          <div className="metric-label">Registered Players</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-value">4</div>
-          <div className="metric-label">Seasons Played</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-value">120+</div>
-          <div className="metric-label">Community Members</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-value">9</div>
-          <div className="metric-label">Total Events</div>
-        </div>
-      </div>
     </div>
   )
 }
