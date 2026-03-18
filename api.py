@@ -3375,7 +3375,8 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                     "SELECT COUNT(*) FROM practice_availability WHERE date = %s AND status = 'available'",
                     (row["date"],)
                 )
-                available_count = cur.fetchone()[0]
+                count_row = cur.fetchone()
+                available_count = count_row["count"] if count_row and "count" in count_row else 0
                 individual_amount = row["session_cost"] / available_count if available_count > 0 else 0
                 
                 payments.append({
