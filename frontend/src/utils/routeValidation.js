@@ -6,7 +6,7 @@ export const VALID_ADMIN_TABS = ['practice', 'event', 'forum', 'users', 'reports
 
 export const VALID_MATCH_TABS = ['upcoming', 'past']
 
-export const VALID_USER_ACTIONS_TABS = ['events', 'payments']
+export const VALID_USER_ACTIONS_TABS = ['upcoming', 'payments']
 
 /**
  * Validates admin tab parameter
@@ -31,11 +31,11 @@ export const validateMatchTab = (tab) => {
 /**
  * Validates user actions tab parameter
  * @param {string} tab - Tab parameter from URL
- * @returns {string} Valid tab (defaults to 'events' if invalid)
+ * @returns {string} Valid tab (defaults to 'upcoming' if invalid)
  */
 export const validateUserActionsTab = (tab) => {
-  if (!tab || typeof tab !== 'string') return 'events'
-  return VALID_USER_ACTIONS_TABS.includes(tab) ? tab : 'events'
+  if (!tab || typeof tab !== 'string') return 'upcoming'
+  return VALID_USER_ACTIONS_TABS.includes(tab) ? tab : 'upcoming'
 }
 
 /**

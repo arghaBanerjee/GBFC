@@ -187,7 +187,7 @@ function UserActions({ user, loading }) {
       <div className="tabs">
         <button 
           className={`tab-btn ${activeTab === 'upcoming' ? 'active' : ''}`}
-          onClick={() => navigate('/user-actions/events')}
+          onClick={() => navigate('/user-actions/upcoming')}
         >
           Upcoming Events
           {upcomingSessions.length > 0 && (
