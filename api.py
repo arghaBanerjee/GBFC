@@ -3311,7 +3311,7 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
         
         return {"sessions": sessions}
 
-@app.get("/api/user-actions/pending-payments")
+@app.get("/api/user-actions/payments")
 def get_pending_payments(current_user: dict = Depends(get_current_user)):
     """Get all sessions where user was available but hasn't confirmed payment"""
     with get_connection() as conn:
