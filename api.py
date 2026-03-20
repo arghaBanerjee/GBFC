@@ -38,7 +38,7 @@ from whatsapp_notifier import (
 
 # --- Database helpers (supports both SQLite and Postgres) ---
 DATABASE_URL = os.environ.get("DATABASE_URL")  # Render provides this
-SESSION_DURATION = timedelta(days=8)
+SESSION_DURATION = timedelta(days=90)
 USE_POSTGRES = DATABASE_URL is not None
 
 # Test database configuration - use separate database for testing
@@ -694,7 +694,7 @@ def init_db():
                         END IF;
                     END $$;
                 """)
-                cur.execute("UPDATE auth_sessions SET expires_at = COALESCE(expires_at, created_at + INTERVAL '8 days', CURRENT_TIMESTAMP + INTERVAL '8 days')")
+                cur.execute("UPDATE auth_sessions SET expires_at = COALESCE(expires_at, created_at + INTERVAL '90 days', CURRENT_TIMESTAMP + INTERVAL '90 days')")
                 cur.execute("ALTER TABLE auth_sessions ALTER COLUMN expires_at SET NOT NULL")
                 conn.commit()
             except Exception as e:
@@ -743,7 +743,7 @@ def init_db():
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add auth session expiry column: {e}")
             try:
-                cur.execute("UPDATE auth_sessions SET expires_at = datetime(COALESCE(created_at, CURRENT_TIMESTAMP), '+8 days') WHERE expires_at IS NULL")
+                cur.execute("UPDATE auth_sessions SET expires_at = datetime(COALESCE(created_at, CURRENT_TIMESTAMP), '+90 days') WHERE expires_at IS NULL")
             except sqlite3.OperationalError as e:
                 print(f"Warning: Could not backfill auth session expiry values: {e}")
             try:
