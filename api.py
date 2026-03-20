@@ -460,6 +460,12 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not backfill maximum_capacity values: {e}")
                 conn.rollback()
+
+            try:
+                backfill_practice_times(cur, conn)
+            except Exception as e:
+                print(f"Warning: Could not normalize practice time values: {e}")
+                conn.rollback()
             
             # Add user_full_name to forum_posts if it doesn't exist
             try:
@@ -1174,6 +1180,47 @@ def normalize_maximum_capacity(value) -> int:
         raise HTTPException(status_code=400, detail="Maximum capacity must be greater than 0")
     return normalized
 
+def normalize_practice_time(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    raw_value = str(value).strip()
+    if not raw_value:
+        return None
+
+    supported_formats = [
+        "%H:%M",
+        "%H:%M:%S",
+        "%I:%M %p",
+        "%I:%M%p",
+        "%I %p",
+        "%I%p",
+    ]
+
+    for time_format in supported_formats:
+        try:
+            parsed_time = datetime.strptime(raw_value.upper(), time_format)
+            return parsed_time.strftime("%H:%M")
+        except ValueError:
+            continue
+
+    raise HTTPException(status_code=400, detail="Practice time must be a valid time")
+
+def backfill_practice_times(cur, conn):
+    cur.execute(f"SELECT date, time FROM practice_sessions WHERE time IS NOT NULL AND TRIM(time) <> ''")
+    rows = cur.fetchall()
+    for row in rows:
+        row_dict = dict(row)
+        try:
+            normalized_time = normalize_practice_time(row_dict.get("time"))
+        except HTTPException:
+            normalized_time = "21:00"
+        if normalized_time != row_dict.get("time"):
+            cur.execute(
+                f"UPDATE practice_sessions SET time = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
+                (normalized_time, row_dict["date"]),
+            )
+    conn.commit()
+
 def get_available_count_for_session(cur, date_str: str) -> int:
     cur.execute(
         f"SELECT COUNT(*) as count FROM practice_availability WHERE date = {PLACEHOLDER} AND status = {PLACEHOLDER}",
@@ -1210,6 +1257,13 @@ def get_practice_session_with_capacity(cur, date_str: str) -> Optional[dict]:
     if not row:
         return None
     session = dict(row)
+    if session.get("time"):
+        try:
+            session["time"] = normalize_practice_time(session.get("time"))
+        except HTTPException:
+            session["time"] = "21:00"
+    else:
+        session["time"] = None
     available_count = get_available_count_for_session(cur, date_str)
     maximum_capacity = normalize_maximum_capacity(session.get("maximum_capacity"))
     session["maximum_capacity"] = maximum_capacity
@@ -1446,7 +1500,7 @@ def is_admin(current_user: dict) -> bool:
         if row:
             row_dict = dict(row)
             # Check if user is deleted
-            if row_dict.get("is_deleted"):
+            if row_dict.get('is_deleted'):
                 return False
             user_type = row_dict.get("user_type") or "member"
         else:
@@ -1816,24 +1870,18 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
                     user_dict["created_at"] = user_dict["created_at"].isoformat()
                 else:
                     user_dict["created_at"] = str(user_dict["created_at"])
-            else:
-                user_dict["created_at"] = None
             # Convert last_login datetime to ISO string if needed, or set to None
             if user_dict.get("last_login"):
                 if hasattr(user_dict["last_login"], 'isoformat'):
                     user_dict["last_login"] = user_dict["last_login"].isoformat()
                 else:
                     user_dict["last_login"] = str(user_dict["last_login"])
-            else:
-                user_dict["last_login"] = None
             # Convert birthday date to ISO string if needed, or set to None
             if user_dict.get("birthday"):
                 if hasattr(user_dict["birthday"], 'isoformat'):
                     user_dict["birthday"] = user_dict["birthday"].isoformat()
                 else:
                     user_dict["birthday"] = str(user_dict["birthday"])
-            else:
-                user_dict["birthday"] = None
             user_dict["bank_name"] = user_dict.get("bank_name") or None
             user_dict["sort_code"] = user_dict.get("sort_code") or None
             user_dict["account_number"] = user_dict.get("account_number") or None
@@ -2177,9 +2225,10 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
                 "time": event.time,
                 "location": event.location,
                 "event_name": event.name,
-            }
+            },
+            related_date=event.date
         )
-        
+
         return EventOut(id=event_id, **event.model_dump())
 
 @app.put("/api/events/{event_id}", response_model=EventOut)
@@ -2284,17 +2333,18 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     maximum_capacity = normalize_maximum_capacity(session.maximum_capacity)
+    normalized_time = normalize_practice_time(session.time)
     with get_connection() as conn:
         cur = conn.cursor()
         if USE_POSTGRES:
             cur.execute(
                 f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date) DO UPDATE SET time = EXCLUDED.time, location = EXCLUDED.location, session_cost = EXCLUDED.session_cost, paid_by = EXCLUDED.paid_by, maximum_capacity = EXCLUDED.maximum_capacity",
-                (session.date, session.time, session.location, session.session_cost, session.paid_by, maximum_capacity),
+                (session.date, normalized_time, session.location, session.session_cost, session.paid_by, maximum_capacity),
             )
         else:
             cur.execute(
                 f"INSERT OR REPLACE INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, COALESCE((SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}), 0), {PLACEHOLDER})",
-                (session.date, session.time, session.location, session.session_cost, session.paid_by, session.date, maximum_capacity),
+                (session.date, normalized_time, session.location, session.session_cost, session.paid_by, session.date, maximum_capacity),
             )
         conn.commit()
         
@@ -2302,7 +2352,7 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
             "practice",
             {
                 "date": session.date,
-                "time": session.time,
+                "time": normalized_time,
                 "location": session.location,
                 "maximum_capacity": maximum_capacity,
             },
@@ -2317,11 +2367,12 @@ def update_practice_session(date_str: str, session: PracticeSessionCreate, curre
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     maximum_capacity = normalize_maximum_capacity(session.maximum_capacity)
+    normalized_time = normalize_practice_time(session.time)
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             f"UPDATE practice_sessions SET time = {PLACEHOLDER}, location = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
-            (session.time, session.location, session.session_cost, session.paid_by, maximum_capacity, date_str),
+            (normalized_time, session.location, session.session_cost, session.paid_by, maximum_capacity, date_str),
         )
         conn.commit()
         if cur.rowcount == 0:
@@ -2412,13 +2463,11 @@ def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(
         cur = conn.cursor()
         
         # Check if payment is requested for this session
-        cur.execute(
-            f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}", 
-            (date,)
-        )
+        cur.execute(f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}", (date,))
         session = cur.fetchone()
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
+        
         if not session["payment_requested"]:
             raise HTTPException(status_code=400, detail="Payment request has not been enabled for this session")
         
@@ -2462,6 +2511,7 @@ def confirm_payment(date_str: str, data: dict, current_user: dict = Depends(get_
         session = cur.fetchone()
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
+        
         if not session["payment_requested"]:
             raise HTTPException(status_code=400, detail="Payment request has not been enabled for this session")
         
@@ -2939,12 +2989,12 @@ def set_my_practice_availability(avail: PracticeAvailability, current_user: dict
         existing_row = cur.fetchone()
         previous_status = dict(existing_row).get("status") if existing_row else None
 
-        session_details = get_practice_session_with_capacity(cur, avail.date)
-        if not session_details:
+        session = get_practice_session_with_capacity(cur, avail.date)
+        if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
 
         is_new_available_vote = avail.status == 'available' and previous_status != 'available'
-        if is_new_available_vote and session_details["capacity_reached"]:
+        if is_new_available_vote and session["capacity_reached"]:
             raise HTTPException(status_code=403, detail="Maximum capacity has been reached for this session. No more Available selections are allowed right now.")
         
         # If status is 'none', delete the availability record (deselection)
@@ -3614,22 +3664,18 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
             
             # Paid status only for available users
             if status == "available":
-                if paid is not None:
-                    paid_value = "Yes" if (paid if USE_POSTGRES else bool(paid)) else "No"
-                    ws.cell(row=row_num, column=7, value=paid_value)
+                if paid and payment_date:
+                    # Format date
+                    if isinstance(payment_date, str):
+                        ws.cell(row=row_num, column=8, value=payment_date.split(' ')[0])
+                    else:
+                        ws.cell(row=row_num, column=8, value=str(payment_date).split(' ')[0])
                 else:
-                    ws.cell(row=row_num, column=7, value="No")
+                    ws.cell(row=row_num, column=8, value="")
+                paid_value = "Yes" if (paid if USE_POSTGRES else bool(paid)) else "No"
+                ws.cell(row=row_num, column=7, value=paid_value)
             else:
                 ws.cell(row=row_num, column=7, value="")
-            
-            # Payment acknowledgement date only for available users who paid
-            if status == "available" and paid and payment_date:
-                # Format date
-                if isinstance(payment_date, str):
-                    ws.cell(row=row_num, column=8, value=payment_date.split(' ')[0])
-                else:
-                    ws.cell(row=row_num, column=8, value=str(payment_date).split(' ')[0])
-            else:
                 ws.cell(row=row_num, column=8, value="")
             
             row_num += 1
@@ -3657,7 +3703,6 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
-# --- User Actions ---
 @app.get("/api/user-actions/upcoming-sessions")
 def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
     """Get all upcoming practice sessions for user to set availability"""
@@ -3802,7 +3847,7 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                 )
                 count_row = cur.fetchone()
                 available_count = count_row["count"] if count_row and "count" in count_row else 0
-                session_cost = row["session_cost"] or 0
+                session_cost = row["session_cost"]
                 individual_amount = session_cost / available_count if available_count > 0 else 0
                 
                 payments.append({
@@ -3825,7 +3870,7 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                     (row[0],)
                 )
                 available_count = cur.fetchone()[0]
-                session_cost = row[3] or 0
+                session_cost = row[3]
                 individual_amount = session_cost / available_count if available_count > 0 else 0
                 
                 payments.append({

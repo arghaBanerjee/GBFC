@@ -45,9 +45,9 @@ export default function Admin({ user, loading }) {
   const [practiceSessions, setPracticeSessions] = useState([])
   const [editingPracticeDate, setEditingPracticeDate] = useState(null)
   const [practiceDate, setPracticeDate] = useState('')
-  const [practiceTime, setPracticeTime] = useState('')
+  const [practiceTime, setPracticeTime] = useState('21:00')
   const [practiceLocation, setPracticeLocation] = useState('')
-  const [practiceMaximumCapacity, setPracticeMaximumCapacity] = useState('100')
+  const [practiceMaximumCapacity, setPracticeMaximumCapacity] = useState('18')
   const [practiceInlineStatus, setPracticeInlineStatus] = useState('')
   const [practiceListTab, setPracticeListTab] = useState('upcoming')
 
@@ -398,9 +398,9 @@ export default function Admin({ user, loading }) {
   const resetPracticeForm = () => {
     setEditingPracticeDate(null)
     setPracticeDate('')
-    setPracticeTime('')
+    setPracticeTime('21:00')
     setPracticeLocation('')
-    setPracticeMaximumCapacity('100')
+    setPracticeMaximumCapacity('18')
     setPracticeInlineStatus('')
   }
 
@@ -855,15 +855,15 @@ export default function Admin({ user, loading }) {
             boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
           }}>
             <div>
-              <label>Practice Date</label>
+              <label>Date</label>
               <input type="date" value={practiceDate} onChange={(e) => setPracticeDate(e.target.value)} required style={{ width: '100%' }} />
             </div>
             <div>
-              <label>Practice Time</label>
-              <input value={practiceTime} onChange={(e) => setPracticeTime(e.target.value)} style={{ width: '100%' }} />
+              <label>Time</label>
+              <input type="time" value={practiceTime} onChange={(e) => setPracticeTime(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div>
-              <label>Practice Location</label>
+              <label>Location</label>
               <input value={practiceLocation} onChange={(e) => setPracticeLocation(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div>
@@ -872,7 +872,7 @@ export default function Admin({ user, loading }) {
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>{editingPracticeDate ? 'Update Practice' : 'Add Practice'}</button>
-              {(editingPracticeDate || practiceDate || practiceTime || practiceLocation || practiceMaximumCapacity !== '100') && (
+              {(editingPracticeDate || practiceDate || practiceTime !== '21:00' || practiceLocation || practiceMaximumCapacity !== '18') && (
                 <button className="nav-btn" type="button" onClick={resetPracticeForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
                   Clear
                 </button>
