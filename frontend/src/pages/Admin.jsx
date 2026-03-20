@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { apiUrl } from '../api'
 import '../styles/Admin.css'
 import Reports from './Reports'
-import { validateAdminTab, createRouteValidator } from '../utils/routeValidation'
+import { validateAdminTab } from '../utils/routeValidation'
 
 export default function Admin({ user, loading }) {
   const navigate = useNavigate()
@@ -29,16 +29,6 @@ export default function Admin({ user, loading }) {
   const activeTab = validatedTab || 'practice'
   const setActiveTab = (tab) => navigate(`/admin/${tab}`)
 
-  // Route validator for handling invalid tabs
-  const routeValidator = createRouteValidator({
-    validator: validateAdminTab,
-    redirectTo: '/admin/practice',
-    onInvalidRoute: (invalidTab, redirectTo) => {
-      setMessage(`Invalid admin tab: "${invalidTab}". Redirecting to practice tab.`)
-      setTimeout(() => setMessage(''), 3000)
-    }
-  })
-
   // Events
   const [events, setEvents] = useState([])
   const [editingEventId, setEditingEventId] = useState(null)
@@ -59,6 +49,7 @@ export default function Admin({ user, loading }) {
   const [practiceLocation, setPracticeLocation] = useState('')
   const [practiceMaximumCapacity, setPracticeMaximumCapacity] = useState('100')
   const [practiceInlineStatus, setPracticeInlineStatus] = useState('')
+  const [practiceListTab, setPracticeListTab] = useState('upcoming')
 
   // Forum posts
   const [forumPosts, setForumPosts] = useState([])
@@ -200,13 +191,17 @@ export default function Admin({ user, loading }) {
 
   useEffect(() => {
     if (loading || !user || !isAdmin) return
-    
-    // Validate the current route tab
-    const validation = routeValidator(routeTab)
-    if (!validation.isValid && validation.redirectTo) {
-      navigate(validation.redirectTo, { replace: true })
+
+    if (!routeTab) return
+
+    const isValidTab = Boolean(validateAdminTab(routeTab))
+    if (!isValidTab) {
+      setMessage(`Invalid admin tab: "${routeTab}". Redirecting to practice tab.`)
+      navigate('/admin/practice', { replace: true })
+      const timer = setTimeout(() => setMessage(''), 3000)
+      return () => clearTimeout(timer)
     }
-  }, [routeTab, loading, user, isAdmin, navigate, routeValidator])
+  }, [routeTab, loading, user, isAdmin, navigate])
 
   const loadEvents = async () => {
     const res = await fetch(apiUrl('/api/events'))
@@ -496,6 +491,7 @@ export default function Admin({ user, loading }) {
   const handleSubmitPractice = async (e) => {
     e.preventDefault()
     const isEditingPractice = Boolean(editingPracticeDate)
+    setPracticeInlineStatus('')
 
     const payload = {
       date: practiceDate,
@@ -551,9 +547,7 @@ export default function Admin({ user, loading }) {
     }
     setMessage(isEditingPractice ? 'Practice session updated.' : 'Practice session created.')
     resetPracticeForm()
-    if (!isEditingPractice) {
-      setPracticeInlineStatus('New Practice Session Added !')
-    }
+    setPracticeInlineStatus(isEditingPractice ? 'Record updated successfully!' : 'New Practice Session Added !')
     refreshTabData('practice')
   }
 
@@ -718,6 +712,17 @@ export default function Admin({ user, loading }) {
     return `${day}${suffix} ${month}`
   }
 
+  const todayAtMidnight = new Date()
+  todayAtMidnight.setHours(0, 0, 0, 0)
+
+  const upcomingPracticeSessions = practiceSessions
+    .filter((s) => new Date(`${s.date}T00:00:00`) >= todayAtMidnight)
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+
+  const pastPracticeSessions = practiceSessions
+    .filter((s) => new Date(`${s.date}T00:00:00`) < todayAtMidnight)
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+
   if (!isAdmin) {
     return (
       <div className="container">
@@ -880,33 +885,75 @@ export default function Admin({ user, loading }) {
             )}
           </form>
 
-          <h3 style={{ marginTop: '2rem' }}>Upcoming practice sessions</h3>
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            {practiceSessions
-              .filter(s => new Date(s.date) >= new Date(new Date().setHours(0, 0, 0, 0)))
-              .sort((a, b) => new Date(a.date) - new Date(b.date))
-              .map((s) => (
-              <div
-                key={s.date}
-                onClick={() => navigate(`/book-practice?date=${encodeURIComponent(s.date)}`)}
-                style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa', cursor: 'pointer' }}
+          <div style={{ marginTop: '2rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <button
+                className={`admin-menu-tab ${practiceListTab === 'upcoming' ? 'active' : ''}`}
+                type="button"
+                onClick={() => setPracticeListTab('upcoming')}
+                style={{
+                  minWidth: '110px',
+                  flex: '1 1 120px',
+                  textAlign: 'center'
+                }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <strong>{s.date}</strong>
-                  <div>
-                    <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} style={{ marginRight: 8, border: '1px solid #d1d5db' }}>
-                      Edit
-                    </button>
-                    <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleDeletePractice(s.date) }} style={{ background: '#ef4444', color: 'white', border: '#ef4444' }}>
-                      Delete
-                    </button>
+                Upcomig
+              </button>
+              <button
+                className={`admin-menu-tab ${practiceListTab === 'past' ? 'active' : ''}`}
+                type="button"
+                onClick={() => setPracticeListTab('past')}
+                style={{
+                  minWidth: '110px',
+                  flex: '1 1 120px',
+                  textAlign: 'center'
+                }}
+              >
+                Past
+              </button>
+            </div>
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              {(practiceListTab === 'upcoming' ? upcomingPracticeSessions : pastPracticeSessions).map((s) => (
+                <div
+                  key={s.date}
+                  onClick={() => navigate(`/book-practice?date=${encodeURIComponent(s.date)}`)}
+                  style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa', cursor: 'pointer' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <strong>{s.date}</strong>
+                    <div>
+                      <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} style={{ marginRight: 8, border: '1px solid #d1d5db' }}>
+                        Edit
+                      </button>
+                      <button
+                        className="nav-btn"
+                        onClick={(e) => { e.stopPropagation(); handleDeletePractice(s.date) }}
+                        disabled={practiceListTab === 'past'}
+                        style={{
+                          background: practiceListTab === 'past' ? '#d1d5db' : '#ef4444',
+                          color: 'white',
+                          border: practiceListTab === 'past' ? '1px solid #d1d5db' : '1px solid #ef4444',
+                          cursor: practiceListTab === 'past' ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
+                  <div style={{ opacity: 0.8, marginTop: 6 }}>Time: {s.time || 'TBD'}</div>
+                  <div style={{ opacity: 0.8 }}>Location: {s.location || 'TBD'}</div>
+                  <div style={{ opacity: 0.8 }}>Maximum Capacity: {s.maximum_capacity || 100}</div>
+                  {practiceListTab === 'past' && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>
+                      Past practice records can be edited but not deleted.
+                    </div>
+                  )}
                 </div>
-                <div style={{ opacity: 0.8, marginTop: 6 }}>Time: {s.time || 'TBD'}</div>
-                <div style={{ opacity: 0.8 }}>Location: {s.location || 'TBD'}</div>
-                <div style={{ opacity: 0.8 }}>Maximum Capacity: {s.maximum_capacity || 100}</div>
-              </div>
-            ))}
+              ))}
+              {(practiceListTab === 'upcoming' ? upcomingPracticeSessions : pastPracticeSessions).length === 0 && (
+                <p>{practiceListTab === 'upcoming' ? 'No upcoming practice sessions.' : 'No past practice sessions.'}</p>
+              )}
+            </div>
           </div>
         </>
       )}

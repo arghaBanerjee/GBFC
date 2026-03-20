@@ -1132,6 +1132,16 @@ def resolve_notification_recipients(target_audience: str, payload: dict) -> list
         return [dict(row) for row in cur.fetchall()]
 
 def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None):
+    guarded_notif_types = {"practice", "match", "practice_slot_available", "session_capacity_reached"}
+    effective_date = related_date or payload.get("date")
+    if notif_type in guarded_notif_types and effective_date:
+        try:
+            notification_date = datetime.strptime(effective_date, "%Y-%m-%d").date()
+            if notification_date < datetime.now().date():
+                return
+        except ValueError:
+            pass
+
     setting = get_notification_setting(notif_type)
     context = build_notification_context(payload)
     recipients = resolve_notification_recipients(setting["target_audience"], payload)
