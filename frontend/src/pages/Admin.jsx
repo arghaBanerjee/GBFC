@@ -155,6 +155,10 @@ export default function Admin({ user, loading }) {
       time_line: '🕐 8:30 PM\n',
       location_line: '📍 Scotstoun Sports Campus\n',
     },
+    welcome_signup: {
+      full_name: 'New Member',
+      club_name: 'Glasgow Bengali FC',
+    },
   }
 
   const notificationVariableMap = {
@@ -164,6 +168,7 @@ export default function Admin({ user, loading }) {
     payment_request: ['{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     session_capacity_reached: ['{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     practice_slot_available: ['{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    welcome_signup: ['{{full_name}}', '{{club_name}}'],
   }
 
   const renderNotificationPreview = (template, notifType) => {

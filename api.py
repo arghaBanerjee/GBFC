@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -83,7 +83,7 @@ WHATSAPP_NOTIFICATIONS_ENABLED = os.environ.get("WHATSAPP_NOTIFICATIONS_ENABLED"
 
 whatsapp_scheduler = BackgroundScheduler()
 
-NOTIFICATION_TARGET_OPTIONS = {"all_active_users", "admin_users", "available_players"}
+NOTIFICATION_TARGET_OPTIONS = {"all_active_users", "admin_users", "available_players", "direct_user"}
 NOTIFICATION_TYPE_DEFAULTS = {
     "practice": {
         "display_name": "New Practice Added",
@@ -156,6 +156,18 @@ NOTIFICATION_TYPE_DEFAULTS = {
         "email_subject": "Practice slots available for {{date}}",
         "email_template": "There are {{remaining_slots}} slots available for the practice session on {{date}}{{time_suffix}}{{location_comma_suffix}}. Maximum capacity: {{maximum_capacity}}.",
         "whatsapp_template": "✅ *PRACTICE SLOTS AVAILABLE*\n\n📅 {{date}}\n{{time_line}}{{location_line}}👥 Slots available: {{remaining_slots}} of {{maximum_capacity}}\nBook your place in the app if you want to join.",
+    },
+    "welcome_signup": {
+        "display_name": "Welcome Email On Signup",
+        "description": "Sent only to the user who has just registered.",
+        "app_enabled": False,
+        "email_enabled": True,
+        "whatsapp_enabled": False,
+        "target_audience": "direct_user",
+        "app_template": "",
+        "email_subject": "Welcome to Glasgow Bengali FC",
+        "email_template": "Hi {{full_name}},\n\nWelcome to Glasgow Bengali FC. Thanks for joining our ever-growing club, where fun meets football.\n\nBest wishes,\nGlasgow Bengali FC",
+        "whatsapp_template": "",
     },
 }
 
@@ -1062,6 +1074,8 @@ def build_notification_context(payload: dict) -> dict:
         "remaining_slots": payload.get("remaining_slots") if payload.get("remaining_slots") is not None else "",
         "event_name": payload.get("event_name") or payload.get("name") or "",
         "author_name": payload.get("author_name") or "",
+        "full_name": payload.get("full_name") or "",
+        "club_name": payload.get("club_name") or "Glasgow Bengali FC",
         "content": content_value,
         "content_preview": content_preview,
         "time_suffix": f" at {time_value}" if time_value else "",
@@ -1164,7 +1178,15 @@ def get_notification_setting(notif_type: str) -> dict:
 def resolve_notification_recipients(target_audience: str, payload: dict) -> list:
     with get_connection() as conn:
         cur = conn.cursor()
-        if target_audience == "admin_users":
+        if target_audience == "direct_user":
+            recipient_email = (payload.get("email") or "").strip().lower()
+            if not recipient_email:
+                return []
+            cur.execute(
+                f"SELECT email, full_name FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+                (recipient_email,),
+            )
+        elif target_audience == "admin_users":
             cur.execute(
                 f"SELECT email, full_name FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) AND user_type = {PLACEHOLDER}",
                 ("admin",),
@@ -1186,6 +1208,21 @@ def resolve_notification_recipients(target_audience: str, payload: dict) -> list
         else:
             cur.execute("SELECT email, full_name FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL)")
         return [dict(row) for row in cur.fetchall()]
+
+def send_direct_notification_email(notif_type: str, payload: dict, recipient_email: str):
+    setting = get_notification_setting(notif_type)
+    if not setting["email_enabled"]:
+        return
+    context = build_notification_context(payload)
+    subject = render_notification_template(setting["email_subject"], context)
+    email_body = render_notification_template(setting["email_template"], context)
+    send_email(recipient_email, subject, email_body)
+
+def send_direct_notification_email_safe(notif_type: str, payload: dict, recipient_email: str):
+    try:
+        send_direct_notification_email(notif_type, payload, recipient_email)
+    except Exception as exc:
+        print(f"Background email send failed for {notif_type} to {recipient_email}: {exc}")
 
 def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None):
     guarded_notif_types = {"practice", "match", "practice_slot_available", "session_capacity_reached"}
@@ -1706,8 +1743,13 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 
 # --- Auth endpoints ---
 @app.post("/api/signup", response_model=UserOut)
-def signup(user: UserCreate):
+def signup(user: UserCreate, background_tasks: BackgroundTasks):
     try:
+        welcome_payload = {
+            "email": user.email,
+            "full_name": user.full_name,
+            "club_name": "Glasgow Bengali FC",
+        }
         with get_connection() as conn:
             cur = conn.cursor()
             
@@ -1737,6 +1779,7 @@ def signup(user: UserCreate):
                             (user.full_name, hash_password(user.password), user.email)
                         )
                     conn.commit()
+                    background_tasks.add_task(send_direct_notification_email_safe, "welcome_signup", welcome_payload, user.email)
                     return UserOut(id=existing_dict['id'], email=user.email, full_name=user.full_name, user_type='member')
                 else:
                     # Active user already exists
@@ -1760,6 +1803,7 @@ def signup(user: UserCreate):
                 user_id = cur.fetchone()['id']
             else:
                 user_id = cur.lastrowid
+            background_tasks.add_task(send_direct_notification_email_safe, "welcome_signup", welcome_payload, user.email)
             return UserOut(id=user_id, email=user.email, full_name=user.full_name, user_type='member')
     except HTTPException:
         raise
@@ -3336,6 +3380,7 @@ def notification_settings_meta(current_user: dict = Depends(get_current_user)):
             {"value": "all_active_users", "label": "All active users"},
             {"value": "admin_users", "label": "Admin users"},
             {"value": "available_players", "label": "Only players marked available for the related practice"},
+            {"value": "direct_user", "label": "Only the directly related user"},
         ],
         "notification_types": [
             {"value": notif_type, "label": defaults["display_name"]}
