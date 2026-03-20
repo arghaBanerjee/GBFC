@@ -258,7 +258,7 @@ export default function Practice({ user }) {
     
     const dateStr = formatDateStr(selectedDate)
     if (isSessionPast(dateStr, selectedSession?.time)) {
-      setAvailabilityError('Cannot change availability after the practice session date and time has passed.')
+      setAvailabilityError('Cannot change availability after session time has passed.')
       return
     }
     const currentStatus = availability[dateStr]
@@ -800,7 +800,7 @@ export default function Practice({ user }) {
                   <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
                 </div>
                 {!user && <p style={{ marginTop: '0.5rem', color: '#dc2626' }}>Log in to vote your availability.</p>}
-                {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after the practice session date and time has passed.</p>}
+                {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after session time has passed.</p>}
                 {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after payment requested.</p>}
                 {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && (
                   <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>
