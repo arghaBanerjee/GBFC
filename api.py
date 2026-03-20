@@ -38,6 +38,7 @@ from whatsapp_notifier import (
 
 # --- Database helpers (supports both SQLite and Postgres) ---
 DATABASE_URL = os.environ.get("DATABASE_URL")  # Render provides this
+SESSION_DURATION = timedelta(days=8)
 USE_POSTGRES = DATABASE_URL is not None
 
 # Test database configuration - use separate database for testing
@@ -670,6 +671,35 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                id SERIAL PRIMARY KEY,
+                token VARCHAR(255) UNIQUE NOT NULL,
+                user_email VARCHAR(255) NOT NULL,
+                user_full_name VARCHAR(255) NOT NULL,
+                user_id INTEGER NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='auth_sessions' AND column_name='expires_at'
+                        ) THEN
+                            ALTER TABLE auth_sessions ADD COLUMN expires_at TIMESTAMP;
+                        END IF;
+                    END $$;
+                """)
+                cur.execute("UPDATE auth_sessions SET expires_at = COALESCE(expires_at, created_at + INTERVAL '8 days', CURRENT_TIMESTAMP + INTERVAL '8 days')")
+                cur.execute("ALTER TABLE auth_sessions ALTER COLUMN expires_at SET NOT NULL")
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add auth session expiry column: {e}")
+                conn.rollback()
             conn.commit()
         else:
             # SQLite version (for local development)
@@ -696,6 +726,26 @@ def init_db():
                 deleted_by TEXT
             )
             """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT UNIQUE NOT NULL,
+                user_email TEXT NOT NULL,
+                user_full_name TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                expires_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            try:
+                cur.execute("ALTER TABLE auth_sessions ADD COLUMN expires_at TIMESTAMP")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add auth session expiry column: {e}")
+            try:
+                cur.execute("UPDATE auth_sessions SET expires_at = datetime(COALESCE(created_at, CURRENT_TIMESTAMP), '+8 days') WHERE expires_at IS NULL")
+            except sqlite3.OperationalError as e:
+                print(f"Warning: Could not backfill auth session expiry values: {e}")
             try:
                 cur.execute("ALTER TABLE users ADD COLUMN password TEXT")
             except sqlite3.OperationalError:
@@ -1142,9 +1192,16 @@ def deliver_notification(notif_type: str, payload: dict, related_date: str = Non
     effective_date = related_date or payload.get("date")
     if notif_type in guarded_notif_types and effective_date:
         try:
-            notification_date = datetime.strptime(effective_date, "%Y-%m-%d").date()
-            if notification_date < datetime.now().date():
-                return
+            effective_time = payload.get("time") if notif_type in {"practice", "practice_slot_available", "session_capacity_reached"} else None
+            if notif_type in {"practice", "practice_slot_available", "session_capacity_reached"}:
+                if is_practice_datetime_in_past(effective_date, effective_time):
+                    return
+            else:
+                notification_date = datetime.strptime(effective_date, "%Y-%m-%d").date()
+                if notification_date < datetime.now().date():
+                    return
+        except HTTPException:
+            return
         except ValueError:
             pass
 
@@ -1221,6 +1278,38 @@ def backfill_practice_times(cur, conn):
             )
     conn.commit()
 
+def get_practice_effective_time(time_value: Optional[str]) -> str:
+    if not time_value:
+        return "21:00"
+    try:
+        normalized_time = normalize_practice_time(time_value)
+        return normalized_time or "21:00"
+    except HTTPException:
+        return "21:00"
+
+def get_practice_datetime(date_value: str, time_value: Optional[str]) -> datetime:
+    effective_time = get_practice_effective_time(time_value)
+    return datetime.strptime(f"{date_value} {effective_time}", "%Y-%m-%d %H:%M")
+
+def is_practice_datetime_in_past(date_value: str, time_value: Optional[str]) -> bool:
+    try:
+        practice_datetime = get_practice_datetime(date_value, time_value)
+    except ValueError:
+        return False
+    return practice_datetime < datetime.now()
+
+def get_practice_session_basic(cur, date_str: str) -> Optional[dict]:
+    cur.execute(
+        f"SELECT date, time, location, payment_requested, COALESCE(maximum_capacity, 100) as maximum_capacity FROM practice_sessions WHERE date = {PLACEHOLDER}",
+        (date_str,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    session = dict(row)
+    session["time"] = get_practice_effective_time(session.get("time")) if session.get("time") else "21:00"
+    return session
+
 def get_available_count_for_session(cur, date_str: str) -> int:
     cur.execute(
         f"SELECT COUNT(*) as count FROM practice_availability WHERE date = {PLACEHOLDER} AND status = {PLACEHOLDER}",
@@ -1277,39 +1366,21 @@ def notify_practice_slots_available():
     window_end = now + timedelta(hours=72)
     with get_connection() as conn:
         cur = conn.cursor()
-        if USE_POSTGRES:
-            cur.execute(
-                f"""
-                SELECT date
-                FROM practice_sessions
-                WHERE date::timestamp >= {PLACEHOLDER}
-                  AND date::timestamp <= {PLACEHOLDER}
-                ORDER BY date ASC
-                LIMIT 1
-                """,
-                (now.date().isoformat(), window_end.date().isoformat()),
-            )
-        else:
-            cur.execute(
-                f"""
-                SELECT date
-                FROM practice_sessions
-                WHERE date >= {PLACEHOLDER}
-                  AND date <= {PLACEHOLDER}
-                ORDER BY date ASC
-                LIMIT 1
-                """,
-                (now.date().isoformat(), window_end.date().isoformat()),
-            )
-        row = cur.fetchone()
-        if not row:
-            return
-
-        row_dict = dict(row)
-        session = get_practice_session_with_capacity(cur, row_dict["date"])
+        cur.execute(f"SELECT date FROM practice_sessions ORDER BY date ASC")
+        session = None
+        for row in cur.fetchall():
+            row_dict = dict(row)
+            candidate_session = get_practice_session_with_capacity(cur, row_dict["date"])
+            if not candidate_session:
+                continue
+            candidate_datetime = get_practice_datetime(candidate_session["date"], candidate_session.get("time"))
+            if candidate_datetime < now or candidate_datetime > window_end:
+                continue
+            if candidate_session["remaining_slots"] <= 0:
+                continue
+            session = candidate_session
+            break
         if not session:
-            return
-        if session["remaining_slots"] <= 0:
             return
 
         deliver_notification(
@@ -1562,10 +1633,76 @@ SESSIONS = {}
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+def persist_session_token(token: str, user: dict):
+    expires_at = datetime.utcnow() + SESSION_DURATION
+    SESSIONS[token] = {"email": user["email"], "full_name": user["full_name"], "id": user["id"], "expires_at": expires_at}
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO auth_sessions (token, user_email, user_full_name, user_id, expires_at) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (token) DO UPDATE SET user_email = EXCLUDED.user_email, user_full_name = EXCLUDED.user_full_name, user_id = EXCLUDED.user_id, expires_at = EXCLUDED.expires_at",
+                (token, user["email"], user["full_name"], user["id"], expires_at),
+            )
+        else:
+            cur.execute(
+                f"INSERT OR REPLACE INTO auth_sessions (token, user_email, user_full_name, user_id, expires_at) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (token, user["email"], user["full_name"], user["id"], expires_at),
+            )
+        conn.commit()
+
+def delete_session_token(token: str):
+    SESSIONS.pop(token, None)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"DELETE FROM auth_sessions WHERE token = {PLACEHOLDER}", (token,))
+        conn.commit()
+
 def get_current_user(token: str = Depends(oauth2_scheme)):
-    if token not in SESSIONS:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return SESSIONS[token]
+    if token in SESSIONS:
+        cached_session = SESSIONS[token]
+        if cached_session.get("expires_at") and cached_session["expires_at"] < datetime.utcnow():
+            delete_session_token(token)
+            raise HTTPException(status_code=401, detail="Session expired")
+        return {
+            "email": cached_session["email"],
+            "full_name": cached_session["full_name"],
+            "id": cached_session["id"],
+        }
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"DELETE FROM auth_sessions WHERE expires_at < {PLACEHOLDER}", (datetime.utcnow(),))
+        cur.execute(
+            f"SELECT token, user_email, user_full_name, user_id, expires_at FROM auth_sessions WHERE token = {PLACEHOLDER}",
+            (token,),
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.commit()
+            raise HTTPException(status_code=401, detail="Invalid token")
+        row_dict = dict(row)
+        expires_at = row_dict.get("expires_at")
+        if expires_at:
+            if isinstance(expires_at, str):
+                try:
+                    expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00")).replace(tzinfo=None)
+                except ValueError:
+                    try:
+                        expires_at = datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        expires_at = None
+        if expires_at and expires_at < datetime.utcnow():
+            cur.execute(f"DELETE FROM auth_sessions WHERE token = {PLACEHOLDER}", (token,))
+            conn.commit()
+            raise HTTPException(status_code=401, detail="Session expired")
+        session_user = {
+            "email": row_dict["user_email"],
+            "full_name": row_dict["user_full_name"],
+            "id": row_dict["user_id"],
+        }
+        SESSIONS[token] = {**session_user, "expires_at": expires_at}
+        conn.commit()
+        return session_user
 
 # --- Auth endpoints ---
 @app.post("/api/signup", response_model=UserOut)
@@ -1660,7 +1797,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         conn.commit()
         
         token = str(uuid.uuid4())
-        SESSIONS[token] = {"email": user["email"], "full_name": user["full_name"], "id": user["id"]}
+        persist_session_token(token, user)
         return {"access_token": token, "token_type": "bearer"}
 
 @app.post("/api/login", response_model=Token)
@@ -1849,7 +1986,7 @@ def me(current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/logout")
 def logout(current_user: dict = Depends(get_current_user), token: str = Depends(oauth2_scheme)):
-    SESSIONS.pop(token, None)
+    delete_session_token(token)
     return {"message": "Logged out"}
 
 @app.get("/api/users", response_model=List[UserOut])
@@ -2385,12 +2522,9 @@ def request_payment(date_str: str, current_user: dict = Depends(get_current_user
     """Admin endpoint to enable payment request for a practice session"""
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
-    
-    from datetime import datetime, date
+
     try:
-        session_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        if session_date >= date.today():
-            raise HTTPException(status_code=400, detail="Payment request can only be enabled after the practice session date has passed")
+        datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
@@ -2405,6 +2539,9 @@ def request_payment(date_str: str, current_user: dict = Depends(get_current_user
         session = cur.fetchone()
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
+
+        if not is_practice_datetime_in_past(date_str, session["time"]):
+            raise HTTPException(status_code=400, detail="Payment request can only be enabled after the practice session date and time has passed")
         
         # Check if payment already requested
         if session["payment_requested"]:
@@ -2884,27 +3021,26 @@ def get_my_practice_availability(current_user: dict = Depends(get_current_user))
 @app.post("/api/practice/{date}/availability")
 def set_practice_availability_by_date(date: str, status: dict, current_user: dict = Depends(get_current_user)):
     """Set availability for a specific date (used by User Actions page)"""
-    from datetime import datetime
     try:
-        practice_date = datetime.strptime(date, '%Y-%m-%d').date()
+        datetime.strptime(date, '%Y-%m-%d')
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    
-    # Check if payment has been requested for this session
+
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}", (date,))
-        session = cur.fetchone()
-        
-        if session and session["payment_requested"]:
+        session = get_practice_session_basic(cur, date)
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+
+        if is_practice_datetime_in_past(session["date"], session.get("time")):
+            raise HTTPException(status_code=403, detail="Cannot modify availability after the practice session date and time has passed.")
+
+        if session["payment_requested"]:
             raise HTTPException(
                 status_code=403, 
                 detail="Cannot modify availability after payment request has been enabled."
             )
-    
-    with get_connection() as conn:
-        cur = conn.cursor()
-        
+
         availability_status = status.get("status")
         cur.execute(
             f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
@@ -2914,8 +3050,6 @@ def set_practice_availability_by_date(date: str, status: dict, current_user: dic
         previous_status = dict(existing_row).get("status") if existing_row else None
 
         session_details = get_practice_session_with_capacity(cur, date)
-        if not session_details:
-            raise HTTPException(status_code=404, detail="Practice session not found")
 
         is_new_available_vote = availability_status == 'available' and previous_status != 'available'
         if is_new_available_vote and session_details["capacity_reached"]:
@@ -2961,27 +3095,26 @@ def set_practice_availability_by_date(date: str, status: dict, current_user: dic
 
 @app.post("/api/practice/availability")
 def set_my_practice_availability(avail: PracticeAvailability, current_user: dict = Depends(get_current_user)):
-    # Parse the date string to compare with today
-    from datetime import datetime, date
     try:
-        practice_date = datetime.strptime(avail.date, '%Y-%m-%d').date()
+        datetime.strptime(avail.date, '%Y-%m-%d')
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    
-    # Check if payment has been requested for this session
+
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}", (avail.date,))
-        session = cur.fetchone()
-        
-        if session and session["payment_requested"]:
+        session = get_practice_session_basic(cur, avail.date)
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+
+        if is_practice_datetime_in_past(session["date"], session.get("time")):
+            raise HTTPException(status_code=403, detail="Cannot modify availability after the practice session date and time has passed.")
+
+        if session["payment_requested"]:
             raise HTTPException(
                 status_code=403, 
                 detail="Cannot modify availability after payment request has been enabled."
             )
-    
-    with get_connection() as conn:
-        cur = conn.cursor()
+
         cur.execute(
             f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
             (avail.date, current_user["email"]),
@@ -3708,70 +3841,40 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
     """Get all upcoming practice sessions for user to set availability"""
     with get_connection() as conn:
         cur = conn.cursor()
-        
-        # Get all future practice sessions ordered by date (most recent first)
-        if USE_POSTGRES:
-            cur.execute(
-                """
-                SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
-                       COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
-                       pa.status as user_status
-                FROM practice_sessions ps
-                LEFT JOIN practice_availability pa 
-                    ON ps.date = pa.date AND pa.user_email = %s
-                WHERE ps.date::date >= CURRENT_DATE
-                ORDER BY ps.date ASC
-                """,
-                (current_user["email"],)
-            )
-        else:
-            cur.execute(
-                """
-                SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
-                       COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
-                       pa.status as user_status
-                FROM practice_sessions ps
-                LEFT JOIN practice_availability pa 
-                    ON ps.date = pa.date AND pa.user_email = ?
-                WHERE ps.date >= date('now')
-                ORDER BY ps.date ASC
-                """,
-                (current_user["email"],)
-            )
+        cur.execute(
+            f"""
+            SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
+                   COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
+                   pa.status as user_status
+            FROM practice_sessions ps
+            LEFT JOIN practice_availability pa 
+                ON ps.date = pa.date AND pa.user_email = {PLACEHOLDER}
+            ORDER BY ps.date ASC
+            """,
+            (current_user["email"],)
+        )
         
         rows = cur.fetchall()
         sessions = []
         for row in rows:
-            if USE_POSTGRES:
-                available_count = get_available_count_for_session(cur, row["date"])
-                maximum_capacity = normalize_maximum_capacity(row["maximum_capacity"])
-                sessions.append({
-                    "date": row["date"],
-                    "time": row["time"],
-                    "location": row["location"],
-                    "session_cost": row["session_cost"],
-                    "paid_by": row["paid_by"],
-                    "user_status": row["user_status"],
-                    "maximum_capacity": maximum_capacity,
-                    "available_count": available_count,
-                    "remaining_slots": max(maximum_capacity - available_count, 0),
-                    "capacity_reached": available_count >= maximum_capacity,
-                })
-            else:
-                available_count = get_available_count_for_session(cur, row[0])
-                maximum_capacity = normalize_maximum_capacity(row[5])
-                sessions.append({
-                    "date": row[0],
-                    "time": row[1],
-                    "location": row[2],
-                    "session_cost": row[3],
-                    "paid_by": row[4],
-                    "user_status": row[6],
-                    "maximum_capacity": maximum_capacity,
-                    "available_count": available_count,
-                    "remaining_slots": max(maximum_capacity - available_count, 0),
-                    "capacity_reached": available_count >= maximum_capacity,
-                })
+            row_dict = dict(row)
+            normalized_time = get_practice_effective_time(row_dict.get("time")) if row_dict.get("time") else "21:00"
+            if is_practice_datetime_in_past(row_dict["date"], normalized_time):
+                continue
+            available_count = get_available_count_for_session(cur, row_dict["date"])
+            maximum_capacity = normalize_maximum_capacity(row_dict["maximum_capacity"])
+            sessions.append({
+                "date": row_dict["date"],
+                "time": normalized_time,
+                "location": row_dict["location"],
+                "session_cost": row_dict["session_cost"],
+                "paid_by": row_dict["paid_by"],
+                "user_status": row_dict["user_status"],
+                "maximum_capacity": maximum_capacity,
+                "available_count": available_count,
+                "remaining_slots": max(maximum_capacity - available_count, 0),
+                "capacity_reached": available_count >= maximum_capacity,
+            })
         
         return {"sessions": sessions}
 
@@ -3780,65 +3883,41 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
     """Get all sessions where user was available but hasn't confirmed payment"""
     with get_connection() as conn:
         cur = conn.cursor()
-        
-        # Get sessions where:
-        # 1. User marked themselves as available
-        # 2. Payment was requested (payment_requested = true)
-        # 3. User hasn't confirmed payment OR payment record doesn't exist
-        # Order by date descending (newest first)
-        if USE_POSTGRES:
-            cur.execute(
-                """
-                SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
-                       u.full_name as paid_by_name,
-                       u.bank_name as paid_by_bank_name,
-                       u.sort_code as paid_by_sort_code,
-                       u.account_number as paid_by_account_number,
-                       pa.status,
-                       COALESCE(pp.paid, FALSE) as paid
-                FROM practice_sessions ps
-                INNER JOIN practice_availability pa 
-                    ON ps.date = pa.date AND pa.user_email = %s
-                LEFT JOIN practice_payments pp 
-                    ON ps.date = pp.date AND pp.user_email = %s
-                LEFT JOIN users u ON ps.paid_by = u.email
-                WHERE pa.status = 'available' 
-                  AND ps.payment_requested = TRUE
-                  AND ps.date::date < CURRENT_DATE
-                  AND (pp.paid IS NULL OR pp.paid = FALSE)
-                ORDER BY ps.date DESC
-                """,
-                (current_user["email"], current_user["email"])
+        cur.execute(
+            f"""
+            SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
+                   u.full_name as paid_by_name,
+                   u.bank_name as paid_by_bank_name,
+                   u.sort_code as paid_by_sort_code,
+                   u.account_number as paid_by_account_number,
+                   pa.status,
+                   COALESCE(pp.paid, {PLACEHOLDER}) as paid
+            FROM practice_sessions ps
+            INNER JOIN practice_availability pa 
+                ON ps.date = pa.date AND pa.user_email = {PLACEHOLDER}
+            LEFT JOIN practice_payments pp 
+                ON ps.date = pp.date AND pp.user_email = {PLACEHOLDER}
+            LEFT JOIN users u ON ps.paid_by = u.email
+            WHERE pa.status = 'available' 
+              AND ps.payment_requested = {PLACEHOLDER}
+              AND (pp.paid IS NULL OR pp.paid = {PLACEHOLDER})
+            ORDER BY ps.date DESC
+            """,
+            (
+                False if USE_POSTGRES else 0,
+                current_user["email"],
+                current_user["email"],
+                True if USE_POSTGRES else 1,
+                False if USE_POSTGRES else 0,
             )
-        else:
-            cur.execute(
-                """
-                SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
-                       u.full_name as paid_by_name,
-                       u.bank_name as paid_by_bank_name,
-                       u.sort_code as paid_by_sort_code,
-                       u.account_number as paid_by_account_number,
-                       pa.status,
-                       COALESCE(pp.paid, 0) as paid
-                FROM practice_sessions ps
-                INNER JOIN practice_availability pa 
-                    ON ps.date = pa.date AND pa.user_email = ?
-                LEFT JOIN practice_payments pp 
-                    ON ps.date = pp.date AND pp.user_email = ?
-                LEFT JOIN users u ON ps.paid_by = u.email
-                WHERE pa.status = 'available' 
-                  AND ps.payment_requested = 1
-                  AND ps.date < date('now')
-                  AND (pp.paid IS NULL OR pp.paid = 0)
-                ORDER BY ps.date DESC
-                """,
-                (current_user["email"], current_user["email"])
-            )
+        )
         
         rows = cur.fetchall()
         payments = []
         for row in rows:
             if USE_POSTGRES:
+                if not is_practice_datetime_in_past(row["date"], row.get("time")):
+                    continue
                 # Calculate individual amount
                 # Get count of available users for this session
                 cur.execute(
@@ -3847,8 +3926,8 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                 )
                 count_row = cur.fetchone()
                 available_count = count_row["count"] if count_row and "count" in count_row else 0
-                session_cost = row["session_cost"]
-                individual_amount = session_cost / available_count if available_count > 0 else 0
+                session_cost = float(row["session_cost"]) if row["session_cost"] is not None else 0
+                individual_amount = session_cost / available_count if available_count > 0 and session_cost > 0 else 0
                 
                 payments.append({
                     "date": row["date"],
@@ -3864,14 +3943,16 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                     "paid": row["paid"]
                 })
             else:
+                if not is_practice_datetime_in_past(row[0], row[1]):
+                    continue
                 # Calculate individual amount
                 cur.execute(
                     "SELECT COUNT(*) FROM practice_availability WHERE date = ? AND status = 'available'",
                     (row[0],)
                 )
                 available_count = cur.fetchone()[0]
-                session_cost = row[3]
-                individual_amount = session_cost / available_count if available_count > 0 else 0
+                session_cost = float(row[3]) if row[3] is not None else 0
+                individual_amount = session_cost / available_count if available_count > 0 and session_cost > 0 else 0
                 
                 payments.append({
                     "date": row[0],

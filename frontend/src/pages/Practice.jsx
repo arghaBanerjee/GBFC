@@ -53,6 +53,21 @@ export default function Practice({ user }) {
     return dt
   }
 
+  const getSessionDateTime = (dateStr, timeStr) => {
+    if (!dateStr) return null
+    const effectiveTime = timeStr || '21:00'
+    const [year, month, day] = dateStr.split('-').map(Number)
+    const [hours, minutes] = effectiveTime.split(':').map(Number)
+    if (!year || !month || !day || Number.isNaN(hours) || Number.isNaN(minutes)) return null
+    return new Date(year, month - 1, day, hours, minutes, 0, 0)
+  }
+
+  const isSessionPast = (dateStr, timeStr) => {
+    const sessionDateTime = getSessionDateTime(dateStr, timeStr)
+    if (!sessionDateTime) return false
+    return sessionDateTime.getTime() < Date.now()
+  }
+
   const mergeUpdatedSession = (updatedSession) => {
     if (!updatedSession?.date) return
     setAdminSessions((prev) => {
@@ -242,6 +257,10 @@ export default function Practice({ user }) {
     if (!user || availabilityUpdating) return
     
     const dateStr = formatDateStr(selectedDate)
+    if (isSessionPast(dateStr, selectedSession?.time)) {
+      setAvailabilityError('Cannot change availability after the practice session date and time has passed.')
+      return
+    }
     const currentStatus = availability[dateStr]
     const previousAvailability = availability
     const previousVoteSummary = voteSummary
@@ -659,6 +678,7 @@ export default function Practice({ user }) {
   const sessionAvailableCount = voteSummary?.available_count ?? voteSummary?.available?.length ?? selectedSession?.available_count ?? 0
   const sessionRemainingSlots = voteSummary?.remaining_slots ?? Math.max(sessionMaximumCapacity - sessionAvailableCount, 0)
   const isCapacityReached = Boolean(voteSummary?.capacity_reached ?? selectedSession?.capacity_reached ?? (sessionAvailableCount >= sessionMaximumCapacity))
+  const hasSelectedSessionPassed = Boolean(selectedSession && isSessionPast(selectedSession.date, selectedSession.time))
   const canSelectAvailable = selectedStatus === 'available' || !isCapacityReached
   const canSavePaymentInfo = Boolean(sessionCost && paidBy && maximumCapacity && Number(maximumCapacity) > 0)
   const availablePlayersForPayment = voteSummary?.available?.length || 0
@@ -775,12 +795,13 @@ export default function Practice({ user }) {
               <div style={{ marginTop: '1rem' }}>
                 <strong>Your Selection</strong>
                 <div style={{ marginTop: '0.5rem' }}>
-                  <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
-                  <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || selectedSession?.payment_requested || availabilityUpdating}>Tentative</button>
-                  <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
+                  <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
+                  <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Tentative</button>
+                  <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
                 </div>
                 {!user && <p style={{ marginTop: '0.5rem', color: '#dc2626' }}>Log in to vote your availability.</p>}
-                {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after payment request.</p>}
+                {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after the practice session date and time has passed.</p>}
+                {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after payment requested.</p>}
                 {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && (
                   <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>
                     Maximum capacity reached. Available is temporarily disabled until a slot opens up.
@@ -926,8 +947,8 @@ export default function Practice({ user }) {
                             <button onClick={handleSavePaymentInfo} disabled={!canSavePaymentInfo} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: !canSavePaymentInfo ? '#d1d5db' : paymentInfoSaved ? '#10b981' : '#7c3aed', color: 'white', border: 'none', cursor: !canSavePaymentInfo ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
                               {paymentInfoSaved ? '✓ Saved - Click to Update' : 'Save Payment Info'}
                             </button>
-                            <button onClick={handleRequestPayment} disabled={!paymentInfoSaved || new Date(selectedDateStr) >= new Date()} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!paymentInfoSaved || new Date(selectedDateStr) >= new Date()) ? '#d1d5db' : '#dc2626', color: 'white', border: 'none', cursor: (!paymentInfoSaved || new Date(selectedDateStr) >= new Date()) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
-                              {new Date(selectedDateStr) >= new Date() ? 'Available after session' : !paymentInfoSaved ? 'Save payment info first' : '⚠️ Request Payment'}
+                            <button onClick={handleRequestPayment} disabled={!paymentInfoSaved || !hasSelectedSessionPassed} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!paymentInfoSaved || !hasSelectedSessionPassed) ? '#d1d5db' : '#dc2626', color: 'white', border: 'none', cursor: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                              {!hasSelectedSessionPassed ? 'Available after session' : !paymentInfoSaved ? 'Save payment info first' : '⚠️ Request Payment'}
                             </button>
                           </div>
                         )}

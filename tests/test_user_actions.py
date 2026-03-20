@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 # Set test mode before importing api
 os.environ["TEST_MODE"] = "true"
 
-from api import app, init_db, hash_password, USE_POSTGRES, get_connection, PLACEHOLDER, notify_practice_slots_available
+from api import app, init_db, hash_password, USE_POSTGRES, get_connection, PLACEHOLDER, notify_practice_slots_available, deliver_notification
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -322,6 +322,48 @@ def test_confirm_payment_from_user_actions():
     
     print("✓ Confirm payment from user actions works correctly")
 
+def test_same_day_past_time_payment_request_shows_in_pending_payments():
+    """A same-day session with payment requested should appear in pending payments once its practice time has passed"""
+    setup_test_data()
+
+    response = client.post("/api/login", data={
+        "username": "user1@test.com",
+        "password": "pass123"
+    })
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+
+    today_str = datetime.now().date().isoformat()
+    past_time = (datetime.now() - timedelta(hours=1)).strftime("%H:%M")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT OR REPLACE INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (today_str, past_time, "Today Location", 20.0, "payer@test.com", True if USE_POSTGRES else 1, 18)
+        )
+        cur.execute(
+            f"INSERT OR REPLACE INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, 'available')",
+            (today_str, "user1@test.com", "User One")
+        )
+        cur.execute(
+            f"DELETE FROM practice_payments WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (today_str, "user1@test.com")
+        )
+        conn.commit()
+
+    response = client.get(
+        "/api/user-actions/pending-payments",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    payments = response.json()["payments"]
+    payment = next((p for p in payments if p["date"] == today_str), None)
+    assert payment is not None
+    assert payment["paid_by"] == "payer@test.com"
+    assert payment["paid"] is False
+
 def test_individual_amount_calculation():
     """Test that individual amount is calculated correctly"""
     print("Testing individual amount calculation...")
@@ -511,6 +553,119 @@ def test_slot_available_scheduler_notifies_only_nearest_upcoming_session():
         assert nearest_session_date in related_dates
         assert later_session_date not in related_dates
 
+def test_same_day_past_practice_notifications_are_suppressed():
+    """Practice-related notifications should not be created when the practice datetime is already in the past"""
+    setup_test_data()
+
+    today_str = datetime.now().date().isoformat()
+    past_time = (datetime.now() - timedelta(hours=1)).strftime("%H:%M")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"DELETE FROM notifications WHERE related_date = {PLACEHOLDER}", (today_str,))
+        conn.commit()
+
+    for notif_type in ["practice", "practice_slot_available", "session_capacity_reached"]:
+        deliver_notification(
+            notif_type,
+            {
+                "date": today_str,
+                "time": past_time,
+                "location": "Test Location",
+                "maximum_capacity": 18,
+                "available_count": 5,
+                "remaining_slots": 13,
+            },
+            related_date=today_str,
+        )
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT type FROM notifications WHERE related_date = {PLACEHOLDER} AND type IN ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (today_str, "practice", "practice_slot_available", "session_capacity_reached")
+        )
+        notifications = cur.fetchall()
+        assert len(notifications) == 0
+
+def test_same_day_passed_session_removed_from_upcoming_and_member_changes_blocked():
+    """A same-day session with a past time should not appear in upcoming sessions and should reject member availability changes"""
+    setup_test_data()
+
+    response = client.post("/api/login", data={
+        "username": "user1@test.com",
+        "password": "pass123"
+    })
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+
+    today_str = datetime.now().date().isoformat()
+    past_time = (datetime.now() - timedelta(hours=1)).strftime("%H:%M")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT OR REPLACE INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (today_str, past_time, "Today Location", None, None, False if USE_POSTGRES else 0, 18)
+        )
+        conn.commit()
+
+    response = client.get(
+        "/api/user-actions/upcoming-sessions",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    sessions = response.json()["sessions"]
+    assert next((s for s in sessions if s["date"] == today_str), None) is None
+
+    response = client.post(
+        "/api/practice/availability",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"date": today_str, "status": "available"}
+    )
+    assert response.status_code == 403
+    assert "date and time has passed" in response.json()["detail"]
+
+    response = client.post(
+        f"/api/practice/{today_str}/availability",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"status": "tentative"}
+    )
+    assert response.status_code == 403
+    assert "date and time has passed" in response.json()["detail"]
+
+def test_same_day_future_time_session_still_shows_in_upcoming():
+    """A same-day session should still appear in upcoming sessions if its practice time has not passed yet"""
+    setup_test_data()
+
+    response = client.post("/api/login", data={
+        "username": "user1@test.com",
+        "password": "pass123"
+    })
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+
+    today_str = datetime.now().date().isoformat()
+    future_time = (datetime.now() + timedelta(hours=1)).strftime("%H:%M")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT OR REPLACE INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (today_str, future_time, "Today Future Location", None, None, False if USE_POSTGRES else 0, 18)
+        )
+        conn.commit()
+
+    response = client.get(
+        "/api/user-actions/upcoming-sessions",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    sessions = response.json()["sessions"]
+    session = next((s for s in sessions if s["date"] == today_str), None)
+    assert session is not None
+    assert session["time"] == future_time
+
 def test_capacity_reached_creates_notification_record():
     """When the last slot is taken, a session_capacity_reached notification should be created"""
     setup_test_data()
@@ -561,11 +716,15 @@ def run_all_tests():
         test_pending_payments_ordered_correctly,
         test_set_availability_from_user_actions,
         test_confirm_payment_from_user_actions,
+        test_same_day_past_time_payment_request_shows_in_pending_payments,
         test_individual_amount_calculation,
         test_cannot_mark_available_when_capacity_reached,
         test_reopening_slot_does_not_send_realtime_notification_and_allows_new_available_vote,
         test_slot_available_scheduler_notifies_only_nearest_upcoming_session,
         test_capacity_reached_creates_notification_record,
+        test_same_day_past_practice_notifications_are_suppressed,
+        test_same_day_passed_session_removed_from_upcoming_and_member_changes_blocked,
+        test_same_day_future_time_session_still_shows_in_upcoming,
     ]
     
     passed = 0
