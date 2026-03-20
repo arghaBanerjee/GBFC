@@ -228,7 +228,14 @@ export default function Practice({ user }) {
     const target = selectedSessionRef.current
     if (!target) return
     window.requestAnimationFrame(() => {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const header = document.querySelector('.top-nav')
+      const headerHeight = header ? header.getBoundingClientRect().height : 0
+      const extraOffset = window.innerWidth <= 768 ? 12 : 16
+      const targetTop = target.getBoundingClientRect().top + window.scrollY - headerHeight - extraOffset
+      window.scrollTo({
+        top: Math.max(targetTop, 0),
+        behavior: 'smooth',
+      })
     })
   }, [selectedDate])
 
