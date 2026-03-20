@@ -375,7 +375,7 @@ function App() {
                         No notifications yet
                       </div>
                     ) : (
-                      notifications.map((notif) => (
+                      notifications.slice(0, 5).map((notif) => (
                         <div
                           key={notif.id}
                           style={{

@@ -284,7 +284,7 @@ function UserActions({ user, loading }) {
                     <div className="availability-section">
                       <p className="section-label">Availability</p>
                       <p style={{ marginBottom: '0.5rem', fontSize: '0.8125rem', color: session.capacity_reached ? '#92400e' : '#166534' }}>
-                        Capacity: {session.available_count || 0}/{session.maximum_capacity || 100} available
+                        Capacity: {session.available_count || 0}/{session.maximum_capacity || 100} booked
                         {session.remaining_slots > 0 ? ` · ${session.remaining_slots} slot${session.remaining_slots === 1 ? '' : 's'} left` : ' · Full'}
                       </p>
                       <div className="availability-buttons">

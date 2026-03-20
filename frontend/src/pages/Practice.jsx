@@ -6,6 +6,7 @@ export default function Practice({ user }) {
   const navigate = useNavigate()
   const location = useLocation()
   const adminControlsRef = useRef(null)
+  const selectedSessionRef = useRef(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(null)
   const [availability, setAvailability] = useState({})
@@ -221,6 +222,15 @@ export default function Practice({ user }) {
       .catch(() => setAllUsers([]))
       .finally(() => setAdminUsersLoading(false))
   }, [isAdmin, adminControlsOpen, token, allUsers.length, adminUsersLoading])
+
+  useEffect(() => {
+    if (!selectedDate) return
+    const target = selectedSessionRef.current
+    if (!target) return
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [selectedDate])
 
   const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
@@ -723,10 +733,8 @@ export default function Practice({ user }) {
 
       {/* Selected Date Details */}
       {selectedDate && (
-        <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}>
-          <h4>{selectedDate.toLocaleDateString()}</h4>
-          
-          {/* Show match details if there's a match on this date */}
+        <div ref={selectedSessionRef} style={{ background: '#fff', borderRadius: 8, padding: '1.5rem', minHeight: 220, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <h3 style={{ marginBottom: '1rem' }}>{selectedDate ? selectedDate.toDateString() : 'Select a date'}</h3>
           {selectedMatch ? (
             <div style={{ 
               padding: '1rem', 
@@ -779,7 +787,7 @@ export default function Practice({ user }) {
                 <span>Location: {selectedSession.location || 'TBD'}</span>
               </div>
               <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#166534', fontWeight: '600' }}>
-                Capacity: {sessionAvailableCount}/{sessionMaximumCapacity} available
+                Capacity: {sessionAvailableCount}/{sessionMaximumCapacity} booked
                 {sessionRemainingSlots > 0 ? ` · ${sessionRemainingSlots} slot${sessionRemainingSlots === 1 ? '' : 's'} left` : ' · Full'}
               </div>
             </div>
@@ -814,7 +822,7 @@ export default function Practice({ user }) {
                 <div style={{ marginTop: '1rem', padding: '1rem', background: '#fef3c7', borderRadius: '0.5rem', border: '1px solid #fbbf24' }}>
                   <strong style={{ color: '#92400e' }}>Payment Request</strong>
                   <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#78350f' }}>
-                    The admin has requested payment for this session.
+                    Total session cost £ {selectedSession.session_cost != null ? Number(selectedSession.session_cost).toFixed(2) : '0.00'}
                   </p>
                   {hasPaidByBankDetails && (
                     <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fffaf0', borderRadius: '0.375rem', border: '1px solid #fcd34d' }}>
