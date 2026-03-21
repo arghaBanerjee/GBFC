@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { apiUrl } from '../api'
 
 export default function Forum({ user }) {
@@ -12,20 +12,6 @@ export default function Forum({ user }) {
   const [likesHover, setLikesHover] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const token = localStorage.getItem('token')
-
-  const pastelColors = useMemo(
-    () => [
-      '#FDE2E4',
-      '#E2F0CB',
-      '#CDE7F0',
-      '#FFF1CC',
-      '#E7D7FF',
-      '#D7F9F1',
-      '#FFE0B5',
-      '#E0ECFF',
-    ],
-    []
-  )
 
   useEffect(() => {
     fetch(apiUrl('/api/forum'))
@@ -240,15 +226,15 @@ export default function Forum({ user }) {
           onClick={() => setShowCreate(true)} 
           style={{ 
             marginBottom: '1rem',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            color: 'white',
-            border: 'none',
+            background: 'linear-gradient(135deg, var(--theme-accent) 0%, color-mix(in srgb, var(--theme-accent) 70%, var(--theme-secondary) 30%) 100%)',
+            color: 'var(--theme-accent-contrast)',
+            border: '1px solid color-mix(in srgb, var(--theme-accent) 75%, black 25%)',
             padding: '1rem 2rem',
             fontSize: '1.1rem',
             fontWeight: 'bold',
             borderRadius: '0.75rem',
             cursor: 'pointer',
-            boxShadow: '0 4px 15px rgba(16, 185, 129, 0.4)',
+            boxShadow: 'var(--theme-shadow-strong)',
             transition: 'all 0.3s ease',
             transform: 'translateY(0)',
             width: '100%',
@@ -261,19 +247,19 @@ export default function Forum({ user }) {
           }}
           onMouseEnter={(e) => {
             e.target.style.transform = 'translateY(-2px)'
-            e.target.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.6)'
+            e.target.style.boxShadow = '0 18px 36px rgba(17, 24, 39, 0.18)'
           }}
           onMouseLeave={(e) => {
             e.target.style.transform = 'translateY(0)'
-            e.target.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.4)'
+            e.target.style.boxShadow = 'var(--theme-shadow-strong)'
           }}
         >
           ✨ Create Post
         </button>
       )}
       {showCreate && (
-        <div style={{ border: '1px solid #ddd', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', background: '#f9fafb' }}>
-          <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.1rem', color: '#374151' }}>What's on your mind?</h3>
+        <div style={{ border: '1px solid var(--theme-border)', padding: '1rem', borderRadius: '0.75rem', marginBottom: '1rem', background: 'var(--theme-surface)', boxShadow: 'var(--theme-card-shadow)' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.1rem', color: 'var(--theme-heading)' }}>What's on your mind?</h3>
           <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
             <textarea
               value={newContent}
@@ -285,8 +271,9 @@ export default function Forum({ user }) {
                 width: '100%',
                 padding: '0.75rem',
                 borderRadius: '0.375rem',
-                border: '1px solid #d1d5db',
-                background: 'white',
+                border: '1px solid var(--theme-border)',
+                background: 'var(--theme-surface-alt)',
+                color: 'var(--theme-text)',
                 outline: 'none',
                 fontSize: '1rem',
                 fontFamily: 'inherit',
@@ -294,22 +281,22 @@ export default function Forum({ user }) {
                 boxSizing: 'border-box'
               }}
             />
-            <div style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'right', marginTop: '0.25rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'right', marginTop: '0.25rem' }}>
               {newContent.length}/500 characters
             </div>
           </div>
           {imagePreview && (
             <div style={{ marginBottom: '0.75rem', position: 'relative', display: 'inline-block' }}>
-              <img src={imagePreview} alt="Preview" style={{ maxWidth: '300px', width: '100%', height: 'auto', borderRadius: '0.5rem', border: '1px solid #d1d5db' }} />
+              <img src={imagePreview} alt="Preview" style={{ maxWidth: '300px', width: '100%', height: 'auto', borderRadius: '0.5rem', border: '1px solid var(--theme-border)' }} />
               <button 
                 onClick={() => setImagePreview(null)}
                 style={{ 
                   position: 'absolute', 
                   top: '0.5rem', 
                   right: '0.5rem', 
-                  background: '#ef4444', 
-                  color: 'white', 
-                  border: 'none', 
+                  background: 'var(--theme-danger)', 
+                  color: 'var(--theme-danger-contrast)', 
+                  border: '1px solid var(--theme-danger)', 
                   borderRadius: '50%', 
                   width: '24px', 
                   height: '24px', 
@@ -323,14 +310,14 @@ export default function Forum({ user }) {
             </div>
           )}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <label className="nav-btn" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0, color: '#111827', background: '#d1fae5', border: '1px solid #86efac' }}>
+            <label className="nav-btn theme-secondary-btn" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0 }}>
               📎 Attach Image
               <input type="file" accept="image/*" onChange={handleAttachImage} style={{ display: 'none' }} />
             </label>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="nav-btn active" onClick={handleCreate} style={{ padding: '0.5rem 1rem' }}>Post</button>
-            <button className="nav-btn" onClick={() => { setShowCreate(false); setNewContent(''); setImagePreview(null) }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6', color: '#111827', border: '1px solid #111827' }}>Cancel</button>
+            <button className="nav-btn theme-primary-btn" onClick={handleCreate} style={{ padding: '0.5rem 1rem' }}>Post</button>
+            <button className="nav-btn theme-secondary-btn" onClick={() => { setShowCreate(false); setNewContent(''); setImagePreview(null) }} style={{ padding: '0.5rem 1rem' }}>Cancel</button>
           </div>
         </div>
       )}
@@ -339,13 +326,14 @@ export default function Forum({ user }) {
           <div
             key={post.id}
             style={{
-              background: pastelColors[post.id % pastelColors.length],
+              background: 'var(--theme-surface)',
               padding: '1rem',
-              borderRadius: '0.75rem',
-              border: '1px solid rgba(0,0,0,0.06)',
+              borderRadius: '0.9rem',
+              border: '1px solid var(--theme-border)',
+              boxShadow: 'var(--theme-card-shadow)',
             }}
           >
-            <p><strong>{post.user_full_name}</strong> · {new Date(post.created_at).toLocaleString()}</p>
+            <p style={{ color: 'var(--theme-text)', marginTop: 0 }}><strong style={{ color: 'var(--theme-heading)' }}>{post.user_full_name}</strong> · {new Date(post.created_at).toLocaleString()}</p>
             <div className="forum-post-content" dangerouslySetInnerHTML={{ __html: post.content }} />
             <div style={{ marginTop: '0.5rem', position: 'relative' }}>
               <button
@@ -353,12 +341,12 @@ export default function Forum({ user }) {
                 onClick={() => handleLikeToggle(post.id)}
                 style={{ 
                   marginRight: '0.5rem', 
-                  border: 'none',
-                  background: myLikedPostIds.has(post.id) ? '#10b981' : '#f3f4f6',
-                  color: myLikedPostIds.has(post.id) ? 'white' : 'inherit',
+                  border: myLikedPostIds.has(post.id) ? '1px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                  background: myLikedPostIds.has(post.id) ? 'var(--theme-accent)' : 'var(--theme-surface-alt)',
+                  color: myLikedPostIds.has(post.id) ? 'var(--theme-accent-contrast)' : 'var(--theme-text)',
                   borderRadius: '0.5rem',
                   padding: '0.5rem 1rem',
-                  boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                  boxShadow: 'var(--theme-card-shadow)',
                   transition: 'all 0.2s ease'
                 }}
                 onMouseEnter={() => setLikesHover(post.id)}
@@ -371,12 +359,12 @@ export default function Forum({ user }) {
                 onClick={() => setCommentingPostId(commentingPostId === post.id ? null : post.id)} 
                 style={{ 
                   marginRight: '0.5rem', 
-                  border: 'none',
-                  background: '#f3f4f6',
-                  color: '#111827',
+                  border: '1px solid var(--theme-border)',
+                  background: 'var(--theme-surface-alt)',
+                  color: 'var(--theme-text)',
                   borderRadius: '0.5rem',
                   padding: '0.5rem 1rem',
-                  boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                  boxShadow: 'var(--theme-card-shadow)',
                   transition: 'all 0.2s ease'
                 }}
               >
@@ -386,7 +374,7 @@ export default function Forum({ user }) {
                 <button 
                   className="nav-btn" 
                   onClick={() => handleDeletePost(post.id)}
-                  style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' }}
+                  style={{ background: 'var(--theme-danger-soft)', color: 'var(--theme-danger-strong)', border: '1px solid color-mix(in srgb, var(--theme-danger) 30%, white)' }}
                 >
                   🗑️ Delete
                 </button>
@@ -397,8 +385,8 @@ export default function Forum({ user }) {
                   position: 'absolute',
                   bottom: '100%',
                   left: 0,
-                  background: '#111827',
-                  color: 'white',
+                  background: 'var(--theme-heading)',
+                  color: 'var(--theme-accent-contrast)',
                   padding: '0.5rem',
                   borderRadius: '0.375rem',
                   fontSize: '0.875rem',
@@ -414,38 +402,38 @@ export default function Forum({ user }) {
             </div>
 
           {(commentingPostId === post.id || post.comments.length > 0) && (
-            <div style={{ marginTop: '1rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', overflow: 'hidden' }}>
+            <div style={{ marginTop: '1rem', border: '1px solid var(--theme-border)', borderRadius: '0.75rem', overflow: 'hidden', background: 'var(--theme-surface-alt)' }}>
               {commentingPostId === post.id && (
-                <div style={{ padding: '1rem', background: `${pastelColors[post.id % pastelColors.length]}dd`, borderBottom: '1px solid #d1d5db' }}>
+                <div style={{ padding: '1rem', background: 'var(--theme-surface-alt)', borderBottom: '1px solid var(--theme-border)' }}>
                   <div style={{ width: '100%', marginBottom: '0.75rem' }}>
                     <textarea
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
                       placeholder="Write a comment..."
                       maxLength={100}
-                      style={{ width: '100%', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', boxSizing: 'border-box', fontSize: '1rem', background: 'white' }}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', boxSizing: 'border-box', fontSize: '1rem', background: 'var(--theme-surface)', color: 'var(--theme-text)' }}
                     />
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'right', marginTop: '0.25rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'right', marginTop: '0.25rem' }}>
                       {commentText.length}/100 characters
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button className="nav-btn active" onClick={handleComment} style={{ padding: '0.5rem 1rem' }}>Post</button>
-                    <button className="nav-btn" onClick={() => { setCommentingPostId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6', color: '#111827' }}>Cancel</button>
+                    <button className="nav-btn theme-primary-btn" onClick={handleComment} style={{ padding: '0.5rem 1rem' }}>Post</button>
+                    <button className="nav-btn theme-secondary-btn" onClick={() => { setCommentingPostId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem' }}>Cancel</button>
                   </div>
                 </div>
               )}
               {post.comments.length > 0 && (
                   <div style={{ 
                     padding: '1rem',
-                    background: '#f9fafb',
+                    background: 'var(--theme-surface)',
                     maxHeight: '200px',
                     overflowY: 'auto'
                   }}>
                     {[...post.comments].reverse().map((c) => {
                       const firstName = c.user_full_name.split(' ')[0]
                       return (
-                        <p key={c.id} style={{ margin: '0.5rem 0', wordWrap: 'break-word', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+                        <p key={c.id} style={{ margin: '0.5rem 0', color: 'var(--theme-text)', wordWrap: 'break-word', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
                           <small>
                             <strong>{firstName}:</strong> {renderCommentWithLinks(c.comment)}
                           </small>

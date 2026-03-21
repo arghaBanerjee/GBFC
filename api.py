@@ -84,6 +84,7 @@ WHATSAPP_NOTIFICATIONS_ENABLED = os.environ.get("WHATSAPP_NOTIFICATIONS_ENABLED"
 whatsapp_scheduler = BackgroundScheduler()
 
 NOTIFICATION_TARGET_OPTIONS = {"all_active_users", "admin_users", "available_players", "direct_user"}
+THEME_PREFERENCES = {"east_bengal", "mohun_bagan"}
 NOTIFICATION_TYPE_DEFAULTS = {
     "practice": {
         "display_name": "New Practice Added",
@@ -238,6 +239,7 @@ def init_db():
                 bank_name VARCHAR(255),
                 sort_code VARCHAR(20),
                 account_number VARCHAR(20),
+                theme_preference VARCHAR(50) DEFAULT 'mohun_bagan',
                 is_deleted BOOLEAN DEFAULT FALSE,
                 deleted_at TIMESTAMP,
                 deleted_by VARCHAR(255)
@@ -418,6 +420,23 @@ def init_db():
                 conn.commit()
             except Exception as e:
                 print(f"Warning: Could not add account_number column: {e}")
+                conn.rollback()
+
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='theme_preference'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN theme_preference VARCHAR(50) DEFAULT 'mohun_bagan';
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add theme_preference column: {e}")
                 conn.rollback()
             
             # Add session_cost column to practice_sessions if it doesn't exist
@@ -762,6 +781,11 @@ def init_db():
                 cur.execute("ALTER TABLE users DROP COLUMN password_hash")
             except sqlite3.OperationalError:
                 pass
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN theme_preference TEXT DEFAULT 'mohun_bagan'")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add theme_preference column: {e}")
             cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -775,6 +799,7 @@ def init_db():
                 bank_name TEXT,
                 sort_code TEXT,
                 account_number TEXT,
+                theme_preference TEXT DEFAULT 'mohun_bagan',
                 is_deleted BOOLEAN DEFAULT 0,
                 deleted_at TIMESTAMP,
                 deleted_by TEXT
@@ -1583,6 +1608,7 @@ class UserOut(BaseModel):
     bank_name: Optional[str] = None
     sort_code: Optional[str] = None
     account_number: Optional[str] = None
+    theme_preference: str = "mohun_bagan"
 
 class Token(BaseModel):
     access_token: str
@@ -2086,7 +2112,7 @@ def me(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"SELECT full_name, user_type, is_deleted, created_at, last_login, birthday, bank_name, sort_code, account_number FROM users WHERE email = {PLACEHOLDER}", 
+            f"SELECT full_name, user_type, is_deleted, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference FROM users WHERE email = {PLACEHOLDER}", 
             (current_user["email"],)
         )
         row = cur.fetchone()
@@ -2124,6 +2150,7 @@ def me(current_user: dict = Depends(get_current_user)):
             bank_name = row_dict.get("bank_name")
             sort_code = row_dict.get("sort_code")
             account_number = row_dict.get("account_number")
+            theme_preference = row_dict.get("theme_preference") or "mohun_bagan"
         else:
             full_name = current_user["full_name"]
             user_type = "member"
@@ -2133,6 +2160,7 @@ def me(current_user: dict = Depends(get_current_user)):
             bank_name = None
             sort_code = None
             account_number = None
+            theme_preference = "mohun_bagan"
     
     return UserOut(
         id=current_user["id"], 
@@ -2144,7 +2172,8 @@ def me(current_user: dict = Depends(get_current_user)):
         birthday=birthday,
         bank_name=bank_name,
         sort_code=sort_code,
-        account_number=account_number
+        account_number=account_number,
+        theme_preference=theme_preference,
     )
 
 @app.post("/api/logout")
@@ -2160,7 +2189,7 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
     
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday, bank_name, sort_code, account_number FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
+        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
         users = []
         for row in cur.fetchall():
             user_dict = dict(row)
@@ -2185,6 +2214,7 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
             user_dict["bank_name"] = user_dict.get("bank_name") or None
             user_dict["sort_code"] = user_dict.get("sort_code") or None
             user_dict["account_number"] = user_dict.get("account_number") or None
+            user_dict["theme_preference"] = user_dict.get("theme_preference") or "mohun_bagan"
             # Ensure user_type has a default
             if not user_dict.get("user_type"):
                 user_dict["user_type"] = "member"
@@ -2387,6 +2417,22 @@ def update_own_bank_details(data: dict, current_user: dict = Depends(get_current
         "sort_code": sort_code,
         "account_number": account_number,
     }
+
+@app.put("/api/profile/theme")
+def update_own_theme(data: dict, current_user: dict = Depends(get_current_user)):
+    theme_preference = (data.get("theme_preference") or "").strip()
+    if theme_preference not in THEME_PREFERENCES:
+        raise HTTPException(status_code=400, detail="Invalid theme preference")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE users SET theme_preference = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+            (theme_preference, current_user["email"])
+        )
+        conn.commit()
+
+    return {"theme_preference": theme_preference}
 
 @app.delete("/api/users/{email}")
 def delete_user(email: str, current_user: dict = Depends(get_current_user)):
@@ -2805,8 +2851,8 @@ def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(
                 "payment_confirmed",
                 {
                     "date": date,
-                    "time": session_time,
-                    "location": session_location,
+                    "time": session["time"],
+                    "location": session["location"],
                     "member_name": current_user.get("full_name", current_user["email"]),
                     "full_name": current_user.get("full_name", current_user["email"]),
                 },

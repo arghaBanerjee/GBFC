@@ -555,27 +555,29 @@ export default function Practice({ user }) {
     // Color-coded highlighting: green for available, yellow for tentative, red for unavailable
     let activeColor, activeBg, activeBorder
     if (btnStatus === 'available') {
-      activeColor = '#166534' // dark green text
-      activeBg = '#dcfce7' // light green background
-      activeBorder = '#16a34a' // green border
+      activeColor = 'var(--theme-success-strong)'
+      activeBg = 'var(--theme-success-soft)'
+      activeBorder = 'var(--theme-success)'
     } else if (btnStatus === 'tentative') {
-      activeColor = '#854d0e' // dark yellow text
-      activeBg = '#fef9c3' // light yellow background
-      activeBorder = '#eab308' // yellow border
+      activeColor = 'var(--theme-warning-strong)'
+      activeBg = 'var(--theme-warning-soft)'
+      activeBorder = 'var(--theme-warning)'
     } else { // not_available
-      activeColor = '#991b1b' // dark red text
-      activeBg = '#fee2e2' // light red background
-      activeBorder = '#dc2626' // red border
+      activeColor = 'var(--theme-danger-strong)'
+      activeBg = 'var(--theme-danger-soft)'
+      activeBorder = 'var(--theme-danger)'
     }
     
     return {
       marginRight: btnStatus !== 'not_available' ? '0.5rem' : undefined,
-      padding: '0.5rem 0.75rem',
+      padding: '0.62rem 0.78rem',
       borderRadius: '0.375rem',
-      border: isActive ? `2px solid ${activeBorder}` : '1px solid #d1d5db',
-      background: isActive ? activeBg : '#ffffff',
-      color: isActive ? activeColor : '#374151',
+      border: isActive ? `2px solid ${activeBorder}` : '1px solid var(--theme-border)',
+      background: isActive ? activeBg : 'var(--theme-surface)',
+      color: isActive ? activeColor : 'var(--theme-text)',
       fontWeight: isActive ? 700 : 400,
+      fontSize: '0.9rem',
+      minWidth: '100px',
       cursor: user ? 'pointer' : 'not-allowed',
       opacity: user ? 1 : 0.6,
     }

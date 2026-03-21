@@ -9,6 +9,7 @@ export default function Profile({ user, setUser, loading }) {
   const [bankName, setBankName] = useState('')
   const [sortCode, setSortCode] = useState('')
   const [accountNumber, setAccountNumber] = useState('')
+  const [themePreference, setThemePreference] = useState('mohun_bagan')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -16,6 +17,20 @@ export default function Profile({ user, setUser, loading }) {
   const [success, setSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
+  const themeOptions = [
+    {
+      value: 'east_bengal',
+      label: 'East Bengal Theme',
+      description: 'Refined yellow and red palette inspired by East Bengal club colours.',
+      swatches: ['#bf1e2d', '#f2b705', '#fff8e6'],
+    },
+    {
+      value: 'mohun_bagan',
+      label: 'Mohun Bagan Theme',
+      description: 'Elegant green and maroon palette inspired by Mohun Bagan club colours.',
+      swatches: ['#166534', '#7a1632', '#f5f7f4'],
+    },
+  ]
 
   useEffect(() => {
     // Wait for loading to complete before checking authentication
@@ -29,6 +44,7 @@ export default function Profile({ user, setUser, loading }) {
       setBankName(user.bank_name || '')
       setSortCode(user.sort_code || '')
       setAccountNumber(user.account_number || '')
+      setThemePreference(user.theme_preference || 'mohun_bagan')
     }
   }, [user, loading, navigate])
 
@@ -92,6 +108,38 @@ export default function Profile({ user, setUser, loading }) {
       }
     } catch (err) {
       setError('Failed to update name. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleUpdateTheme = async () => {
+    setSubmitting(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(apiUrl('/api/profile/theme'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ theme_preference: themePreference }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setUser({ ...user, theme_preference: data.theme_preference })
+        setSuccess('Theme updated successfully!')
+        setEditMode(null)
+      } else {
+        const data = await res.json()
+        setError(data.detail || 'Failed to update theme')
+      }
+    } catch (err) {
+      setError('Failed to update theme. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -275,16 +323,16 @@ export default function Profile({ user, setUser, loading }) {
 
   return (
     <div className="container" style={{ maxWidth: '600px', margin: '2rem auto', padding: '0 1rem' }}>
-      <h2 style={{ marginBottom: '2rem' }}>My Profile</h2>
+      <h2 className="theme-section-title" style={{ marginBottom: '2rem' }}>My Profile</h2>
 
       {error && (
         <div style={{
           padding: '1rem',
           marginBottom: '1rem',
-          background: '#fee2e2',
-          color: '#dc2626',
-          borderRadius: '0.375rem',
-          border: '1px solid #fecaca',
+          background: 'color-mix(in srgb, var(--theme-danger) 12%, white)',
+          color: 'var(--theme-danger)',
+          borderRadius: '0.75rem',
+          border: '1px solid color-mix(in srgb, var(--theme-danger) 22%, white)',
         }}>
           {error}
         </div>
@@ -294,26 +342,24 @@ export default function Profile({ user, setUser, loading }) {
         <div style={{
           padding: '1rem',
           marginBottom: '1rem',
-          background: '#d1fae5',
-          color: '#065f46',
-          borderRadius: '0.375rem',
-          border: '1px solid #a7f3d0',
+          background: 'color-mix(in srgb, var(--theme-accent) 14%, white)',
+          color: 'var(--theme-accent-strong)',
+          borderRadius: '0.75rem',
+          border: '1px solid color-mix(in srgb, var(--theme-accent) 24%, white)',
         }}>
           {success}
         </div>
       )}
 
       {/* Profile Card */}
-      <div style={{
-        background: 'white',
+      <div className="theme-card" style={{
         borderRadius: '0.5rem',
-        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
         padding: '1.5rem',
         marginBottom: '1.5rem',
       }}>
         {/* Full Name Section */}
-        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>
+        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid var(--theme-border-soft)' }}>
+          <label className="theme-section-title" style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
             Full Name
           </label>
           {editMode === 'name' ? (
@@ -322,26 +368,16 @@ export default function Profile({ user, setUser, loading }) {
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
-                  fontSize: '1rem',
-                  marginBottom: '0.5rem',
-                  boxSizing: 'border-box',
-                }}
+                className="theme-input"
+                style={{ marginBottom: '0.5rem' }}
                 autoFocus
               />
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   onClick={handleUpdateName}
                   disabled={submitting}
-                  className="nav-btn"
+                  className="nav-btn theme-primary-btn"
                   style={{
-                    background: '#10b981',
-                    color: 'white',
-                    border: '1px solid #10b981',
                     padding: '0.5rem 1rem',
                     fontSize: '0.875rem',
                     cursor: submitting ? 'not-allowed' : 'pointer',
@@ -356,8 +392,8 @@ export default function Profile({ user, setUser, loading }) {
                     setFullName(user.full_name)
                     setError('')
                   }}
-                  className="nav-btn"
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#111827', border: '1px solid #111827' }}
+                  className="nav-btn theme-secondary-btn"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
                 >
                   Cancel
                 </button>
@@ -365,15 +401,13 @@ export default function Profile({ user, setUser, loading }) {
             </div>
           ) : (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '1.125rem', fontWeight: '500' }}>{user.full_name}</span>
+              <span style={{ fontSize: '1.125rem', fontWeight: '500', color: 'var(--theme-heading)' }}>{user.full_name}</span>
               <button
                 onClick={() => setEditMode('name')}
-                className="nav-btn"
+                className="nav-btn theme-secondary-btn"
                 style={{ 
                   padding: '0.5rem 1rem', 
-                  fontSize: '0.875rem',
-                  border: '1px solid #d1d5db',
-                  color: '#111827'
+                  fontSize: '0.875rem'
                 }}
               >
                 Edit
@@ -383,19 +417,103 @@ export default function Profile({ user, setUser, loading }) {
         </div>
 
         {/* Email Section (Read-only) */}
-        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>
+        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid var(--theme-border-soft)' }}>
+          <label className="theme-section-title" style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
             Email Address
           </label>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '1.125rem', color: '#6b7280' }}>{user.email}</span>
-            <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>Read-only</span>
+            <span style={{ fontSize: '1.125rem', color: 'var(--theme-text-muted)' }}>{user.email}</span>
+            <span className="theme-subtle-text" style={{ fontSize: '0.75rem', fontStyle: 'italic' }}>Read-only</span>
           </div>
         </div>
 
+        {/* Theme Section */}
+        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid var(--theme-border-soft)' }}>
+          <label className="theme-section-title" style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+            Club Theme
+          </label>
+          {editMode === 'theme' ? (
+            <div>
+              <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                {themeOptions.map((theme) => {
+                  const isSelected = themePreference === theme.value
+                  return (
+                    <button
+                      key={theme.value}
+                      type="button"
+                      onClick={() => setThemePreference(theme.value)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '1rem',
+                        borderRadius: '0.875rem',
+                        border: isSelected ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                        background: isSelected ? 'var(--theme-surface-alt)' : 'var(--theme-surface)',
+                        cursor: 'pointer',
+                        boxShadow: isSelected ? '0 0 0 4px color-mix(in srgb, var(--theme-accent) 12%, transparent)' : 'none',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                        <div>
+                          <div style={{ fontWeight: '700', color: 'var(--theme-heading)', marginBottom: '0.2rem' }}>{theme.label}</div>
+                          <div className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>{theme.description}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
+                          {theme.swatches.map((swatch) => (
+                            <span key={swatch} style={{ width: '18px', height: '18px', borderRadius: '999px', background: swatch, border: '1px solid rgba(0,0,0,0.08)' }} />
+                          ))}
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={handleUpdateTheme}
+                  disabled={submitting}
+                  className="nav-btn theme-primary-btn"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+                >
+                  {submitting ? 'Saving...' : 'Save Theme'}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditMode(null)
+                    setThemePreference(user.theme_preference || 'mohun_bagan')
+                    setError('')
+                  }}
+                  className="nav-btn theme-secondary-btn"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '1rem', fontWeight: '600', color: 'var(--theme-heading)' }}>
+                  {themeOptions.find((theme) => theme.value === (user.theme_preference || 'mohun_bagan'))?.label || 'Mohun Bagan Theme'}
+                </div>
+                <div className="theme-subtle-text" style={{ fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                  Choose the club-inspired colour palette you want across the app.
+                </div>
+              </div>
+              <button
+                onClick={() => setEditMode('theme')}
+                className="nav-btn theme-secondary-btn"
+                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', flexShrink: 0 }}
+              >
+                Change Theme
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Birthday Section */}
-        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>
+        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid var(--theme-border-soft)' }}>
+          <label className="theme-section-title" style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
             Birthday
           </label>
           {editMode === 'birthday' ? (
@@ -404,26 +522,16 @@ export default function Profile({ user, setUser, loading }) {
                 type="date"
                 value={birthday}
                 onChange={(e) => setBirthday(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
-                  fontSize: '1rem',
-                  marginBottom: '0.5rem',
-                  boxSizing: 'border-box',
-                }}
+                className="theme-input"
+                style={{ marginBottom: '0.5rem' }}
                 autoFocus
               />
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   onClick={handleUpdateBirthday}
                   disabled={submitting}
-                  className="nav-btn"
+                  className="nav-btn theme-primary-btn"
                   style={{
-                    background: '#10b981',
-                    color: 'white',
-                    border: '1px solid #10b981',
                     padding: '0.5rem 1rem',
                     fontSize: '0.875rem',
                     cursor: submitting ? 'not-allowed' : 'pointer',
@@ -438,8 +546,8 @@ export default function Profile({ user, setUser, loading }) {
                     setBirthday(user.birthday || '')
                     setError('')
                   }}
-                  className="nav-btn"
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#111827', border: '1px solid #111827' }}
+                  className="nav-btn theme-secondary-btn"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
                 >
                   Cancel
                 </button>
@@ -447,17 +555,15 @@ export default function Profile({ user, setUser, loading }) {
             </div>
           ) : (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '1rem', fontWeight: '500', color: user.birthday ? '#000' : '#9ca3af', fontStyle: user.birthday ? 'normal' : 'italic' }}>
+              <span style={{ fontSize: '1rem', fontWeight: '500', color: user.birthday ? 'var(--theme-heading)' : 'var(--theme-text-muted)', fontStyle: user.birthday ? 'normal' : 'italic' }}>
                 {user.birthday ? formatDate(user.birthday) : 'Not Set'}
               </span>
               <button
                 onClick={() => setEditMode('birthday')}
-                className="nav-btn"
+                className="nav-btn theme-secondary-btn"
                 style={{ 
                   padding: '0.5rem 1rem', 
-                  fontSize: '0.875rem',
-                  border: '1px solid #d1d5db',
-                  color: '#111827'
+                  fontSize: '0.875rem'
                 }}
               >
                 Edit
@@ -467,8 +573,8 @@ export default function Profile({ user, setUser, loading }) {
         </div>
 
         {/* Bank Details Section */}
-        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>
+        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid var(--theme-border-soft)' }}>
+          <label className="theme-section-title" style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
             Bank Details
           </label>
           {editMode === 'bank-details' ? (
@@ -478,15 +584,8 @@ export default function Profile({ user, setUser, loading }) {
                 value={bankName}
                 onChange={(e) => setBankName(e.target.value)}
                 placeholder="Bank name"
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
-                  fontSize: '1rem',
-                  marginBottom: '0.5rem',
-                  boxSizing: 'border-box',
-                }}
+                className="theme-input"
+                style={{ marginBottom: '0.5rem' }}
                 autoFocus
               />
               <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
@@ -496,14 +595,8 @@ export default function Profile({ user, setUser, loading }) {
                   onChange={(e) => setSortCode(formatSortCode(e.target.value))}
                   placeholder="Sort code"
                   inputMode="numeric"
-                  style={{
-                    flex: '1 1 180px',
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.375rem',
-                    fontSize: '1rem',
-                    boxSizing: 'border-box',
-                  }}
+                  className="theme-input"
+                  style={{ flex: '1 1 180px' }}
                 />
                 <input
                   type="text"
@@ -511,28 +604,19 @@ export default function Profile({ user, setUser, loading }) {
                   onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 8))}
                   placeholder="Account number"
                   inputMode="numeric"
-                  style={{
-                    flex: '1 1 180px',
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '0.375rem',
-                    fontSize: '1rem',
-                    boxSizing: 'border-box',
-                  }}
+                  className="theme-input"
+                  style={{ flex: '1 1 180px' }}
                 />
               </div>
-              <p style={{ marginBottom: '0.75rem', fontSize: '0.75rem', color: '#6b7280' }}>
+              <p className="theme-subtle-text" style={{ marginBottom: '0.75rem', fontSize: '0.75rem' }}>
                 All three fields are optional, but if you add one, complete all three.
               </p>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   onClick={handleUpdateBankDetails}
                   disabled={submitting}
-                  className="nav-btn"
+                  className="nav-btn theme-primary-btn"
                   style={{
-                    background: '#10b981',
-                    color: 'white',
-                    border: '1px solid #10b981',
                     padding: '0.5rem 1rem',
                     fontSize: '0.875rem',
                     cursor: submitting ? 'not-allowed' : 'pointer',
@@ -549,8 +633,8 @@ export default function Profile({ user, setUser, loading }) {
                     setAccountNumber(user.account_number || '')
                     setError('')
                   }}
-                  className="nav-btn"
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#111827', border: '1px solid #111827' }}
+                  className="nav-btn theme-secondary-btn"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
                 >
                   Cancel
                 </button>
@@ -558,7 +642,7 @@ export default function Profile({ user, setUser, loading }) {
             </div>
           ) : (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-              <div style={{ fontSize: '1rem', fontWeight: '500', color: user.bank_name && user.sort_code && user.account_number ? '#000' : '#9ca3af', fontStyle: user.bank_name && user.sort_code && user.account_number ? 'normal' : 'italic' }}>
+              <div style={{ fontSize: '1rem', fontWeight: '500', color: user.bank_name && user.sort_code && user.account_number ? 'var(--theme-heading)' : 'var(--theme-text-muted)', fontStyle: user.bank_name && user.sort_code && user.account_number ? 'normal' : 'italic' }}>
                 {user.bank_name && user.sort_code && user.account_number ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     <span>{user.bank_name}</span>
@@ -571,12 +655,10 @@ export default function Profile({ user, setUser, loading }) {
               </div>
               <button
                 onClick={() => setEditMode('bank-details')}
-                className="nav-btn"
+                className="nav-btn theme-secondary-btn"
                 style={{
                   padding: '0.5rem 1rem',
                   fontSize: '0.875rem',
-                  border: '1px solid #d1d5db',
-                  color: '#111827',
                   flexShrink: 0,
                 }}
               >
@@ -587,8 +669,8 @@ export default function Profile({ user, setUser, loading }) {
         </div>
 
         {/* Password Section */}
-        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>
+        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid var(--theme-border-soft)' }}>
+          <label className="theme-section-title" style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
             Password
           </label>
           {editMode === 'password' ? (
@@ -598,55 +680,31 @@ export default function Profile({ user, setUser, loading }) {
                 placeholder="Current Password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
-                  fontSize: '1rem',
-                  marginBottom: '0.5rem',
-                  boxSizing: 'border-box',
-                }}
+                className="theme-input"
+                style={{ marginBottom: '0.5rem' }}
               />
               <input
                 type="password"
                 placeholder="New Password (min 6 characters)"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
-                  fontSize: '1rem',
-                  marginBottom: '0.5rem',
-                  boxSizing: 'border-box',
-                }}
+                className="theme-input"
+                style={{ marginBottom: '0.5rem' }}
               />
               <input
                 type="password"
                 placeholder="Confirm New Password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
-                  fontSize: '1rem',
-                  marginBottom: '0.5rem',
-                  boxSizing: 'border-box',
-                }}
+                className="theme-input"
+                style={{ marginBottom: '0.5rem' }}
               />
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   onClick={handleUpdatePassword}
                   disabled={submitting}
-                  className="nav-btn"
+                  className="nav-btn theme-primary-btn"
                   style={{
-                    background: '#10b981',
-                    color: 'white',
-                    border: '1px solid #10b981',
                     padding: '0.5rem 1rem',
                     fontSize: '0.875rem',
                     cursor: submitting ? 'not-allowed' : 'pointer',
@@ -663,8 +721,8 @@ export default function Profile({ user, setUser, loading }) {
                     setConfirmPassword('')
                     setError('')
                   }}
-                  className="nav-btn"
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#111827', border: '1px solid #111827' }}
+                  className="nav-btn theme-secondary-btn"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
                 >
                   Cancel
                 </button>
@@ -675,12 +733,10 @@ export default function Profile({ user, setUser, loading }) {
               <span style={{ fontSize: '1.125rem' }}>••••••••</span>
               <button
                 onClick={() => setEditMode('password')}
-                className="nav-btn"
+                className="nav-btn theme-secondary-btn"
                 style={{ 
                   padding: '0.5rem 1rem', 
-                  fontSize: '0.875rem',
-                  border: '1px solid #16a34a',
-                  color: '#16a34a'
+                  fontSize: '0.875rem'
                 }}
               >
                 Change Password
@@ -691,29 +747,29 @@ export default function Profile({ user, setUser, loading }) {
 
         {/* Account Information */}
         <div>
-          <h3 style={{ fontSize: '1rem', fontWeight: '600', color: '#374151', marginBottom: '1rem' }}>
+          <h3 className="theme-section-title" style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '1rem' }}>
             Account Information
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>Account Type:</span>
+              <span className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>Account Type:</span>
               <span style={{
                 fontSize: '0.875rem',
                 fontWeight: '600',
-                color: user.user_type === 'admin' ? '#10b981' : '#374151',
+                color: user.user_type === 'admin' ? 'var(--theme-accent)' : 'var(--theme-heading)',
               }}>
                 {user.user_type === 'admin' ? 'Admin' : 'Member'}
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>Registered:</span>
-              <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>
+              <span className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>Registered:</span>
+              <span style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--theme-heading)' }}>
                 {formatDate(user.created_at)}
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>Last Login:</span>
-              <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>
+              <span className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>Last Login:</span>
+              <span style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--theme-heading)' }}>
                 {formatDateTime(user.last_login)}
               </span>
             </div>

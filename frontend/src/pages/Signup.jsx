@@ -81,8 +81,9 @@ export default function Signup({ setUser }) {
 
   return (
     <div className="container" style={{ maxWidth: '350px', margin: '2rem auto', padding: '0 1rem' }}>
-      <h2>Sign up</h2>
-      <form onSubmit={handleSubmit}>
+      <div className="theme-card" style={{ padding: '1.5rem' }}>
+        <h2 className="theme-section-title" style={{ marginTop: 0, marginBottom: '1.5rem' }}>Sign up</h2>
+        <form onSubmit={handleSubmit}>
         <input
           type="text"
           placeholder="Full name"
@@ -99,9 +100,10 @@ export default function Signup({ setUser }) {
             if (error) setValidationErrors(prev => ({ ...prev, fullName: error }))
           }}
           required
-          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.25rem', borderRadius: '0.375rem', border: validationErrors.fullName ? '1px solid #ef4444' : '1px solid #d1d5db', boxSizing: 'border-box' }}
+          className="theme-input"
+          style={{ marginBottom: '0.25rem', border: validationErrors.fullName ? '1px solid var(--theme-danger)' : undefined }}
         />
-        {validationErrors.fullName && <p style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.fullName}</p>}
+        {validationErrors.fullName && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.fullName}</p>}
         <input
           type="email"
           placeholder="Email"
@@ -118,9 +120,10 @@ export default function Signup({ setUser }) {
             if (error) setValidationErrors(prev => ({ ...prev, email: error }))
           }}
           required
-          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.25rem', borderRadius: '0.375rem', border: validationErrors.email ? '1px solid #ef4444' : '1px solid #d1d5db', boxSizing: 'border-box' }}
+          className="theme-input"
+          style={{ marginBottom: '0.25rem', border: validationErrors.email ? '1px solid var(--theme-danger)' : undefined }}
         />
-        {validationErrors.email && <p style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.email}</p>}
+        {validationErrors.email && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.email}</p>}
         <input
           type="password"
           placeholder="Password"
@@ -137,20 +140,22 @@ export default function Signup({ setUser }) {
             if (error) setValidationErrors(prev => ({ ...prev, password: error }))
           }}
           required
-          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.25rem', borderRadius: '0.375rem', border: validationErrors.password ? '1px solid #ef4444' : '1px solid #d1d5db', boxSizing: 'border-box' }}
+          className="theme-input"
+          style={{ marginBottom: '0.25rem', border: validationErrors.password ? '1px solid var(--theme-danger)' : undefined }}
         />
-        {validationErrors.password && <p style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.password}</p>}
-        {error && <p style={{ color: 'red' }}>{error}</p>}
-        <button type="submit" className="nav-btn" style={{ width: '100%', background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>Create Account</button>
+        {validationErrors.password && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.password}</p>}
+        {error && <p style={{ color: 'var(--theme-danger)' }}>{error}</p>}
+        <button type="submit" className="nav-btn theme-primary-btn" style={{ width: '100%', fontWeight: '600' }}>Create Account</button>
         <button
           type="button"
           onClick={() => navigate('/login')}
-          className="nav-btn"
-          style={{ width: '100%', background: 'white', color: '#10b981', border: '1px solid #10b981', fontWeight: '400', marginTop: '0.5rem' }}
+          className="nav-btn theme-secondary-btn"
+          style={{ width: '100%', fontWeight: '400', marginTop: '0.5rem' }}
         >
           Already User ? Login
         </button>
-      </form>
+        </form>
+      </div>
     </div>
   )
 }

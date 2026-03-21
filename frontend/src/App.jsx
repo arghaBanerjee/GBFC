@@ -195,9 +195,17 @@ function App() {
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
   const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
+  const activeTheme = user?.theme_preference || 'mohun_bagan'
+
+  useEffect(() => {
+    document.body.dataset.theme = activeTheme
+    return () => {
+      delete document.body.dataset.theme
+    }
+  }, [activeTheme])
 
   return (
-    <div>
+    <div className="app-shell" data-theme={activeTheme}>
       {/* Top Navigation */}
       <nav className="top-nav">
         <div className="nav-container">
@@ -280,9 +288,9 @@ function App() {
                 <button
                   className="social-icon nav-action-icon"
                   style={{
-                    background: isUserActionsActive ? '#16a34a' : '#f3f4f6',
-                    color: isUserActionsActive ? 'white' : '#374151',
-                    borderColor: isUserActionsActive ? '#16a34a' : '#e5e7eb',
+                    background: isUserActionsActive ? 'var(--theme-accent)' : 'var(--theme-surface-raised)',
+                    color: isUserActionsActive ? 'var(--theme-accent-contrast)' : 'var(--theme-text)',
+                    borderColor: isUserActionsActive ? 'var(--theme-accent)' : 'var(--theme-border)',
                   }}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -305,9 +313,9 @@ function App() {
                   style={{
                     position: 'relative',
                     cursor: 'pointer',
-                    background: notificationsOpen ? '#16a34a' : '#f3f4f6',
-                    color: notificationsOpen ? 'white' : '#374151',
-                    borderColor: notificationsOpen ? '#16a34a' : '#e5e7eb',
+                    background: notificationsOpen ? 'var(--theme-accent)' : 'var(--theme-surface-raised)',
+                    color: notificationsOpen ? 'var(--theme-accent-contrast)' : 'var(--theme-text)',
+                    borderColor: notificationsOpen ? 'var(--theme-accent)' : 'var(--theme-border)',
                   }}
                   aria-label="Notifications"
                 >
@@ -333,8 +341,8 @@ function App() {
                             position: 'absolute',
                             top: '-4px',
                             right: '-4px',
-                            background: '#ef4444',
-                            color: 'white',
+                            background: 'var(--theme-danger)',
+                            color: 'var(--theme-danger-contrast)',
                             borderRadius: '50%',
                             width: '16px',
                             height: '16px',
@@ -356,10 +364,10 @@ function App() {
                       top: '100%',
                       right: '0',
                       marginTop: '0.5rem',
-                      background: 'white',
-                      border: '1px solid #ddd',
+                      background: 'var(--theme-surface)',
+                      border: '1px solid var(--theme-border)',
                       borderRadius: '0.5rem',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      boxShadow: 'var(--theme-shadow-strong)',
                       width: window.innerWidth <= 768 ? '85vw' : '320px',
                       maxWidth: '320px',
                       maxHeight: window.innerWidth <= 768 ? '280px' : '400px',
@@ -367,11 +375,11 @@ function App() {
                       zIndex: 1000,
                     }}
                   >
-                    <div style={{ padding: '1rem', borderBottom: '1px solid #eee' }}>
+                    <div style={{ padding: '1rem', borderBottom: '1px solid var(--theme-border)' }}>
                       <strong>Notifications</strong>
                     </div>
                     {notifications.length === 0 ? (
-                      <div style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>
+                      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
                         No notifications yet
                       </div>
                     ) : (
@@ -380,8 +388,8 @@ function App() {
                           key={notif.id}
                           style={{
                             padding: '0.75rem 1rem',
-                            borderBottom: '1px solid #f0f0f0',
-                            background: notif.read ? 'white' : '#f0f9ff',
+                            borderBottom: '1px solid var(--theme-border-soft)',
+                            background: notif.read ? 'var(--theme-surface)' : 'var(--theme-surface-alt)',
                             cursor: 'pointer',
                           }}
                           onClick={() => {
@@ -389,7 +397,7 @@ function App() {
                             setMobileMenuOpen(false)
                             if (notif.type === 'forum_post') navigate('/forum')
                             else if (notif.type === 'match') navigate('/matches/upcoming')
-                            else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed') {
+                            else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed' || notif.type === 'pending_payment_reminder') {
                               if (notif.related_date) {
                                 navigate(`/book-practice?date=${notif.related_date}`)
                               } else {
@@ -401,7 +409,7 @@ function App() {
                           <div style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>
                             {notif.message}
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: '#999' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
                             {new Date(notif.created_at).toLocaleString()}
                           </div>
                         </div>
@@ -417,7 +425,7 @@ function App() {
               {user ? (
                 <>
                   <Link to="/profile" style={{ textDecoration: 'none' }}>
-                    <span className="user-name" style={{ cursor: 'pointer', border: '1px solid #10b981', color: '#10b981', backgroundColor: '#f0fdf4', padding: '0.5rem 1rem', borderRadius: '0.375rem' }}>{user.full_name}</span>
+                    <span className="user-name" style={{ cursor: 'pointer', border: '1px solid var(--theme-accent)', color: 'var(--theme-accent)', backgroundColor: 'var(--theme-badge-bg)', padding: '0.5rem 1rem', borderRadius: '0.375rem' }}>{user.full_name}</span>
                   </Link>
                   <button className="nav-btn logout-btn" onClick={logout}>
                     Logout
@@ -487,7 +495,7 @@ function App() {
               {user ? (
                 <>
                   <Link to="/profile" onClick={() => setMobileMenuOpen(false)} style={{ textDecoration: 'none' }}>
-                    <span className="user-name mobile-profile-link" style={{ textAlign: 'center', display: 'block', cursor: 'pointer', border: '1px solid #10b981', color: '#10b981', backgroundColor: '#f0fdf4', padding: '0.75rem 1rem', borderRadius: '0.5rem' }}>{user.full_name}</span>
+                    <span className="user-name mobile-profile-link" style={{ textAlign: 'center', display: 'block', cursor: 'pointer', border: '1px solid var(--theme-accent)', color: 'var(--theme-accent)', backgroundColor: 'var(--theme-badge-bg)', padding: '0.75rem 1rem', borderRadius: '0.5rem' }}>{user.full_name}</span>
                   </Link>
                   <button className="nav-btn logout-btn" onClick={() => { logout(); setMobileMenuOpen(false); }}>
                     Logout

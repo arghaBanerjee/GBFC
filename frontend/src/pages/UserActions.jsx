@@ -283,7 +283,7 @@ function UserActions({ user, loading }) {
                     
                     <div className="availability-section">
                       <p className="section-label">Availability</p>
-                      <p style={{ marginBottom: '0.5rem', fontSize: '0.8125rem', color: session.capacity_reached ? '#92400e' : '#166534' }}>
+                      <p style={{ marginBottom: '0.5rem', fontSize: '0.8125rem', color: session.capacity_reached ? 'var(--theme-warning-strong, color-mix(in srgb, var(--theme-warning) 84%, black 16%))' : 'var(--theme-accent-strong)' }}>
                         Capacity: {session.available_count || 0}/{session.maximum_capacity || 100} booked
                         {session.remaining_slots > 0 ? ` · ${session.remaining_slots} slot${session.remaining_slots === 1 ? '' : 's'} left` : ' · Full'}
                       </p>
@@ -311,7 +311,7 @@ function UserActions({ user, loading }) {
                         </button>
                       </div>
                       {session.capacity_reached && session.user_status !== 'available' && (
-                        <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#92400e' }}>
+                        <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-warning-strong, color-mix(in srgb, var(--theme-warning) 84%, black 16%))' }}>
                           Maximum capacity reached. Available is disabled until a slot opens up.
                         </p>
                       )}
@@ -346,28 +346,21 @@ function UserActions({ user, loading }) {
                         <span className="label">Date & Time</span>
                         <span className="value">{`${formatDate(payment.date)}${payment.time ? `, ${payment.time}` : ''}`}</span>
                       </div>
-                      <div className="detail-chip" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                      <div className="detail-chip">
                         <span className="label">Your Amount</span>
                         <span className="value amount">£{payment.individual_amount}</span>
                       </div>
-                      <div className="detail-chip" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                      <div className="detail-chip">
                         <span className="label">Pay To</span>
                         <span className="value">{payment.paid_by_name || payment.paid_by}</span>
                       </div>
                     </div>
                     {payment.paid_by_bank_name && payment.paid_by_sort_code && payment.paid_by_account_number && (
-                      <div style={{
-                        marginTop: '0.875rem',
-                        marginBottom: '0.875rem',
-                        padding: '0.75rem',
-                        borderRadius: '0.75rem',
-                        background: '#f0fdf4',
-                        border: '1px solid #bbf7d0'
-                      }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#475569', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <div className="payment-detail-block">
+                        <div className="payment-detail-block-title">
                           Bank Details
                         </div>
-                        <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.875rem', color: '#334155' }}>
+                        <div className="payment-detail-block-grid">
                           <div><strong>Bank Name:</strong> {payment.paid_by_bank_name}</div>
                           <div><strong>Sort Code:</strong> {payment.paid_by_sort_code}</div>
                           <div><strong>Account Number:</strong> {payment.paid_by_account_number}</div>

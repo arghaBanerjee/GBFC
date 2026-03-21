@@ -115,8 +115,9 @@ export default function Login({ setUser }) {
 
   return (
     <div className="container" style={{ maxWidth: '350px', margin: '2rem auto', padding: '0 1rem' }}>
-      <h2>Login</h2>
-      <form onSubmit={handleSubmit}>
+      <div className="theme-card" style={{ padding: '1.5rem' }}>
+        <h2 className="theme-section-title" style={{ marginTop: 0, marginBottom: '1.5rem' }}>Login</h2>
+        <form onSubmit={handleSubmit}>
         <input
           type="email"
           placeholder="Email"
@@ -133,9 +134,10 @@ export default function Login({ setUser }) {
             if (error) setValidationErrors(prev => ({ ...prev, email: error }))
           }}
           required
-          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.25rem', borderRadius: '0.375rem', border: validationErrors.email ? '1px solid #ef4444' : '1px solid #d1d5db', boxSizing: 'border-box' }}
+          className="theme-input"
+          style={{ marginBottom: '0.25rem', border: validationErrors.email ? '1px solid var(--theme-danger)' : undefined }}
         />
-        {validationErrors.email && <p style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.email}</p>}
+        {validationErrors.email && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.email}</p>}
         <input
           type="password"
           placeholder="Password"
@@ -152,28 +154,26 @@ export default function Login({ setUser }) {
             if (error) setValidationErrors(prev => ({ ...prev, password: error }))
           }}
           required
-          style={{ width: '100%', padding: '0.5rem', marginBottom: '0.25rem', borderRadius: '0.375rem', border: validationErrors.password ? '1px solid #ef4444' : '1px solid #d1d5db', boxSizing: 'border-box' }}
+          className="theme-input"
+          style={{ marginBottom: '0.25rem', border: validationErrors.password ? '1px solid var(--theme-danger)' : undefined }}
         />
-        {validationErrors.password && <p style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.password}</p>}
-        {error && <p style={{ color: 'red' }}>{error}</p>}
+        {validationErrors.password && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.password}</p>}
+        {error && <p style={{ color: 'var(--theme-danger)' }}>{error}</p>}
         {/* ========== FORGOT PASSWORD FEATURE - Success/Error Message ========== */}
         {/* This displays feedback when user clicks forgot password button */}
-        {forgotPasswordMessage && <p style={{ color: forgotPasswordMessage.toLowerCase().includes('failed') ? '#ef4444' : '#10b981', fontSize: '0.875rem', marginBottom: '0.5rem' }}>{forgotPasswordMessage}</p>}
+        {forgotPasswordMessage && <p style={{ color: forgotPasswordMessage.toLowerCase().includes('failed') ? 'var(--theme-danger)' : 'var(--theme-accent)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>{forgotPasswordMessage}</p>}
         {/* ====================================================================== */}
         
-        <button type="submit" className="nav-btn" style={{ width: '100%', background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>Log in</button>
+        <button type="submit" className="nav-btn theme-primary-btn" style={{ width: '100%', fontWeight: '600' }}>Log in</button>
         
         {/* Sign Up and Forgot Password buttons */}
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
           <button 
             type="button" 
             onClick={() => navigate('/signup')}
-            className="nav-btn" 
+            className="nav-btn theme-secondary-btn" 
             style={{ 
               flex: 6,
-              background: 'white', 
-              color: '#10b981', 
-              border: '1px solid #10b981', 
               fontWeight: '400',
               padding: '0.5rem'
             }}
@@ -184,12 +184,9 @@ export default function Login({ setUser }) {
             type="button" 
             onClick={handleForgotPassword}
             disabled={sendingEmail}
-            className="nav-btn" 
+            className="nav-btn theme-secondary-btn" 
             style={{ 
               flex: 4,
-              background: 'white', 
-              color: '#6b7280', 
-              border: '1px solid #6b7280', 
               fontWeight: '400',
               cursor: sendingEmail ? 'not-allowed' : 'pointer',
               opacity: sendingEmail ? 0.6 : 1,
@@ -199,7 +196,8 @@ export default function Login({ setUser }) {
             {sendingEmail ? 'Sending...' : 'Forgot Password'}
           </button>
         </div>
-      </form>
+        </form>
+      </div>
     </div>
   )
 }
