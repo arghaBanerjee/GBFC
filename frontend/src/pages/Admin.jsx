@@ -297,25 +297,33 @@ export default function Admin({ user, loading }) {
     // Only load data for the active tab if not already loaded
     if (!loadedTabs.has(activeTab)) {
       const newLoadedTabs = new Set(loadedTabs)
+      let didLoadTab = false
       
       if (activeTab === 'event') {
         loadEvents()
         newLoadedTabs.add('event')
+        didLoadTab = true
       } else if (activeTab === 'practice') {
         loadPracticeSessions()
         newLoadedTabs.add('practice')
+        didLoadTab = true
       } else if (activeTab === 'forum') {
         loadForumPosts()
         newLoadedTabs.add('forum')
+        didLoadTab = true
       } else if (activeTab === 'users') {
         loadUsers()
         newLoadedTabs.add('users')
+        didLoadTab = true
       } else if (activeTab === 'notifications' && isSuperAdmin) {
         loadNotificationSettings()
         newLoadedTabs.add('notifications')
+        didLoadTab = true
       }
       
-      setLoadedTabs(newLoadedTabs)
+      if (didLoadTab) {
+        setLoadedTabs(newLoadedTabs)
+      }
     }
   }, [isAdmin, activeTab, isSuperAdmin, loadedTabs])
 
