@@ -710,24 +710,24 @@ export default function Practice({ user }) {
   return (
     <div className="container">
       <h2>Book Practice</h2>
-      <p style={{ marginBottom: '1rem', color: '#6b7280' }}>Click on a date to select your availability</p>
+      <p style={{ marginBottom: '1rem', color: 'var(--theme-text-muted)' }}>Click on a date to select your availability</p>
       
       {/* Color Legend */}
       <div style={{ 
         marginBottom: '1rem', 
         padding: '0.75rem', 
-        background: '#f9fafb', 
+        background: 'var(--theme-surface-alt)', 
         borderRadius: '0.5rem',
-        border: '1px solid #e5e7eb'
+        border: '1px solid var(--theme-border)'
       }}>
         <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.875rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ width: '20px', height: '20px', background: '#86efac', borderRadius: '4px', border: '1px solid #e5e7eb' }}></div>
-            <span>Practice Session</span>
+            <div style={{ width: '20px', height: '20px', background: 'color-mix(in srgb, var(--theme-success) 38%, white)', borderRadius: '4px', border: '1px solid var(--theme-border)' }}></div>
+            <span style={{ color: 'var(--theme-text)' }}>Practice Session</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ width: '20px', height: '20px', background: '#bfdbfe', borderRadius: '4px', border: '1px solid #e5e7eb' }}></div>
-            <span>Football Match</span>
+            <div style={{ width: '20px', height: '20px', background: '#bfdbfe', borderRadius: '4px', border: '1px solid var(--theme-border)' }}></div>
+            <span style={{ color: 'var(--theme-text)' }}>Football Match</span>
           </div>
         </div>
       </div>
@@ -746,14 +746,14 @@ export default function Practice({ user }) {
 
       {/* Selected Date Details */}
       {selectedDate && (
-        <div ref={selectedSessionRef} style={{ background: '#fff', borderRadius: 8, padding: '1.5rem', minHeight: 220, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-          <h3 style={{ marginBottom: '1rem' }}>{selectedDate ? selectedDate.toDateString() : 'Select a date'}</h3>
+        <div ref={selectedSessionRef} style={{ background: 'var(--theme-surface)', borderRadius: 12, padding: '1.5rem', minHeight: 220, boxShadow: 'var(--theme-card-shadow)', border: '1px solid var(--theme-border)' }}>
+          <h3 style={{ marginBottom: '1rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Select a date'}</h3>
           {selectedMatch ? (
             <div style={{ 
               padding: '1rem', 
-              background: '#dbeafe', 
+              background: 'color-mix(in srgb, var(--theme-accent) 12%, white)', 
               borderRadius: '0.5rem', 
-              border: '1px solid #93c5fd',
+              border: '1px solid color-mix(in srgb, var(--theme-accent) 26%, white)',
               marginTop: '0.75rem'
             }}>
               <p style={{ marginBottom: '0.75rem', fontSize: '1.1rem' }}>
@@ -772,9 +772,9 @@ export default function Practice({ user }) {
               <p style={{ 
                 marginTop: '0.75rem', 
                 padding: '0.75rem', 
-                background: '#fff', 
+                background: 'var(--theme-surface)', 
                 borderRadius: '0.375rem',
-                color: '#1e40af',
+                color: 'var(--theme-accent-strong)',
                 fontWeight: '500'
               }}>
                 ℹ️ There will be no practice session on this date as there is a football match already planned.
@@ -799,7 +799,7 @@ export default function Practice({ user }) {
                 </svg>
                 <span>Location: {selectedSession.location || 'TBD'}</span>
               </div>
-              <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#166534', fontWeight: '600' }}>
+              <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: isCapacityReached ? 'var(--theme-warning-strong)' : 'var(--theme-success-strong)', fontWeight: '600' }}>
                 Capacity: {sessionAvailableCount}/{sessionMaximumCapacity} booked
                 {sessionRemainingSlots > 0 ? ` · ${sessionRemainingSlots} slot${sessionRemainingSlots === 1 ? '' : 's'} left` : ' · Full'}
               </div>
@@ -820,27 +820,27 @@ export default function Practice({ user }) {
                   <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Tentative</button>
                   <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
                 </div>
-                {!user && <p style={{ marginTop: '0.5rem', color: '#dc2626' }}>Log in to vote your availability.</p>}
-                {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after session time has passed.</p>}
-                {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after payment requested.</p>}
+                {!user && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)' }}>Log in to vote your availability.</p>}
+                {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after session time has passed.</p>}
+                {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after payment requested.</p>}
                 {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
-                  <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>
+                  <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>
                     Maximum capacity reached. Available is temporarily disabled until a slot opens up.
                   </p>
                 )}
-                {availabilityError && <p style={{ marginTop: '0.5rem', color: '#dc2626', fontSize: '0.875rem' }}>{availabilityError}</p>}
+                {availabilityError && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)', fontSize: '0.875rem' }}>{availabilityError}</p>}
               </div>
 
               {selectedSession?.payment_requested && user && isUserAvailable && voteSummary?.available?.length > 0 && (
-                <div style={{ marginTop: '1rem', padding: '1rem', background: '#fef3c7', borderRadius: '0.5rem', border: '1px solid #fbbf24' }}>
-                  <strong style={{ color: '#92400e' }}>Payment Request</strong>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#78350f' }}>
+                <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)' }}>
+                  <strong style={{ color: 'var(--theme-warning-strong)' }}>Payment Request</strong>
+                  <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-warning-strong)' }}>
                     Total session cost £ {selectedSession.session_cost != null ? Number(selectedSession.session_cost).toFixed(2) : '0.00'}
                   </p>
                   {hasPaidByBankDetails && (
-                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fffaf0', borderRadius: '0.375rem', border: '1px solid #fcd34d' }}>
-                      <div style={{ fontWeight: '600', fontSize: '0.875rem', color: '#92400e', marginBottom: '0.5rem' }}>Bank Details</div>
-                      <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.875rem', color: '#78350f' }}>
+                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 26%, white)' }}>
+                      <div style={{ fontWeight: '600', fontSize: '0.875rem', color: 'var(--theme-heading)', marginBottom: '0.5rem' }}>Bank Details</div>
+                      <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.875rem', color: 'var(--theme-text)' }}>
                         <div><strong>Account Holder:</strong> {paidByBankDetails.full_name || 'Unknown User'}</div>
                         <div><strong>Bank Name:</strong> {paidByBankDetails.bank_name}</div>
                         <div><strong>Sort Code:</strong> {paidByBankDetails.sort_code}</div>
@@ -848,7 +848,7 @@ export default function Practice({ user }) {
                       </div>
                     </div>
                   )}
-                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fffaf0', borderRadius: '0.375rem', border: '1px solid #fcd34d' }}>
+                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 26%, white)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <input
                         type="checkbox"
@@ -867,7 +867,7 @@ export default function Practice({ user }) {
                       </label>
                     </div>
                     {paymentUpdatePending && (
-                      <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
                         Updating payment status...
                       </div>
                     )}
@@ -876,7 +876,7 @@ export default function Practice({ user }) {
               )}
 
               {isAdmin && (
-                <div ref={adminControlsRef} style={{ marginTop: '1rem', background: '#fef2f2', borderRadius: '0.5rem', border: '1px solid #fecaca', overflow: 'hidden', boxShadow: adminControlsOpen ? '0 8px 24px rgba(220, 38, 38, 0.12)' : 'none', transition: 'all 0.25s ease' }}>
+                <div ref={adminControlsRef} style={{ marginTop: '1rem', background: 'color-mix(in srgb, var(--theme-danger) 8%, var(--theme-surface))', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-danger) 24%, white)', overflow: 'hidden', boxShadow: adminControlsOpen ? 'var(--theme-card-shadow)' : 'none', transition: 'all 0.25s ease' }}>
                   <button
                     type="button"
                     onClick={handleToggleAdminControls}
@@ -886,15 +886,15 @@ export default function Practice({ user }) {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      background: adminControlsOpen ? '#fee2e2' : 'transparent',
+                      background: adminControlsOpen ? 'color-mix(in srgb, var(--theme-danger) 12%, white)' : 'transparent',
                       border: 'none',
                       cursor: 'pointer',
                       textAlign: 'left',
                       transition: 'background 0.25s ease',
                     }}
                   >
-                    <strong style={{ color: '#b91c1c' }}>Admin Controls</strong>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#7f1d1d', fontSize: '0.875rem', fontWeight: '600' }}>
+                    <strong style={{ color: 'var(--theme-danger-strong)' }}>Admin Controls</strong>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--theme-danger-strong)', fontSize: '0.875rem', fontWeight: '600' }}>
                       {adminControlsOpen ? 'Hide' : 'Show'}
                       <span style={{ display: 'inline-block', transform: adminControlsOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.25s ease' }}>⌄</span>
                     </span>
@@ -902,11 +902,11 @@ export default function Practice({ user }) {
 
                   <div style={{ maxHeight: adminControlsOpen ? '1200px' : '0', opacity: adminControlsOpen ? 1 : 0, overflow: 'hidden', transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
                     <div style={{ padding: adminControlsOpen ? '0 1rem 1rem 1rem' : '0 1rem', transform: adminControlsOpen ? 'translateY(0)' : 'translateY(-8px)', transition: 'padding 0.25s ease, transform 0.25s ease' }}>
-                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fff', borderRadius: '0.375rem', border: '1px solid #e5e7eb' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Payment Information</div>
+                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid var(--theme-border)' }}>
+                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Payment Information</div>
                         <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
                           <div style={{ flex: '0 0 100px' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Session Cost (£)</label>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Session Cost (£)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -917,17 +917,17 @@ export default function Practice({ user }) {
                               }}
                               placeholder="0.00"
                               disabled={selectedSession?.payment_requested}
-                              style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem', opacity: selectedSession?.payment_requested ? 0.6 : 1, cursor: selectedSession?.payment_requested ? 'not-allowed' : 'text' }}
+                              style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem', opacity: selectedSession?.payment_requested ? 0.6 : 1, cursor: selectedSession?.payment_requested ? 'not-allowed' : 'text' }}
                             />
                           </div>
                           <div style={{ flex: '1' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Paid By</label>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Paid By</label>
                             {selectedSession?.payment_requested ? (
                               <input
                                 type="text"
                                 value={selectedSession.paid_by_name || selectedSession.paid_by || 'Not set'}
                                 disabled
-                                style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.75rem', opacity: 0.6, cursor: 'not-allowed', backgroundColor: '#f9fafb' }}
+                                style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', fontSize: '0.75rem', opacity: 0.6, cursor: 'not-allowed', backgroundColor: 'var(--theme-surface-alt)', color: 'var(--theme-text)' }}
                               />
                             ) : (
                               <select
@@ -936,7 +936,7 @@ export default function Practice({ user }) {
                                   setPaidBy(e.target.value)
                                   setPaymentInfoSaved(false)
                                 }}
-                                style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem', cursor: 'pointer' }}
+                                style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem', cursor: 'pointer' }}
                               >
                                 <option value="">Select user...</option>
                                 {allUsers.map((u) => (
@@ -947,15 +947,15 @@ export default function Practice({ user }) {
                           </div>
                         </div>
                         {!selectedSession?.payment_requested && paidBy && !hasPaidByBankDetails && !adminUsersLoading && (
-                          <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }}>
+                          <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: 'var(--theme-warning-strong)', background: 'var(--theme-warning-soft)', border: '1px solid color-mix(in srgb, var(--theme-warning) 28%, white)', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }}>
                             Bank Details not available for the user
                           </div>
                         )}
-                        {adminUsersLoading && <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: '#6b7280' }}>Loading users...</div>}
+                        {adminUsersLoading && <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Loading users...</div>}
                         {hasPaidByBankDetails && (
-                          <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '0.375rem', border: '1px solid #e5e7eb' }}>
-                            <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.75rem', color: '#374151' }}>Bank Details</div>
-                            <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8125rem', color: '#4b5563' }}>
+                          <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface-alt)', borderRadius: '0.375rem', border: '1px solid var(--theme-border)' }}>
+                            <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-heading)' }}>Bank Details</div>
+                            <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8125rem', color: 'var(--theme-text)' }}>
                               <div><strong>Account Holder:</strong> {paidByBankDetails.full_name || 'Unknown User'}</div>
                               <div><strong>Bank Name:</strong> {paidByBankDetails.bank_name}</div>
                               <div><strong>Sort Code:</strong> {paidByBankDetails.sort_code}</div>
@@ -965,35 +965,35 @@ export default function Practice({ user }) {
                         )}
                         {!selectedSession?.payment_requested && (
                           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                            <button onClick={handleSavePaymentInfo} disabled={!canSavePaymentInfo} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: !canSavePaymentInfo ? '#d1d5db' : paymentInfoSaved ? '#10b981' : '#7c3aed', color: 'white', border: 'none', cursor: !canSavePaymentInfo ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                            <button onClick={handleSavePaymentInfo} disabled={!canSavePaymentInfo} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: !canSavePaymentInfo ? 'var(--theme-border)' : paymentInfoSaved ? 'var(--theme-success)' : 'var(--theme-accent)', color: !canSavePaymentInfo ? 'var(--theme-text-muted)' : 'var(--theme-accent-contrast)', border: 'none', cursor: !canSavePaymentInfo ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
                               {paymentInfoSaved ? '✓ Saved - Click to Update' : 'Save Payment Info'}
                             </button>
-                            <button onClick={handleRequestPayment} disabled={!paymentInfoSaved || !hasSelectedSessionPassed} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!paymentInfoSaved || !hasSelectedSessionPassed) ? '#d1d5db' : '#dc2626', color: 'white', border: 'none', cursor: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                            <button onClick={handleRequestPayment} disabled={!paymentInfoSaved || !hasSelectedSessionPassed} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'var(--theme-border)' : 'var(--theme-danger)', color: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'var(--theme-text-muted)' : 'var(--theme-danger-contrast)', border: 'none', cursor: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
                               {!hasSelectedSessionPassed ? 'Available after session' : !paymentInfoSaved ? 'Save payment info first' : '⚠️ Request Payment'}
                             </button>
                           </div>
                         )}
                         {selectedSession?.payment_requested && (
-                          <div style={{ padding: '0.5rem', background: '#dcfce7', borderRadius: '0.375rem', fontSize: '0.875rem', color: '#16a34a', fontWeight: '600', textAlign: 'center' }}>
+                          <div style={{ padding: '0.5rem', background: 'var(--theme-success-soft)', borderRadius: '0.375rem', fontSize: '0.875rem', color: 'var(--theme-success-strong)', fontWeight: '600', textAlign: 'center' }}>
                             ✓ Payment Requested
                           </div>
                         )}
                       </div>
 
-                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#fff', borderRadius: '0.375rem', border: '1px solid #e5e7eb', opacity: selectedSession?.payment_requested ? 0.6 : 1, pointerEvents: selectedSession?.payment_requested ? 'none' : 'auto' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Set Player Availability</div>
+                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', opacity: selectedSession?.payment_requested ? 0.6 : 1, pointerEvents: selectedSession?.payment_requested ? 'none' : 'auto' }}>
+                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Set Player Availability</div>
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
                           <div style={{ flex: '0 0 140px' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Availability</label>
-                            <select value={adminSelectedStatus} onChange={(e) => setAdminSelectedStatus(e.target.value)} disabled={selectedSession?.payment_requested || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem' }}>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Availability</label>
+                            <select value={adminSelectedStatus} onChange={(e) => setAdminSelectedStatus(e.target.value)} disabled={selectedSession?.payment_requested || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}>
                               <option value="available">Available</option>
                               <option value="tentative">Tentative</option>
                               <option value="not_available">Unavailable</option>
                             </select>
                           </div>
                           <div style={{ flex: '1' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>Select Player</label>
-                            <select value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)} disabled={selectedSession?.payment_requested || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', fontSize: '0.875rem' }}>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Select Player</label>
+                            <select value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)} disabled={selectedSession?.payment_requested || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}>
                               <option value="">Select a user...</option>
                               {allUsers.map((u) => (
                                 <option key={u.email} value={u.email}>{u.full_name}</option>
@@ -1001,16 +1001,16 @@ export default function Practice({ user }) {
                             </select>
                           </div>
                         </div>
-                        <button onClick={handleAdminSetAvailability} disabled={!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity} style={{ width: '100%', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? '#d1d5db' : '#7c3aed', color: 'white', border: 'none', cursor: (!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                        <button onClick={handleAdminSetAvailability} disabled={!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity} style={{ width: '100%', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'var(--theme-border)' : 'var(--theme-accent)', color: (!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'var(--theme-text-muted)' : 'var(--theme-accent-contrast)', border: 'none', cursor: (!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
                           {adminAvailabilityUpdating ? 'Updating...' : 'Set Availability'}
                         </button>
                         {adminAvailableBlockedByCapacity && !selectedSession?.payment_requested && (
-                          <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#92400e' }}>
+                          <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-warning-strong)' }}>
                             Capacity is reached for this session, so no more players can be added as Available.
                           </p>
                         )}
-                        {adminAvailabilityError && <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#dc2626' }}>{adminAvailabilityError}</p>}
-                        <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                        {adminAvailabilityError && <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-danger)' }}>{adminAvailabilityError}</p>}
+                        <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
                           {selectedSession?.payment_requested ? 'Cannot change availability after payment request.' : 'Admins can add or modify any player\'s availability.'}
                         </p>
                       </div>
@@ -1022,10 +1022,10 @@ export default function Practice({ user }) {
               <div style={{ marginTop: '1rem' }}>
                 <strong>Member Availability</strong>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '0.75rem' }}>
-                  <div style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem', background: '#f0fdf4' }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>Available</div>
+                  <div style={{ border: '1px solid color-mix(in srgb, var(--theme-success) 28%, white)', borderRadius: '0.75rem', padding: '0.75rem', background: 'var(--theme-success-soft)' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--theme-success-strong)' }}>Available</div>
                     {(voteSummary?.available || []).length > 0 && (
-                      <div style={{ fontSize: '0.875rem', color: '#16a34a', fontWeight: '600', marginBottom: '0.5rem' }}>
+                      <div style={{ fontSize: '0.875rem', color: 'var(--theme-success-strong)', fontWeight: '600', marginBottom: '0.5rem' }}>
                         {selectedSession?.payment_requested ? `(Paid ${paidAvailablePlayersCount}/${(voteSummary?.available || []).length})` : `(${(voteSummary?.available || []).length})`}
                       </div>
                     )}
@@ -1036,35 +1036,35 @@ export default function Practice({ user }) {
                         return (
                           <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <span>{n.split(' ')[0]}</span>
-                              {selectedSession?.payment_requested && hasPaid && <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>}
+                              <span style={{ color: 'var(--theme-text)' }}>{n.split(' ')[0]}</span>
+                              {selectedSession?.payment_requested && hasPaid && <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>}
                             </div>
-                            {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(userEmail)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
+                            {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(userEmail)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                           </div>
                         )
                       })}
                     </div>
                   </div>
-                  <div style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem', background: '#fffbeb' }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>Tentative</div>
-                    {(voteSummary?.tentative || []).length > 0 && <div style={{ fontSize: '0.875rem', color: '#eab308', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.tentative || []).length})</div>}
+                  <div style={{ border: '1px solid color-mix(in srgb, var(--theme-warning) 28%, white)', borderRadius: '0.75rem', padding: '0.75rem', background: 'var(--theme-warning-soft)' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--theme-warning-strong)' }}>Tentative</div>
+                    {(voteSummary?.tentative || []).length > 0 && <div style={{ fontSize: '0.875rem', color: 'var(--theme-warning-strong)', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.tentative || []).length})</div>}
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.tentative || []).map((n, idx) => (
                         <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                          <span>{n.split(' ')[0]}</span>
-                          {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
+                          <span style={{ color: 'var(--theme-text)' }}>{n.split(' ')[0]}</span>
+                          {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                         </div>
                       ))}
                     </div>
                   </div>
-                  <div style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem', background: '#fef2f2' }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>Unavailable</div>
-                    {(voteSummary?.not_available || []).length > 0 && <div style={{ fontSize: '0.875rem', color: '#dc2626', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.not_available || []).length})</div>}
+                  <div style={{ border: '1px solid color-mix(in srgb, var(--theme-danger) 28%, white)', borderRadius: '0.75rem', padding: '0.75rem', background: 'var(--theme-danger-soft)' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--theme-danger-strong)' }}>Unavailable</div>
+                    {(voteSummary?.not_available || []).length > 0 && <div style={{ fontSize: '0.875rem', color: 'var(--theme-danger-strong)', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.not_available || []).length})</div>}
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.not_available || []).map((n, idx) => (
                         <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                          <span>{n.split(' ')[0]}</span>
-                          {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
+                          <span style={{ color: 'var(--theme-text)' }}>{n.split(' ')[0]}</span>
+                          {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                         </div>
                       ))}
                     </div>

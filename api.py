@@ -84,7 +84,7 @@ WHATSAPP_NOTIFICATIONS_ENABLED = os.environ.get("WHATSAPP_NOTIFICATIONS_ENABLED"
 whatsapp_scheduler = BackgroundScheduler()
 
 NOTIFICATION_TARGET_OPTIONS = {"all_active_users", "admin_users", "available_players", "direct_user"}
-THEME_PREFERENCES = {"east_bengal", "mohun_bagan"}
+THEME_PREFERENCES = {"nordic_neutral", "east_bengal", "mohun_bagan"}
 NOTIFICATION_TYPE_DEFAULTS = {
     "practice": {
         "display_name": "New Practice Added",
@@ -239,7 +239,7 @@ def init_db():
                 bank_name VARCHAR(255),
                 sort_code VARCHAR(20),
                 account_number VARCHAR(20),
-                theme_preference VARCHAR(50) DEFAULT 'mohun_bagan',
+                theme_preference VARCHAR(50) DEFAULT 'nordic_neutral',
                 is_deleted BOOLEAN DEFAULT FALSE,
                 deleted_at TIMESTAMP,
                 deleted_by VARCHAR(255)
@@ -430,7 +430,7 @@ def init_db():
                             SELECT 1 FROM information_schema.columns 
                             WHERE table_name='users' AND column_name='theme_preference'
                         ) THEN
-                            ALTER TABLE users ADD COLUMN theme_preference VARCHAR(50) DEFAULT 'mohun_bagan';
+                            ALTER TABLE users ADD COLUMN theme_preference VARCHAR(50) DEFAULT 'nordic_neutral';
                         END IF;
                     END $$;
                 """)
@@ -782,7 +782,7 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
             try:
-                cur.execute("ALTER TABLE users ADD COLUMN theme_preference TEXT DEFAULT 'mohun_bagan'")
+                cur.execute("ALTER TABLE users ADD COLUMN theme_preference TEXT DEFAULT 'nordic_neutral'")
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add theme_preference column: {e}")
@@ -799,7 +799,7 @@ def init_db():
                 bank_name TEXT,
                 sort_code TEXT,
                 account_number TEXT,
-                theme_preference TEXT DEFAULT 'mohun_bagan',
+                theme_preference TEXT DEFAULT 'nordic_neutral',
                 is_deleted BOOLEAN DEFAULT 0,
                 deleted_at TIMESTAMP,
                 deleted_by TEXT
@@ -1608,7 +1608,7 @@ class UserOut(BaseModel):
     bank_name: Optional[str] = None
     sort_code: Optional[str] = None
     account_number: Optional[str] = None
-    theme_preference: str = "mohun_bagan"
+    theme_preference: str = "nordic_neutral"
 
 class Token(BaseModel):
     access_token: str
@@ -2150,7 +2150,7 @@ def me(current_user: dict = Depends(get_current_user)):
             bank_name = row_dict.get("bank_name")
             sort_code = row_dict.get("sort_code")
             account_number = row_dict.get("account_number")
-            theme_preference = row_dict.get("theme_preference") or "mohun_bagan"
+            theme_preference = row_dict.get("theme_preference") or "nordic_neutral"
         else:
             full_name = current_user["full_name"]
             user_type = "member"
@@ -2160,7 +2160,7 @@ def me(current_user: dict = Depends(get_current_user)):
             bank_name = None
             sort_code = None
             account_number = None
-            theme_preference = "mohun_bagan"
+            theme_preference = "nordic_neutral"
     
     return UserOut(
         id=current_user["id"], 
@@ -2210,11 +2210,11 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
                 if hasattr(user_dict["birthday"], 'isoformat'):
                     user_dict["birthday"] = user_dict["birthday"].isoformat()
                 else:
-                    user_dict["birthday"] = str(user_dict["birthday"])
+                    user_dict["birthday"] = user_dict.get("birthday") or None
             user_dict["bank_name"] = user_dict.get("bank_name") or None
             user_dict["sort_code"] = user_dict.get("sort_code") or None
             user_dict["account_number"] = user_dict.get("account_number") or None
-            user_dict["theme_preference"] = user_dict.get("theme_preference") or "mohun_bagan"
+            user_dict["theme_preference"] = user_dict.get("theme_preference") or "nordic_neutral"
             # Ensure user_type has a default
             if not user_dict.get("user_type"):
                 user_dict["user_type"] = "member"

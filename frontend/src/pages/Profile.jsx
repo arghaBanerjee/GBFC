@@ -9,7 +9,7 @@ export default function Profile({ user, setUser, loading }) {
   const [bankName, setBankName] = useState('')
   const [sortCode, setSortCode] = useState('')
   const [accountNumber, setAccountNumber] = useState('')
-  const [themePreference, setThemePreference] = useState('mohun_bagan')
+  const [themePreference, setThemePreference] = useState('nordic_neutral')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -18,6 +18,12 @@ export default function Profile({ user, setUser, loading }) {
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
   const themeOptions = [
+    {
+      value: 'nordic_neutral',
+      label: 'Nordic Neutral Theme',
+      description: 'Muted stone, slate, and mist tones for a calm neutral default look.',
+      swatches: ['#5b6778', '#d8dee9', '#f5f7fa'],
+    },
     {
       value: 'east_bengal',
       label: 'East Bengal Theme',
@@ -33,6 +39,10 @@ export default function Profile({ user, setUser, loading }) {
   ]
 
   useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }, [])
+
+  useEffect(() => {
     // Wait for loading to complete before checking authentication
     if (loading) return
     
@@ -44,7 +54,7 @@ export default function Profile({ user, setUser, loading }) {
       setBankName(user.bank_name || '')
       setSortCode(user.sort_code || '')
       setAccountNumber(user.account_number || '')
-      setThemePreference(user.theme_preference || 'mohun_bagan')
+      setThemePreference(user.theme_preference || 'nordic_neutral')
     }
   }, [user, loading, navigate])
 
@@ -480,7 +490,7 @@ export default function Profile({ user, setUser, loading }) {
                 <button
                   onClick={() => {
                     setEditMode(null)
-                    setThemePreference(user.theme_preference || 'mohun_bagan')
+                    setThemePreference(user.theme_preference || 'nordic_neutral')
                     setError('')
                   }}
                   className="nav-btn theme-secondary-btn"
@@ -494,7 +504,7 @@ export default function Profile({ user, setUser, loading }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
               <div>
                 <div style={{ fontSize: '1rem', fontWeight: '600', color: 'var(--theme-heading)' }}>
-                  {themeOptions.find((theme) => theme.value === (user.theme_preference || 'mohun_bagan'))?.label || 'Mohun Bagan Theme'}
+                  {themeOptions.find((theme) => theme.value === (user.theme_preference || 'nordic_neutral'))?.label || 'Nordic Neutral Theme'}
                 </div>
                 <div className="theme-subtle-text" style={{ fontSize: '0.875rem', marginTop: '0.25rem' }}>
                   Choose the club-inspired colour palette you want across the app.

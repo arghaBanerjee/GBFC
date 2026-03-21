@@ -17,6 +17,25 @@ import { apiUrl } from './api'
 import clubLogo from './assets/club-logo.jpeg'
 import './index.css'
 
+const THEME_COOKIE_NAME = 'theme_preference'
+
+function readThemeCookie() {
+  if (typeof document === 'undefined') return null
+  const cookie = document.cookie
+    .split('; ')
+    .find((row) => row.startsWith(`${THEME_COOKIE_NAME}=`))
+
+  if (!cookie) return null
+
+  return decodeURIComponent(cookie.split('=')[1] || '') || null
+}
+
+function writeThemeCookie(theme) {
+  if (typeof document === 'undefined' || !theme) return
+  const maxAge = 60 * 60 * 24 * 365
+  document.cookie = `${THEME_COOKIE_NAME}=${encodeURIComponent(theme)}; path=/; max-age=${maxAge}; SameSite=Lax`
+}
+
 function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -195,10 +214,11 @@ function App() {
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
   const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
-  const activeTheme = user?.theme_preference || 'mohun_bagan'
+  const activeTheme = user?.theme_preference || readThemeCookie() || 'nordic_neutral'
 
   useEffect(() => {
     document.body.dataset.theme = activeTheme
+    writeThemeCookie(activeTheme)
     return () => {
       delete document.body.dataset.theme
     }
