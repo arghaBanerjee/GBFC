@@ -699,6 +699,10 @@ export default function Practice({ user }) {
   const canSelectAvailable = selectedStatus === 'available' || !isCapacityReached
   const canSavePaymentInfo = Boolean(sessionCost && paidBy && maximumCapacity && Number(maximumCapacity) > 0)
   const availablePlayersForPayment = voteSummary?.available?.length || 0
+  const paidAvailablePlayersCount = (voteSummary?.available || []).reduce((count, name) => {
+    const userEmail = voteSummary?.user_emails?.[name] || name
+    return count + (payments[userEmail] ? 1 : 0)
+  }, 0)
   const adminAvailableBlockedByCapacity = adminSelectedStatus === 'available' && isCapacityReached
 
   return (
@@ -1018,7 +1022,11 @@ export default function Practice({ user }) {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '0.75rem' }}>
                   <div style={{ border: '1px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem', background: '#f0fdf4' }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>Available</div>
-                    {(voteSummary?.available || []).length > 0 && <div style={{ fontSize: '0.875rem', color: '#16a34a', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.available || []).length})</div>}
+                    {(voteSummary?.available || []).length > 0 && (
+                      <div style={{ fontSize: '0.875rem', color: '#16a34a', fontWeight: '600', marginBottom: '0.5rem' }}>
+                        {selectedSession?.payment_requested ? `(Paid ${paidAvailablePlayersCount}/${(voteSummary?.available || []).length})` : `(${(voteSummary?.available || []).length})`}
+                      </div>
+                    )}
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.available || []).map((n, idx) => {
                         const userEmail = voteSummary?.user_emails?.[n] || n
