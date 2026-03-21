@@ -357,7 +357,7 @@ export default function Profile({ user, setUser, loading }) {
                     setError('')
                   }}
                   className="nav-btn"
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#111827', border: '1px solid #111827' }}
                 >
                   Cancel
                 </button>
@@ -372,7 +372,8 @@ export default function Profile({ user, setUser, loading }) {
                 style={{ 
                   padding: '0.5rem 1rem', 
                   fontSize: '0.875rem',
-                  border: '1px solid #d1d5db'
+                  border: '1px solid #d1d5db',
+                  color: '#111827'
                 }}
               >
                 Edit
@@ -438,7 +439,7 @@ export default function Profile({ user, setUser, loading }) {
                     setError('')
                   }}
                   className="nav-btn"
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#111827', border: '1px solid #111827' }}
                 >
                   Cancel
                 </button>
@@ -455,7 +456,8 @@ export default function Profile({ user, setUser, loading }) {
                 style={{ 
                   padding: '0.5rem 1rem', 
                   fontSize: '0.875rem',
-                  border: '1px solid #d1d5db'
+                  border: '1px solid #d1d5db',
+                  color: '#111827'
                 }}
               >
                 Edit
@@ -548,7 +550,7 @@ export default function Profile({ user, setUser, loading }) {
                     setError('')
                   }}
                   className="nav-btn"
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#111827', border: '1px solid #111827' }}
                 >
                   Cancel
                 </button>
@@ -574,6 +576,7 @@ export default function Profile({ user, setUser, loading }) {
                   padding: '0.5rem 1rem',
                   fontSize: '0.875rem',
                   border: '1px solid #d1d5db',
+                  color: '#111827',
                   flexShrink: 0,
                 }}
               >
@@ -661,7 +664,7 @@ export default function Profile({ user, setUser, loading }) {
                     setError('')
                   }}
                   className="nav-btn"
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#111827', border: '1px solid #111827' }}
                 >
                   Cancel
                 </button>
@@ -676,7 +679,8 @@ export default function Profile({ user, setUser, loading }) {
                 style={{ 
                   padding: '0.5rem 1rem', 
                   fontSize: '0.875rem',
-                  border: '1px solid #d1d5db'
+                  border: '1px solid #d1d5db',
+                  color: '#111827'
                 }}
               >
                 Change Password

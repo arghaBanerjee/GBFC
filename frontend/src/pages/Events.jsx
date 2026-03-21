@@ -252,6 +252,7 @@ export default function Events({ user }) {
                   style={{ 
                     border: 'none',
                     background: '#f3f4f6',
+                    color: '#111827',
                     borderRadius: '0.5rem',
                     padding: '0.5rem 1rem',
                     boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
@@ -301,7 +302,7 @@ export default function Events({ user }) {
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button className="nav-btn active" onClick={handleComment} style={{ padding: '0.5rem 1rem' }}>Post</button>
-                        <button className="nav-btn" onClick={() => { setCommentingEventId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6' }}>Cancel</button>
+                        <button className="nav-btn" onClick={() => { setCommentingEventId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6', color: '#111827' }}>Cancel</button>
                       </div>
                     </div>
                   )}

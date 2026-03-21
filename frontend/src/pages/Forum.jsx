@@ -323,14 +323,14 @@ export default function Forum({ user }) {
             </div>
           )}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <label className="nav-btn" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0 }}>
+            <label className="nav-btn" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0, color: '#111827', background: '#d1fae5', border: '1px solid #86efac' }}>
               📎 Attach Image
               <input type="file" accept="image/*" onChange={handleAttachImage} style={{ display: 'none' }} />
             </label>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="nav-btn active" onClick={handleCreate} style={{ padding: '0.5rem 1rem' }}>Post</button>
-            <button className="nav-btn" onClick={() => { setShowCreate(false); setNewContent(''); setImagePreview(null) }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6' }}>Cancel</button>
+            <button className="nav-btn" onClick={() => { setShowCreate(false); setNewContent(''); setImagePreview(null) }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6', color: '#111827', border: '1px solid #111827' }}>Cancel</button>
           </div>
         </div>
       )}
@@ -373,6 +373,7 @@ export default function Forum({ user }) {
                   marginRight: '0.5rem', 
                   border: 'none',
                   background: '#f3f4f6',
+                  color: '#111827',
                   borderRadius: '0.5rem',
                   padding: '0.5rem 1rem',
                   boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
@@ -430,7 +431,7 @@ export default function Forum({ user }) {
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button className="nav-btn active" onClick={handleComment} style={{ padding: '0.5rem 1rem' }}>Post</button>
-                    <button className="nav-btn" onClick={() => { setCommentingPostId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6' }}>Cancel</button>
+                    <button className="nav-btn" onClick={() => { setCommentingPostId(null); setCommentText('') }} style={{ padding: '0.5rem 1rem', background: '#f3f4f6', color: '#111827' }}>Cancel</button>
                   </div>
                 </div>
               )}

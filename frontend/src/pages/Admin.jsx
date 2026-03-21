@@ -850,7 +850,7 @@ export default function Admin({ user, loading }) {
                     <strong>{ev.date}</strong>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                    <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ border: '1px solid #d1d5db' }}>
+                    <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ border: '1px solid #d1d5db', color: '#111827' }}>
                       Edit
                     </button>
                     <button className="nav-btn" onClick={() => handleDeleteEvent(ev.id)} style={{ background: '#ef4444', color: 'white', border: '1px solid #ef4444' }}>
@@ -948,7 +948,7 @@ export default function Admin({ user, loading }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <strong>{s.date}</strong>
                     <div>
-                      <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} style={{ marginRight: 8, border: '1px solid #d1d5db' }}>
+                      <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} style={{ marginRight: 8, border: '1px solid #d1d5db', color: '#111827' }}>
                         Edit
                       </button>
                       <button
@@ -1000,8 +1000,8 @@ export default function Admin({ user, loading }) {
                 />
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="nav-btn" type="submit">Update Post</button>
-                <button className="nav-btn" type="button" onClick={resetForumPostForm}>Cancel</button>
+                <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981' }}>Update Post</button>
+                <button className="nav-btn" type="button" onClick={resetForumPostForm} style={{ background: 'white', color: '#111827', border: '1px solid #111827' }}>Cancel</button>
               </div>
             </form>
           )}
@@ -1015,7 +1015,7 @@ export default function Admin({ user, loading }) {
                     <div style={{ opacity: 0.8, marginTop: 4 }}>{new Date(p.created_at).toLocaleString()}</div>
                   </div>
                   <div>
-                    <button className="nav-btn" onClick={() => handleEditForumPost(p)} style={{ marginRight: 8, border: '1px solid #d1d5db' }}>
+                    <button className="nav-btn" onClick={() => handleEditForumPost(p)} style={{ marginRight: 8, border: '1px solid #d1d5db', color: '#111827' }}>
                       Edit
                     </button>
                     <button className="nav-btn" onClick={() => handleDeleteForumPost(p.id)} style={{ background: '#ef4444', color: 'white', border: '#ef4444' }}>
@@ -1187,7 +1187,7 @@ export default function Admin({ user, loading }) {
                           background: 'white'
                         }}
                       >
-                        {u.email === user?.email ? 'Profile Edit' : 'Edit'}
+                        Edit
                       </button>
                       <button 
                         className="nav-btn" 
@@ -1276,7 +1276,7 @@ export default function Admin({ user, loading }) {
                       className="nav-btn"
                       onClick={() => handleResetNotificationSetting(setting.notif_type)}
                       disabled={notificationSaving === setting.notif_type}
-                      style={{ border: '1px solid #d1d5db' }}
+                      style={{ border: '1px solid #d1d5db', color: '#111827' }}
                     >
                       Reset
                     </button>
