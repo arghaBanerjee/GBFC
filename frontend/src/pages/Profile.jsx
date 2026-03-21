@@ -447,7 +447,7 @@ export default function Profile({ user, setUser, loading }) {
             </div>
           ) : (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '1.125rem', fontWeight: '500', color: user.birthday ? '#000' : '#9ca3af', fontStyle: user.birthday ? 'normal' : 'italic' }}>
+              <span style={{ fontSize: '1rem', fontWeight: '500', color: user.birthday ? '#000' : '#9ca3af', fontStyle: user.birthday ? 'normal' : 'italic' }}>
                 {user.birthday ? formatDate(user.birthday) : 'Not Set'}
               </span>
               <button
@@ -679,8 +679,8 @@ export default function Profile({ user, setUser, loading }) {
                 style={{ 
                   padding: '0.5rem 1rem', 
                   fontSize: '0.875rem',
-                  border: '1px solid #d1d5db',
-                  color: '#111827'
+                  border: '1px solid #16a34a',
+                  color: '#16a34a'
                 }}
               >
                 Change Password
