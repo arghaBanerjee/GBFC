@@ -133,6 +133,18 @@ NOTIFICATION_TYPE_DEFAULTS = {
         "email_template": "Payment has been requested for the practice session on {{date}}{{time_suffix}}{{location_comma_suffix}}.\n\nPlease confirm your payment in the app.",
         "whatsapp_template": "💷 *PRACTICE PAYMENT REQUEST*\n\n📅 {{date}}\n{{time_line}}{{location_line}}\nAvailable players should confirm payment in the app.",
     },
+    "payment_confirmed": {
+        "display_name": "Practice Payment Confirmed",
+        "description": "Sent to admins in the app when a member confirms payment for a practice session.",
+        "app_enabled": True,
+        "email_enabled": False,
+        "whatsapp_enabled": False,
+        "target_audience": "admin_users",
+        "app_template": "{{member_name}} confirmed payment for the session on {{date}}{{time_suffix}}{{location_comma_suffix}}.",
+        "email_subject": "Payment confirmed for {{date}}",
+        "email_template": "{{member_name}} confirmed payment for the practice session on {{date}}{{time_suffix}}{{location_comma_suffix}}.",
+        "whatsapp_template": "",
+    },
     "session_capacity_reached": {
         "display_name": "Session Capacity Reached",
         "description": "Sent when the final available slot is taken for a practice session.",
@@ -1075,6 +1087,7 @@ def build_notification_context(payload: dict) -> dict:
         "event_name": payload.get("event_name") or payload.get("name") or "",
         "author_name": payload.get("author_name") or "",
         "full_name": payload.get("full_name") or "",
+        "member_name": payload.get("member_name") or payload.get("full_name") or "",
         "club_name": payload.get("club_name") or "Glasgow Bengali FC",
         "content": content_value,
         "content_preview": content_preview,
@@ -2643,14 +2656,20 @@ def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(
     with get_connection() as conn:
         cur = conn.cursor()
         
-        # Check if payment is requested for this session
-        cur.execute(f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}", (date,))
+        # Check if payment is requested for this session and get session details
+        cur.execute(
+            f"SELECT payment_requested, time, location FROM practice_sessions WHERE date = {PLACEHOLDER}",
+            (date,)
+        )
         session = cur.fetchone()
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
         
         if not session["payment_requested"]:
             raise HTTPException(status_code=400, detail="Payment request has not been enabled for this session")
+
+        session_time = session["time"] or "TBD"
+        session_location = session["location"] or "TBD"
         
         # Check if user is available for this session
         cur.execute(
@@ -2674,6 +2693,19 @@ def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(
             )
         
         conn.commit()
+        
+        if paid:
+            deliver_notification(
+                "payment_confirmed",
+                {
+                    "date": date,
+                    "time": session_time,
+                    "location": session_location,
+                    "member_name": current_user.get("full_name", current_user["email"]),
+                    "full_name": current_user.get("full_name", current_user["email"]),
+                },
+                related_date=date,
+            )
         return {"message": "Payment confirmation updated"}
 
 @app.post("/api/practice/sessions/{date_str}/payment")
@@ -2717,20 +2749,17 @@ def confirm_payment(date_str: str, data: dict, current_user: dict = Depends(get_
         
         # If user confirmed payment (checked the box), notify all admins
         if paid:
-            user_full_name = current_user.get("full_name", current_user["email"])
-            notification_message = f"{user_full_name} confirmed payment for the Session on {date_str} at {session_time}, {session_location}"
-            
-            # Get all admin users
-            cur.execute(
-                f"SELECT email FROM users WHERE user_type = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
-                ("admin",)
+            deliver_notification(
+                "payment_confirmed",
+                {
+                    "date": date_str,
+                    "time": session_time,
+                    "location": session_location,
+                    "member_name": current_user.get("full_name", current_user["email"]),
+                    "full_name": current_user.get("full_name", current_user["email"]),
+                },
+                related_date=date_str,
             )
-            admin_users = cur.fetchall()
-            
-            # Send notification to all admins
-            for admin_row in admin_users:
-                admin_email = admin_row["email"]
-                create_notification(admin_email, "payment_confirmed", notification_message, date_str)
         
         return {"message": "Payment status updated successfully", "paid": paid}
 
