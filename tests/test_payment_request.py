@@ -52,6 +52,12 @@ def setup_test_database():
     """Setup test database with users and practice session"""
     with get_connection() as conn:
         cur = conn.cursor()
+        if not USE_POSTGRES:
+            try:
+                cur.execute("ALTER TABLE practice_sessions ADD COLUMN payment_requested_at TIMESTAMP")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
         
         # Clear existing data
         cur.execute("DELETE FROM practice_payments")
@@ -111,6 +117,7 @@ class TestPaymentRequestSchema:
             assert 'session_cost' in columns, "session_cost column missing"
             assert 'paid_by' in columns, "paid_by column missing"
             assert 'payment_requested' in columns, "payment_requested column missing"
+            assert 'payment_requested_at' in columns, "payment_requested_at column missing"
     
     def test_practice_payments_table_exists(self):
         """Test that practice_payments table exists with correct schema"""

@@ -817,7 +817,7 @@ export default function Practice({ user }) {
                 {!user && <p style={{ marginTop: '0.5rem', color: '#dc2626' }}>Log in to vote your availability.</p>}
                 {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after session time has passed.</p>}
                 {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>Cannot change availability after payment requested.</p>}
-                {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && (
+                {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
                   <p style={{ marginTop: '0.5rem', color: '#92400e', fontSize: '0.875rem' }}>
                     Maximum capacity reached. Available is temporarily disabled until a slot opens up.
                   </p>
@@ -1000,7 +1000,7 @@ export default function Practice({ user }) {
                         </button>
                         {adminAvailableBlockedByCapacity && !selectedSession?.payment_requested && (
                           <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#92400e' }}>
-                            Capacity is reached for this session, so no more players can be added as Available right now. Choose Tentative or Unavailable, or wait until a slot opens.
+                            Capacity is reached for this session, so no more players can be added as Available.
                           </p>
                         )}
                         {adminAvailabilityError && <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#dc2626' }}>{adminAvailabilityError}</p>}

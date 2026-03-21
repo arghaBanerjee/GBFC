@@ -47,6 +47,7 @@ def setup_test_database():
             session_cost REAL,
             paid_by TEXT,
             payment_requested BOOLEAN DEFAULT FALSE,
+            payment_requested_at TIMESTAMP,
             maximum_capacity INTEGER DEFAULT 100
         )
     """)

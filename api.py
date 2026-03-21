@@ -145,6 +145,18 @@ NOTIFICATION_TYPE_DEFAULTS = {
         "email_template": "{{member_name}} confirmed payment for the practice session on {{date}}{{time_suffix}}{{location_comma_suffix}}.",
         "whatsapp_template": "",
     },
+    "pending_payment_reminder": {
+        "display_name": "Pending Practice Payment Reminder",
+        "description": "Sent daily at 8 PM when at least 72 hours have passed since the last admin payment request and the latest requested practice session still has pending payments.",
+        "app_enabled": True,
+        "email_enabled": False,
+        "whatsapp_enabled": True,
+        "target_audience": "all_active_users",
+        "app_template": "Gentle Reminder: There are some pending payments for previous sessions. Please check in the app using the link {{payments_link}}",
+        "email_subject": "Pending practice payments reminder",
+        "email_template": "Gentle Reminder: There are some pending payments for previous sessions. Please check in the app using the link {{payments_link}}",
+        "whatsapp_template": "Gentle Reminder: There are some pending payments for previous sessions. Please check in the app using the link {{payments_link}}",
+    },
     "session_capacity_reached": {
         "display_name": "Session Capacity Reached",
         "description": "Sent when the final available slot is taken for a practice session.",
@@ -468,6 +480,23 @@ def init_db():
                     BEGIN 
                         IF NOT EXISTS (
                             SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='practice_sessions' AND column_name='payment_requested_at'
+                        ) THEN
+                            ALTER TABLE practice_sessions ADD COLUMN payment_requested_at TIMESTAMP;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add payment_requested_at column: {e}")
+                conn.rollback()
+
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
                             WHERE table_name='practice_sessions' AND column_name='maximum_capacity'
                         ) THEN
                             ALTER TABLE practice_sessions ADD COLUMN maximum_capacity INTEGER DEFAULT 100;
@@ -634,6 +663,7 @@ def init_db():
                 session_cost DECIMAL(10, 2),
                 paid_by VARCHAR(255),
                 payment_requested BOOLEAN DEFAULT FALSE,
+                payment_requested_at TIMESTAMP,
                 maximum_capacity INTEGER DEFAULT 100
             )
             """)
@@ -855,6 +885,11 @@ def init_db():
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add payment_requested column: {e}")
             try:
+                cur.execute("ALTER TABLE practice_sessions ADD COLUMN payment_requested_at TIMESTAMP")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add payment_requested_at column: {e}")
+            try:
                 cur.execute("ALTER TABLE practice_sessions ADD COLUMN maximum_capacity INTEGER DEFAULT 100")
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
@@ -935,6 +970,7 @@ def init_db():
                 session_cost REAL,
                 paid_by TEXT,
                 payment_requested INTEGER DEFAULT 0,
+                payment_requested_at TIMESTAMP,
                 maximum_capacity INTEGER DEFAULT 100
             );
             CREATE TABLE IF NOT EXISTS practice_payments (
@@ -1089,6 +1125,7 @@ def build_notification_context(payload: dict) -> dict:
         "full_name": payload.get("full_name") or "",
         "member_name": payload.get("member_name") or payload.get("full_name") or "",
         "club_name": payload.get("club_name") or "Glasgow Bengali FC",
+        "payments_link": payload.get("payments_link") or "https://glasgow-bengali-fc.vercel.app/user-actions/payments",
         "content": content_value,
         "content_preview": content_preview,
         "time_suffix": f" at {time_value}" if time_value else "",
@@ -1350,7 +1387,7 @@ def is_practice_datetime_in_past(date_value: str, time_value: Optional[str]) -> 
 
 def get_practice_session_basic(cur, date_str: str) -> Optional[dict]:
     cur.execute(
-        f"SELECT date, time, location, payment_requested, COALESCE(maximum_capacity, 100) as maximum_capacity FROM practice_sessions WHERE date = {PLACEHOLDER}",
+        f"SELECT date, time, location, payment_requested, payment_requested_at, COALESCE(maximum_capacity, 100) as maximum_capacity FROM practice_sessions WHERE date = {PLACEHOLDER}",
         (date_str,),
     )
     row = cur.fetchone()
@@ -1381,6 +1418,7 @@ def get_practice_session_with_capacity(cur, date_str: str) -> Optional[dict]:
             ps.session_cost,
             ps.paid_by,
             ps.payment_requested,
+            ps.payment_requested_at,
             COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
             u.full_name as paid_by_name,
             u.bank_name as paid_by_bank_name,
@@ -1442,6 +1480,72 @@ def notify_practice_slots_available():
                 "maximum_capacity": session["maximum_capacity"],
                 "available_count": session["available_count"],
                 "remaining_slots": session["remaining_slots"],
+            },
+            related_date=session["date"],
+        )
+
+def get_pending_payment_count_for_session(cur, date_str: str) -> int:
+    cur.execute(
+        f"""
+        SELECT COUNT(*) as count
+        FROM practice_availability pa
+        LEFT JOIN practice_payments pp
+            ON pa.date = pp.date AND pa.user_email = pp.user_email
+        WHERE pa.date = {PLACEHOLDER}
+          AND pa.status = {PLACEHOLDER}
+          AND (pp.paid IS NULL OR pp.paid = {PLACEHOLDER})
+        """,
+        (date_str, "available", False if USE_POSTGRES else 0),
+    )
+    row = cur.fetchone()
+    if not row:
+        return 0
+    row_dict = dict(row)
+    return int(row_dict.get("count", 0))
+
+def notify_pending_payment_reminders():
+    now = datetime.now()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT date, time, location, payment_requested_at
+            FROM practice_sessions
+            WHERE payment_requested = {PLACEHOLDER}
+              AND payment_requested_at IS NOT NULL
+            ORDER BY payment_requested_at DESC, date DESC
+            LIMIT 1
+            """,
+            (True if USE_POSTGRES else 1,),
+        )
+        session_row = cur.fetchone()
+        if not session_row:
+            return
+
+        session = dict(session_row)
+        payment_requested_at = session.get("payment_requested_at")
+        if not payment_requested_at:
+            return
+        if isinstance(payment_requested_at, str):
+            try:
+                payment_requested_at = datetime.fromisoformat(payment_requested_at.replace("Z", "+00:00")).replace(tzinfo=None)
+            except ValueError:
+                return
+
+        if now < payment_requested_at + timedelta(hours=72):
+            return
+
+        pending_count = get_pending_payment_count_for_session(cur, session["date"])
+        if pending_count <= 0:
+            return
+
+        deliver_notification(
+            "pending_payment_reminder",
+            {
+                "date": session["date"],
+                "time": session.get("time"),
+                "location": session.get("location"),
+                "payments_link": "https://glasgow-bengali-fc.vercel.app/user-actions/payments",
             },
             related_date=session["date"],
         )
@@ -1666,10 +1770,12 @@ async def startup_event():
     if whatsapp_is_configured() and not whatsapp_scheduler.running:
         whatsapp_scheduler.add_job(keep_whatsapp_instance_alive, "interval", minutes=30, id="whatsapp_keepalive", replace_existing=True)
         whatsapp_scheduler.add_job(notify_practice_slots_available, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
+        whatsapp_scheduler.add_job(notify_pending_payment_reminders, "cron", hour=20, minute=0, id="pending_payment_reminder_daily", replace_existing=True)
         whatsapp_scheduler.start()
         print("WhatsApp keep-alive scheduler started")
     elif not whatsapp_scheduler.running:
         whatsapp_scheduler.add_job(notify_practice_slots_available, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
+        whatsapp_scheduler.add_job(notify_pending_payment_reminders, "cron", hour=20, minute=0, id="pending_payment_reminder_daily", replace_existing=True)
         whatsapp_scheduler.start()
         print("Notification scheduler started")
 
@@ -2609,7 +2715,7 @@ def request_payment(date_str: str, current_user: dict = Depends(get_current_user
         
         # Enable payment request
         cur.execute(
-            f"UPDATE practice_sessions SET payment_requested = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
+            f"UPDATE practice_sessions SET payment_requested = {PLACEHOLDER}, payment_requested_at = CURRENT_TIMESTAMP WHERE date = {PLACEHOLDER}",
             (True if USE_POSTGRES else 1, date_str),
         )
         conn.commit()
