@@ -20,20 +20,20 @@ export default function Profile({ user, setUser, loading }) {
   const themeOptions = [
     {
       value: 'nordic_neutral',
-      label: 'Nordic Neutral Theme',
-      description: 'Muted stone, slate, and mist tones for a calm neutral default look.',
+      label: 'Nordic Neutral',
+      description: 'Muted stone, slate, and mist tones for neutral default look.',
       swatches: ['#5b6778', '#d8dee9', '#f5f7fa'],
     },
     {
       value: 'east_bengal',
-      label: 'East Bengal Theme',
-      description: 'Refined yellow and red palette inspired by East Bengal club colours.',
+      label: 'East Bengal',
+      description: 'Red and Yellow palette inspired by East Bengal club.',
       swatches: ['#bf1e2d', '#f2b705', '#fff8e6'],
     },
     {
       value: 'mohun_bagan',
-      label: 'Mohun Bagan Theme',
-      description: 'Elegant green and maroon palette inspired by Mohun Bagan club colours.',
+      label: 'Mohun Bagan',
+      description: 'Green and Maroon palette inspired by Mohun Bagan club.',
       swatches: ['#166534', '#7a1632', '#f5f7f4'],
     },
   ]
@@ -440,7 +440,7 @@ export default function Profile({ user, setUser, loading }) {
         {/* Theme Section */}
         <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid var(--theme-border-soft)' }}>
           <label className="theme-section-title" style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
-            Club Theme
+            App Theme
           </label>
           {editMode === 'theme' ? (
             <div>
