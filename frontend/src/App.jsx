@@ -167,7 +167,7 @@ function App() {
   useEffect(() => {
     if (!user) return
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 5000)
+    const interval = setInterval(fetchNotifications, 10000)
     return () => clearInterval(interval)
   }, [user])
 
