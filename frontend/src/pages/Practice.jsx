@@ -570,13 +570,13 @@ export default function Practice({ user }) {
     
     return {
       marginRight: btnStatus !== 'not_available' ? '0.5rem' : undefined,
-      padding: '0.62rem 0.78rem',
+      padding: '1rem 1.2rem',
       borderRadius: '0.375rem',
       border: isActive ? `2px solid ${activeBorder}` : '1px solid var(--theme-border)',
       background: isActive ? activeBg : 'var(--theme-surface)',
       color: isActive ? activeColor : 'var(--theme-text)',
       fontWeight: isActive ? 700 : 400,
-      fontSize: '0.9rem',
+      fontSize: '0.98rem',
       minWidth: '100px',
       cursor: user ? 'pointer' : 'not-allowed',
       opacity: user ? 1 : 0.6,
@@ -1019,7 +1019,7 @@ export default function Practice({ user }) {
                 </div>
               )}
 
-              <div style={{ marginTop: '1rem' }}>
+              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
                 <strong>Member Availability</strong>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '0.75rem' }}>
                   <div style={{ border: '1px solid color-mix(in srgb, var(--theme-success) 28%, white)', borderRadius: '0.75rem', padding: '0.75rem', background: 'var(--theme-success-soft)' }}>
