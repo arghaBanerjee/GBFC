@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import sqlite3
 import hashlib
 import uuid
@@ -12,6 +12,8 @@ import secrets
 import json
 import os
 import shutil
+import csv
+from io import StringIO
 from contextlib import contextmanager
 import cloudinary
 import cloudinary.uploader
@@ -80,6 +82,7 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
 FROM_EMAIL = os.environ.get("FROM_EMAIL") or SMTP_USERNAME or ""
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 WHATSAPP_NOTIFICATIONS_ENABLED = os.environ.get("WHATSAPP_NOTIFICATIONS_ENABLED", "false").lower() == "true"
+USER_ACTIVITY_LOGGING_ENABLED = os.environ.get("USER_ACTIVITY_LOGGING_ENABLED", "false").lower() == "true"
 
 whatsapp_scheduler = BackgroundScheduler()
 
@@ -735,6 +738,23 @@ def init_db():
             )
             """)
             cur.execute("""
+            CREATE TABLE IF NOT EXISTS activity_events (
+                id SERIAL PRIMARY KEY,
+                user_email VARCHAR(255) NOT NULL,
+                event_type VARCHAR(100) NOT NULL,
+                page_path TEXT NOT NULL,
+                action VARCHAR(255) NOT NULL,
+                target_type VARCHAR(100),
+                target_label TEXT,
+                target_name VARCHAR(255),
+                target_value TEXT,
+                success BOOLEAN DEFAULT TRUE,
+                occurred_at TIMESTAMP,
+                session_id VARCHAR(255),
+                metadata_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
                 id SERIAL PRIMARY KEY,
                 user_email VARCHAR(255) NOT NULL,
@@ -755,27 +775,24 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
-            try:
-                cur.execute("""
-                    DO $$ 
-                    BEGIN 
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns 
-                            WHERE table_name='auth_sessions' AND column_name='expires_at'
-                        ) THEN
-                            ALTER TABLE auth_sessions ADD COLUMN expires_at TIMESTAMP;
-                        END IF;
-                    END $$;
-                """)
-                cur.execute("UPDATE auth_sessions SET expires_at = COALESCE(expires_at, created_at + INTERVAL '90 days', CURRENT_TIMESTAMP + INTERVAL '90 days')")
-                cur.execute("ALTER TABLE auth_sessions ALTER COLUMN expires_at SET NOT NULL")
-                conn.commit()
-            except Exception as e:
-                print(f"Warning: Could not add auth session expiry column: {e}")
-                conn.rollback()
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS notification_settings (
+                notif_type VARCHAR(100) PRIMARY KEY,
+                display_name VARCHAR(255) NOT NULL,
+                description TEXT,
+                app_enabled BOOLEAN DEFAULT TRUE,
+                email_enabled BOOLEAN DEFAULT FALSE,
+                whatsapp_enabled BOOLEAN DEFAULT FALSE,
+                target_audience VARCHAR(50) NOT NULL DEFAULT 'all_active_users',
+                app_template TEXT NOT NULL,
+                email_subject TEXT NOT NULL,
+                email_template TEXT NOT NULL,
+                whatsapp_template TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
             conn.commit()
         else:
-            # SQLite version (for local development)
             cur = conn.cursor()
             try:
                 cur.execute("ALTER TABLE users DROP COLUMN password_hash")
@@ -806,148 +823,6 @@ def init_db():
             )
             """)
             cur.execute("""
-            CREATE TABLE IF NOT EXISTS auth_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                token TEXT UNIQUE NOT NULL,
-                user_email TEXT NOT NULL,
-                user_full_name TEXT NOT NULL,
-                user_id INTEGER NOT NULL,
-                expires_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """)
-            try:
-                cur.execute("ALTER TABLE auth_sessions ADD COLUMN expires_at TIMESTAMP")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add auth session expiry column: {e}")
-            try:
-                cur.execute("UPDATE auth_sessions SET expires_at = datetime(COALESCE(created_at, CURRENT_TIMESTAMP), '+90 days') WHERE expires_at IS NULL")
-            except sqlite3.OperationalError as e:
-                print(f"Warning: Could not backfill auth session expiry values: {e}")
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN password TEXT")
-            except sqlite3.OperationalError:
-                pass
-            # Add user_type column if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN user_type TEXT DEFAULT 'member'")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add user_type column: {e}")
-            # Add created_at column if it doesn't exist (without default due to SQLite limitation)
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN created_at TIMESTAMP")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add created_at column: {e}")
-            # Update NULL created_at values for existing users
-            try:
-                cur.execute("UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
-            except sqlite3.OperationalError:
-                pass
-            # Add is_deleted column if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN is_deleted BOOLEAN DEFAULT 0")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add is_deleted column: {e}")
-            # Add deleted_at column if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN deleted_at TIMESTAMP")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add deleted_at column: {e}")
-            # Add deleted_by column if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN deleted_by TEXT")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add deleted_by column: {e}")
-            # Add last_login column if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN last_login TIMESTAMP")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add last_login column: {e}")
-            # Add birthday column if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN birthday DATE")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add birthday column: {e}")
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN bank_name TEXT")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add bank_name column: {e}")
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN sort_code TEXT")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add sort_code column: {e}")
-            try:
-                cur.execute("ALTER TABLE users ADD COLUMN account_number TEXT")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add account_number column: {e}")
-            # Add session_cost column to practice_sessions if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE practice_sessions ADD COLUMN session_cost REAL")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add session_cost column: {e}")
-            # Add paid_by column to practice_sessions if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE practice_sessions ADD COLUMN paid_by TEXT")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add paid_by column: {e}")
-            # Add payment_requested column to practice_sessions if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE practice_sessions ADD COLUMN payment_requested INTEGER DEFAULT 0")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add payment_requested column: {e}")
-            try:
-                cur.execute("ALTER TABLE practice_sessions ADD COLUMN payment_requested_at TIMESTAMP")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add payment_requested_at column: {e}")
-            try:
-                cur.execute("ALTER TABLE practice_sessions ADD COLUMN maximum_capacity INTEGER DEFAULT 100")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add maximum_capacity column: {e}")
-            try:
-                cur.execute("UPDATE practice_sessions SET maximum_capacity = 100 WHERE maximum_capacity IS NULL")
-            except sqlite3.OperationalError as e:
-                print(f"Warning: Could not backfill maximum_capacity values: {e}")
-            # Add user_full_name to forum_posts if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE forum_posts ADD COLUMN user_full_name TEXT")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add user_full_name to forum_posts: {e}")
-            # Add user_full_name to forum_comments if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE forum_comments ADD COLUMN user_full_name TEXT")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add user_full_name to forum_comments: {e}")
-            # Add user_full_name to event_comments if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE event_comments ADD COLUMN user_full_name TEXT")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add user_full_name to event_comments: {e}")
-            # Add user_full_name to practice_availability if it doesn't exist
-            try:
-                cur.execute("ALTER TABLE practice_availability ADD COLUMN user_full_name TEXT")
-            except sqlite3.OperationalError as e:
-                if "duplicate column name" not in str(e).lower():
-                    print(f"Warning: Could not add user_full_name to practice_availability: {e}")
-            cur.executescript("""
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -958,28 +833,34 @@ def init_db():
                 description TEXT,
                 image_url TEXT,
                 youtube_url TEXT
-            );
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS event_media (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_id INTEGER,
-                media_url TEXT,
-                FOREIGN KEY(event_id) REFERENCES events(id)
-            );
+                event_id INTEGER REFERENCES events(id),
+                media_url TEXT
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS event_likes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_id INTEGER,
+                event_id INTEGER REFERENCES events(id),
                 user_email TEXT,
-                FOREIGN KEY(event_id) REFERENCES events(id)
-            );
+                UNIQUE(event_id, user_email)
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS event_comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_id INTEGER,
+                event_id INTEGER REFERENCES events(id),
                 user_email TEXT,
                 user_full_name TEXT,
                 comment TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(event_id) REFERENCES events(id)
-            );
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS practice_availability (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL,
@@ -987,48 +868,58 @@ def init_db():
                 user_full_name TEXT,
                 status TEXT NOT NULL CHECK(status IN ('available', 'tentative', 'not_available')),
                 UNIQUE(date, user_email)
-            );
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS practice_sessions (
                 date TEXT PRIMARY KEY,
                 time TEXT,
                 location TEXT,
                 session_cost REAL,
                 paid_by TEXT,
-                payment_requested INTEGER DEFAULT 0,
+                payment_requested BOOLEAN DEFAULT 0,
                 payment_requested_at TIMESTAMP,
                 maximum_capacity INTEGER DEFAULT 100
-            );
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS practice_payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 date TEXT NOT NULL,
                 user_email TEXT NOT NULL,
-                paid INTEGER DEFAULT 0,
+                paid BOOLEAN DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(date, user_email)
-            );
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS forum_posts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_email TEXT,
                 user_full_name TEXT,
                 content TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS forum_likes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                post_id INTEGER,
+                post_id INTEGER REFERENCES forum_posts(id),
                 user_email TEXT,
-                UNIQUE(post_id, user_email),
-                FOREIGN KEY(post_id) REFERENCES forum_posts(id)
-            );
+                UNIQUE(post_id, user_email)
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS forum_comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                post_id INTEGER,
+                post_id INTEGER REFERENCES forum_posts(id),
                 user_email TEXT,
                 user_full_name TEXT,
                 comment TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(post_id) REFERENCES forum_posts(id)
-            );
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_email TEXT,
@@ -1037,7 +928,27 @@ def init_db():
                 read INTEGER DEFAULT 0,
                 related_date DATE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+            )
+            """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS activity_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                page_path TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target_type TEXT,
+                target_label TEXT,
+                target_name TEXT,
+                target_value TEXT,
+                success INTEGER DEFAULT 1,
+                occurred_at TIMESTAMP,
+                session_id TEXT,
+                metadata_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_email TEXT NOT NULL,
@@ -1045,7 +956,20 @@ def init_db():
                 expires_at TIMESTAMP NOT NULL,
                 used INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+            )
+            """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT UNIQUE NOT NULL,
+                user_email TEXT NOT NULL,
+                user_full_name TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                expires_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS notification_settings (
                 notif_type TEXT PRIMARY KEY,
                 display_name TEXT NOT NULL,
@@ -1059,7 +983,7 @@ def init_db():
                 email_template TEXT NOT NULL,
                 whatsapp_template TEXT NOT NULL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+            )
             """)
             try:
                 cur.execute("ALTER TABLE events ADD COLUMN image_url TEXT")
@@ -1639,7 +1563,38 @@ class NotificationSettingOut(BaseModel):
     email_subject: str
     email_template: str
     whatsapp_template: str
-    updated_at: Optional[str] = None
+
+class ActivityEventIn(BaseModel):
+    event_type: str
+    page_path: str
+    action: str
+    target_type: Optional[str] = None
+    target_label: Optional[str] = None
+    target_name: Optional[str] = None
+    target_value: Optional[str] = None
+    success: Optional[bool] = True
+    occurred_at: Optional[str] = None
+    session_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class ActivityEventBatchIn(BaseModel):
+    events: List[ActivityEventIn]
+
+class ActivityEventOut(BaseModel):
+    id: int
+    user_email: str
+    event_type: str
+    page_path: str
+    action: str
+    target_type: Optional[str] = None
+    target_label: Optional[str] = None
+    target_name: Optional[str] = None
+    target_value: Optional[str] = None
+    success: bool = True
+    occurred_at: Optional[str] = None
+    session_id: Optional[str] = None
+    metadata_json: Optional[str] = None
+    created_at: Optional[str] = None
 
 class NotificationSettingUpdate(BaseModel):
     display_name: str
@@ -3545,6 +3500,118 @@ def notify_all_users(notif_type: str, message: str, exclude_email: str = None, r
             if email != exclude_email:
                 create_notification(email, notif_type, message, related_date)
 
+def serialize_activity_event_row(row: Any) -> ActivityEventOut:
+    row_dict = dict(row)
+    occurred_at = row_dict.get("occurred_at")
+    created_at = row_dict.get("created_at")
+    if occurred_at and hasattr(occurred_at, "isoformat"):
+        row_dict["occurred_at"] = occurred_at.isoformat()
+    elif occurred_at is not None:
+        row_dict["occurred_at"] = str(occurred_at)
+    if created_at and hasattr(created_at, "isoformat"):
+        row_dict["created_at"] = created_at.isoformat()
+    elif created_at is not None:
+        row_dict["created_at"] = str(created_at)
+    row_dict["success"] = bool(row_dict.get("success"))
+    return ActivityEventOut(**row_dict)
+
+def build_activity_events_query(
+    q: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user_email: Optional[str] = None,
+    event_type: Optional[str] = None,
+    success: Optional[str] = None,
+    limit: int = 200,
+):
+    safe_limit = max(1, min(limit, 5000))
+    search_value = (q or "").strip().lower()
+    filters = []
+    params = []
+
+    if search_value:
+        search_pattern = f"%{search_value}%"
+        if USE_POSTGRES:
+            search_placeholder = PLACEHOLDER
+        else:
+            search_placeholder = "?"
+        filters.append(
+            "(" + " OR ".join([
+                f"LOWER(COALESCE(user_email, '')) LIKE {search_placeholder}",
+                f"LOWER(COALESCE(event_type, '')) LIKE {search_placeholder}",
+                f"LOWER(COALESCE(page_path, '')) LIKE {search_placeholder}",
+                f"LOWER(COALESCE(action, '')) LIKE {search_placeholder}",
+                f"LOWER(COALESCE(target_type, '')) LIKE {search_placeholder}",
+                f"LOWER(COALESCE(target_label, '')) LIKE {search_placeholder}",
+                f"LOWER(COALESCE(target_name, '')) LIKE {search_placeholder}",
+                f"LOWER(COALESCE(target_value, '')) LIKE {search_placeholder}",
+                f"LOWER(COALESCE(session_id, '')) LIKE {search_placeholder}",
+                f"LOWER(COALESCE(metadata_json, '')) LIKE {search_placeholder}",
+                f"CAST(success AS TEXT) LIKE {search_placeholder}",
+            ]) + ")"
+        )
+        params.extend([search_pattern] * 11)
+
+    if start_date:
+        comparator = PLACEHOLDER if USE_POSTGRES else "?"
+        filters.append(f"DATE(COALESCE(occurred_at, created_at)) >= {comparator}")
+        params.append(start_date)
+
+    if end_date:
+        comparator = PLACEHOLDER if USE_POSTGRES else "?"
+        filters.append(f"DATE(COALESCE(occurred_at, created_at)) <= {comparator}")
+        params.append(end_date)
+
+    if user_email:
+        comparator = PLACEHOLDER if USE_POSTGRES else "?"
+        filters.append(f"user_email = {comparator}")
+        params.append(user_email)
+
+    if event_type:
+        comparator = PLACEHOLDER if USE_POSTGRES else "?"
+        filters.append(f"event_type = {comparator}")
+        params.append(event_type)
+
+    normalized_success = (success or "").strip().lower()
+    if normalized_success in {"success", "true", "1"}:
+        comparator = PLACEHOLDER if USE_POSTGRES else "?"
+        filters.append(f"success = {comparator}")
+        params.append(True if USE_POSTGRES else 1)
+    elif normalized_success in {"failure", "false", "0"}:
+        comparator = PLACEHOLDER if USE_POSTGRES else "?"
+        filters.append(f"success = {comparator}")
+        params.append(False if USE_POSTGRES else 0)
+
+    query = """
+        SELECT
+            id,
+            user_email,
+            event_type,
+            page_path,
+            action,
+            target_type,
+            target_label,
+            target_name,
+            target_value,
+            success,
+            occurred_at,
+            session_id,
+            metadata_json,
+            created_at
+        FROM activity_events
+    """
+
+    if filters:
+        query += " WHERE " + " AND ".join(filters)
+
+    if USE_POSTGRES:
+        query += f" ORDER BY COALESCE(occurred_at, created_at) DESC NULLS LAST, id DESC LIMIT {PLACEHOLDER}"
+    else:
+        query += " ORDER BY COALESCE(occurred_at, created_at) DESC, id DESC LIMIT ?"
+    params.append(safe_limit)
+
+    return query, params
+
 @app.get("/api/admin/notification-settings", response_model=List[NotificationSettingOut])
 def list_notification_settings(current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
@@ -3722,6 +3789,109 @@ def reset_notification_setting(notif_type: str, current_user: dict = Depends(get
 
     return serialize_notification_setting(get_notification_setting(notif_type))
 
+@app.get("/api/admin/activity-events", response_model=List[ActivityEventOut])
+def list_activity_events(
+    q: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user_email: Optional[str] = None,
+    event_type: Optional[str] = None,
+    success: Optional[str] = None,
+    limit: int = 200,
+    current_user: dict = Depends(get_current_user),
+):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        query, params = build_activity_events_query(
+            q=q,
+            start_date=start_date,
+            end_date=end_date,
+            user_email=user_email,
+            event_type=event_type,
+            success=success,
+            limit=limit,
+        )
+
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+
+    return [serialize_activity_event_row(row) for row in rows]
+
+@app.get("/api/admin/activity-events/export")
+def export_activity_events_csv(
+    q: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user_email: Optional[str] = None,
+    event_type: Optional[str] = None,
+    success: Optional[str] = None,
+    limit: int = 5000,
+    current_user: dict = Depends(get_current_user),
+):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        query, params = build_activity_events_query(
+            q=q,
+            start_date=start_date,
+            end_date=end_date,
+            user_email=user_email,
+            event_type=event_type,
+            success=success,
+            limit=limit,
+        )
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "id",
+        "user_email",
+        "event_type",
+        "page_path",
+        "action",
+        "target_type",
+        "target_label",
+        "target_name",
+        "target_value",
+        "success",
+        "occurred_at",
+        "session_id",
+        "metadata_json",
+        "created_at",
+    ])
+
+    for row in rows:
+        item = serialize_activity_event_row(row)
+        writer.writerow([
+            item.id,
+            item.user_email,
+            item.event_type,
+            item.page_path,
+            item.action,
+            item.target_type or "",
+            item.target_label or "",
+            item.target_name or "",
+            item.target_value or "",
+            "success" if item.success else "failure",
+            item.occurred_at or "",
+            item.session_id or "",
+            item.metadata_json or "",
+            item.created_at or "",
+        ])
+
+    output.seek(0)
+    filename = f"activity-events-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.csv"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers=headers)
+
 @app.get("/api/admin/whatsapp/status")
 def whatsapp_status(current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
@@ -3840,6 +4010,60 @@ def mark_notifications_read(current_user: dict = Depends(get_current_user)):
             )
         conn.commit()
         return {"message": "Notifications marked as read"}
+
+@app.post("/api/activity-events/batch")
+def log_activity_events(payload: ActivityEventBatchIn, current_user: dict = Depends(get_current_user)):
+    if not USER_ACTIVITY_LOGGING_ENABLED:
+        return {"logged": 0, "disabled": True}
+
+    if not payload.events:
+        return {"logged": 0}
+
+    max_events = 100
+    events = payload.events[:max_events]
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        for event in events:
+            metadata_json = json.dumps(event.metadata) if event.metadata is not None else None
+            success_value = bool(event.success) if event.success is not None else True
+
+            cur.execute(
+                f"""
+                INSERT INTO activity_events (
+                    user_email,
+                    event_type,
+                    page_path,
+                    action,
+                    target_type,
+                    target_label,
+                    target_name,
+                    target_value,
+                    success,
+                    occurred_at,
+                    session_id,
+                    metadata_json
+                ) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
+                """,
+                (
+                    current_user["email"],
+                    event.event_type[:100],
+                    event.page_path,
+                    event.action[:255],
+                    event.target_type[:100] if event.target_type else None,
+                    event.target_label,
+                    event.target_name[:255] if event.target_name else None,
+                    event.target_value,
+                    success_value if USE_POSTGRES else int(success_value),
+                    event.occurred_at,
+                    event.session_id[:255] if event.session_id else None,
+                    metadata_json,
+                ),
+            )
+
+        conn.commit()
+
+    return {"logged": len(events)}
 
 # --- Reports ---
 @app.get("/api/reports/booking")

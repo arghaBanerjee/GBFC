@@ -18,6 +18,66 @@ import clubLogo from './assets/club-logo.jpeg'
 import './index.css'
 
 const THEME_COOKIE_NAME = 'theme_preference'
+const ACTIVITY_SESSION_KEY = 'activity_session_id'
+const ACTIVITY_BATCH_SIZE = 10
+const ACTIVITY_FLUSH_INTERVAL = 15000
+const ACTIVITY_LOGGING_ENABLED = import.meta.env.VITE_ACTIVITY_LOGGING_ENABLED === 'true'
+
+function getActivitySessionId() {
+  if (typeof window === 'undefined') return null
+  const existing = window.sessionStorage.getItem(ACTIVITY_SESSION_KEY)
+  if (existing) return existing
+  const created = `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  window.sessionStorage.setItem(ACTIVITY_SESSION_KEY, created)
+  return created
+}
+
+function getTrackableTarget(target) {
+  if (!(target instanceof Element)) return null
+  return target.closest('button, a, input, select, textarea, [role="button"]')
+}
+
+function buildTargetDetails(target) {
+  if (!target) {
+    return {
+      targetType: 'unknown',
+      targetLabel: null,
+      targetName: null,
+      targetValue: null,
+      metadata: {},
+    }
+  }
+
+  const tagName = target.tagName?.toLowerCase() || 'unknown'
+  const targetType = target.getAttribute('type') || tagName
+  const textContent = target.textContent?.trim().replace(/\s+/g, ' ') || ''
+  const ariaLabel = target.getAttribute('aria-label') || ''
+  const targetLabel = textContent || ariaLabel || target.getAttribute('title') || target.getAttribute('placeholder') || null
+  const targetName = target.getAttribute('name') || target.getAttribute('id') || target.dataset?.trackName || null
+
+  let targetValue = null
+  if (tagName === 'input' && (targetType === 'checkbox' || targetType === 'radio')) {
+    targetValue = String(Boolean(target.checked))
+  } else if (tagName === 'select') {
+    targetValue = target.value || null
+  } else if (tagName === 'input' || tagName === 'textarea') {
+    targetValue = targetType === 'password' ? null : '[redacted]'
+  } else if (tagName === 'a') {
+    targetValue = target.getAttribute('href') || null
+  }
+
+  return {
+    targetType,
+    targetLabel,
+    targetName,
+    targetValue,
+    metadata: {
+      tag_name: tagName,
+      role: target.getAttribute('role') || null,
+      href: tagName === 'a' ? target.getAttribute('href') || null : null,
+    },
+  }
+}
 
 function readThemeCookie() {
   if (typeof document === 'undefined') return null
@@ -48,6 +108,56 @@ function App() {
   const location = useLocation()
   const sessionTimeoutRef = useRef(null)
   const lastActivityRef = useRef(Date.now())
+  const activityQueueRef = useRef([])
+  const activityFlushRef = useRef(null)
+  const activitySessionIdRef = useRef(getActivitySessionId())
+  const isFlushingActivityRef = useRef(false)
+  const activeTheme = user?.theme_preference || readThemeCookie() || 'nordic_neutral'
+
+  const flushActivityEvents = async (useKeepalive = false) => {
+    const token = localStorage.getItem('token')
+    if (!ACTIVITY_LOGGING_ENABLED || !token || !user || activityQueueRef.current.length === 0 || isFlushingActivityRef.current) return
+
+    const events = [...activityQueueRef.current]
+    activityQueueRef.current = []
+    isFlushingActivityRef.current = true
+
+    try {
+      const response = await fetch(apiUrl('/api/activity-events/batch'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ events }),
+        keepalive: useKeepalive,
+      })
+
+      if (!response.ok) {
+        activityQueueRef.current = [...events, ...activityQueueRef.current].slice(-100)
+      }
+    } catch (err) {
+      activityQueueRef.current = [...events, ...activityQueueRef.current].slice(-100)
+    } finally {
+      isFlushingActivityRef.current = false
+    }
+  }
+
+  const queueActivityEvent = (event) => {
+    if (!ACTIVITY_LOGGING_ENABLED || !user) return
+
+    activityQueueRef.current.push({
+      page_path: location.pathname + location.search,
+      occurred_at: new Date().toISOString(),
+      session_id: activitySessionIdRef.current,
+      success: true,
+      ...event,
+    })
+
+    if (activityQueueRef.current.length >= ACTIVITY_BATCH_SIZE) {
+      flushActivityEvents()
+    }
+  }
 
   // Shared function to fetch notifications
   const fetchNotifications = async () => {
@@ -61,6 +171,8 @@ function App() {
         const data = await res.json()
         setNotifications(data)
         setUnreadCount(data.filter(n => !n.read).length)
+      } else {
+        console.error('Failed to fetch notifications:', res.status)
       }
     } catch (err) {
       console.error('Failed to fetch notifications:', err)
@@ -163,12 +275,103 @@ function App() {
     }
   }, [])
 
-  // Poll notifications every 5 seconds
+  // Poll notifications every 10 seconds
   useEffect(() => {
     if (!user) return
     fetchNotifications()
     const interval = setInterval(fetchNotifications, 10000)
     return () => clearInterval(interval)
+  }, [user])
+
+  useEffect(() => {
+    if (!ACTIVITY_LOGGING_ENABLED || !user) return
+
+    queueActivityEvent({
+      event_type: 'page_view',
+      action: 'navigate',
+      target_type: 'page',
+      target_label: document.title || location.pathname,
+      metadata: {
+        referrer_path: document.referrer || null,
+        viewport_width: window.innerWidth,
+        viewport_height: window.innerHeight,
+        theme: activeTheme,
+      },
+    })
+  }, [user, location.pathname, location.search, activeTheme])
+
+  useEffect(() => {
+    if (!ACTIVITY_LOGGING_ENABLED || !user) return
+
+    const handleClick = (event) => {
+      const target = getTrackableTarget(event.target)
+      if (!target) return
+
+      const details = buildTargetDetails(target)
+      queueActivityEvent({
+        event_type: 'interaction',
+        action: 'click',
+        target_type: details.targetType,
+        target_label: details.targetLabel,
+        target_name: details.targetName,
+        target_value: details.targetValue,
+        metadata: details.metadata,
+      })
+    }
+
+    const handleChange = (event) => {
+      const target = getTrackableTarget(event.target)
+      if (!target) return
+
+      const details = buildTargetDetails(target)
+      queueActivityEvent({
+        event_type: 'interaction',
+        action: 'change',
+        target_type: details.targetType,
+        target_label: details.targetLabel,
+        target_name: details.targetName,
+        target_value: details.targetValue,
+        metadata: details.metadata,
+      })
+    }
+
+    document.addEventListener('click', handleClick, true)
+    document.addEventListener('change', handleChange, true)
+
+    return () => {
+      document.removeEventListener('click', handleClick, true)
+      document.removeEventListener('change', handleChange, true)
+    }
+  }, [user, location.pathname, location.search])
+
+  useEffect(() => {
+    if (!ACTIVITY_LOGGING_ENABLED || !user) return
+
+    activityFlushRef.current = setInterval(() => {
+      flushActivityEvents()
+    }, ACTIVITY_FLUSH_INTERVAL)
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushActivityEvents(true)
+      }
+    }
+
+    const handleBeforeUnload = () => {
+      flushActivityEvents(true)
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    return () => {
+      if (activityFlushRef.current) {
+        clearInterval(activityFlushRef.current)
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      flushActivityEvents(true).catch(() => {})
+    }
   }, [user])
 
   // Refresh notifications when location changes
@@ -188,7 +391,20 @@ function App() {
       })
       setNotifications(prev => prev.map(n => ({ ...n, read: true })))
       setUnreadCount(0)
+      queueActivityEvent({
+        event_type: 'api_result',
+        action: 'mark_notifications_read',
+        target_type: 'notifications',
+        success: true,
+      })
     } catch (err) {
+      queueActivityEvent({
+        event_type: 'api_result',
+        action: 'mark_notifications_read',
+        target_type: 'notifications',
+        success: false,
+        metadata: { error: err?.message || 'unknown_error' },
+      })
       console.error('Failed to mark notifications as read:', err)
     }
   }
@@ -214,7 +430,6 @@ function App() {
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
   const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
-  const activeTheme = user?.theme_preference || readThemeCookie() || 'nordic_neutral'
 
   useEffect(() => {
     document.body.dataset.theme = activeTheme

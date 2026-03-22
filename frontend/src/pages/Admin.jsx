@@ -16,7 +16,10 @@ export default function Admin({ user, loading }) {
     { value: 'forum', label: 'Forum Posts' },
     { value: 'users', label: 'Users' },
     { value: 'reports', label: 'Reports' },
-    ...(isSuperAdmin ? [{ value: 'notifications', label: 'Notifications' }] : []),
+    ...(isSuperAdmin ? [
+      { value: 'notifications', label: 'Notifications' },
+      { value: 'activity', label: 'User Activity' },
+    ] : []),
   ]
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
@@ -68,6 +71,16 @@ export default function Admin({ user, loading }) {
   const [notificationMeta, setNotificationMeta] = useState({ target_audiences: [], notification_types: [] })
   const [notificationSaving, setNotificationSaving] = useState('')
   const [notificationSaveStatusByType, setNotificationSaveStatusByType] = useState({})
+
+  // User activity
+  const [activityEvents, setActivityEvents] = useState([])
+  const [activitySearchTerm, setActivitySearchTerm] = useState('')
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityStartDate, setActivityStartDate] = useState('')
+  const [activityEndDate, setActivityEndDate] = useState('')
+  const [activitySelectedUser, setActivitySelectedUser] = useState('')
+  const [activitySelectedEventType, setActivitySelectedEventType] = useState('')
+  const [activitySelectedSuccess, setActivitySelectedSuccess] = useState('')
 
   // Track which data has been loaded to prevent unnecessary reloads
   const [loadedTabs, setLoadedTabs] = useState(new Set())
@@ -267,12 +280,84 @@ export default function Admin({ user, loading }) {
     }
   }
 
+  const handleExportActivityCsv = async () => {
+    try {
+      const params = buildActivityFilterParams({ limit: '5000' })
+      const res = await fetch(apiUrl(`/api/admin/activity-events/export?${params.toString()}`), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setMessage(data?.detail || 'Failed to export activity events')
+        return
+      }
+
+      const blob = await res.blob()
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const disposition = res.headers.get('Content-Disposition') || ''
+      const filenameMatch = disposition.match(/filename="?([^\"]+)"?/) 
+      link.href = downloadUrl
+      link.download = filenameMatch?.[1] || 'activity-events.csv'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(downloadUrl)
+    } catch (err) {
+      console.error('Error exporting activity events:', err)
+      setMessage('Error exporting activity events')
+    }
+  }
+
+  const buildActivityFilterParams = (overrides = {}) => {
+    const params = new URLSearchParams({ limit: '250' })
+    const searchValue = Object.prototype.hasOwnProperty.call(overrides, 'q') ? overrides.q : activitySearchTerm
+    const startDateValue = Object.prototype.hasOwnProperty.call(overrides, 'start_date') ? overrides.start_date : activityStartDate
+    const endDateValue = Object.prototype.hasOwnProperty.call(overrides, 'end_date') ? overrides.end_date : activityEndDate
+    const userValue = Object.prototype.hasOwnProperty.call(overrides, 'user_email') ? overrides.user_email : activitySelectedUser
+    const eventTypeValue = Object.prototype.hasOwnProperty.call(overrides, 'event_type') ? overrides.event_type : activitySelectedEventType
+    const successValue = Object.prototype.hasOwnProperty.call(overrides, 'success') ? overrides.success : activitySelectedSuccess
+
+    if ((searchValue || '').trim()) params.set('q', searchValue.trim())
+    if (startDateValue) params.set('start_date', startDateValue)
+    if (endDateValue) params.set('end_date', endDateValue)
+    if (userValue) params.set('user_email', userValue)
+    if (eventTypeValue) params.set('event_type', eventTypeValue)
+    if (successValue) params.set('success', successValue)
+
+    return params
+  }
+
+  const loadActivityEvents = async (overrides = {}) => {
+    setActivityLoading(true)
+    try {
+      const params = buildActivityFilterParams(overrides)
+
+      const res = await fetch(apiUrl(`/api/admin/activity-events?${params.toString()}`), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => [])
+      if (!res.ok) {
+        setMessage(data?.detail || 'Failed to load activity events')
+        return
+      }
+      setActivityEvents(data)
+    } catch (err) {
+      console.error('Error loading activity events:', err)
+      setMessage('Error loading activity events')
+    } finally {
+      setActivityLoading(false)
+    }
+  }
+
   const refreshTabData = (tabName) => {
     if (tabName === 'event') loadEvents()
     else if (tabName === 'practice') loadPracticeSessions()
     else if (tabName === 'forum') loadForumPosts()
     else if (tabName === 'users') loadUsers()
     else if (tabName === 'notifications' && isSuperAdmin) loadNotificationSettings()
+    else if (tabName === 'activity' && isSuperAdmin) loadActivityEvents()
   }
 
   const loadNotificationSettings = async () => {
@@ -330,6 +415,10 @@ export default function Admin({ user, loading }) {
       } else if (activeTab === 'notifications' && isSuperAdmin) {
         loadNotificationSettings()
         newLoadedTabs.add('notifications')
+        didLoadTab = true
+      } else if (activeTab === 'activity' && isSuperAdmin) {
+        loadActivityEvents()
+        newLoadedTabs.add('activity')
         didLoadTab = true
       }
       
@@ -731,6 +820,34 @@ export default function Admin({ user, loading }) {
       const bLastLogin = b.last_login ? new Date(b.last_login).getTime() : 0
       return bLastLogin - aLastLogin
     })
+
+  const activitySearchLower = activitySearchTerm.trim().toLowerCase()
+  const filteredActivityEvents = [...activityEvents].filter((event) => {
+    if (!activitySearchLower) return true
+    const haystack = [
+      event.user_email,
+      event.event_type,
+      event.page_path,
+      event.action,
+      event.target_type,
+      event.target_label,
+      event.target_name,
+      event.target_value,
+      event.session_id,
+      event.success ? 'success true yes' : 'failure false no',
+      event.occurred_at,
+      event.created_at,
+      event.metadata_json,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+
+    return haystack.includes(activitySearchLower)
+  })
+
+  const activityUserOptions = [...new Set(activityEvents.map((event) => event.user_email).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+  const activityEventTypeOptions = [...new Set(activityEvents.map((event) => event.event_type).filter(Boolean))].sort((a, b) => a.localeCompare(b))
 
   const formatBirthday = (birthday) => {
     if (!birthday) return 'Not Set'
@@ -1444,6 +1561,173 @@ export default function Admin({ user, loading }) {
               </p>
             )}
           </div>
+        </>
+      )}
+
+      {activeTab === 'activity' && isSuperAdmin && (
+        <>
+          <h3>User Activity</h3>
+          <p style={{ color: '#6b7280', maxWidth: '900px' }}>
+            Review recent user journey and interaction events. Use the search box to filter across email, page, action,
+            target details, success or failure state, session id, and metadata.
+          </p>
+
+          <div style={{ display: 'grid', gap: '0.75rem', marginTop: '1rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+              <input
+                type="date"
+                value={activityStartDate}
+                onChange={(e) => setActivityStartDate(e.target.value)}
+                style={{ padding: '0.875rem 1rem', borderRadius: '0.625rem', border: '1px solid #d1d5db', background: 'white' }}
+              />
+              <input
+                type="date"
+                value={activityEndDate}
+                onChange={(e) => setActivityEndDate(e.target.value)}
+                style={{ padding: '0.875rem 1rem', borderRadius: '0.625rem', border: '1px solid #d1d5db', background: 'white' }}
+              />
+              <select
+                value={activitySelectedUser}
+                onChange={(e) => setActivitySelectedUser(e.target.value)}
+                style={{ padding: '0.875rem 1rem', borderRadius: '0.625rem', border: '1px solid #d1d5db', background: 'white' }}
+              >
+                <option value="">All users</option>
+                {activityUserOptions.map((email) => (
+                  <option key={email} value={email}>{email}</option>
+                ))}
+              </select>
+              <select
+                value={activitySelectedEventType}
+                onChange={(e) => setActivitySelectedEventType(e.target.value)}
+                style={{ padding: '0.875rem 1rem', borderRadius: '0.625rem', border: '1px solid #d1d5db', background: 'white' }}
+              >
+                <option value="">All event types</option>
+                {activityEventTypeOptions.map((value) => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </select>
+              <select
+                value={activitySelectedSuccess}
+                onChange={(e) => setActivitySelectedSuccess(e.target.value)}
+                style={{ padding: '0.875rem 1rem', borderRadius: '0.625rem', border: '1px solid #d1d5db', background: 'white' }}
+              >
+                <option value="">All results</option>
+                <option value="success">Success</option>
+                <option value="failure">Failure</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={activitySearchTerm}
+              onChange={(e) => setActivitySearchTerm(e.target.value)}
+              placeholder="Search activity by user, page, action, target, success/failure, or metadata"
+              style={{
+                flex: '1 1 420px',
+                minWidth: '260px',
+                padding: '0.875rem 1rem',
+                borderRadius: '0.625rem',
+                border: '1px solid #d1d5db',
+                background: 'white',
+              }}
+            />
+            <button
+              className="nav-btn"
+              onClick={() => loadActivityEvents()}
+              disabled={activityLoading}
+              style={{ background: '#10b981', color: 'white', border: '1px solid #10b981' }}
+            >
+              {activityLoading ? 'Loading...' : 'Refresh'}
+            </button>
+            <button
+              className="nav-btn"
+              onClick={handleExportActivityCsv}
+              style={{ border: '1px solid #2563eb', color: 'white', background: '#2563eb' }}
+            >
+              Export CSV
+            </button>
+            <button
+              className="nav-btn"
+              onClick={() => {
+                setActivitySearchTerm('')
+                setActivityStartDate('')
+                setActivityEndDate('')
+                setActivitySelectedUser('')
+                setActivitySelectedEventType('')
+                setActivitySelectedSuccess('')
+                loadActivityEvents({ q: '', start_date: '', end_date: '', user_email: '', event_type: '', success: '' })
+              }}
+              style={{ border: '1px solid #d1d5db', color: '#111827', background: 'white' }}
+            >
+              Clear Filters
+            </button>
+            </div>
+          </div>
+
+          <div style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '0.75rem' }}>
+            Showing {filteredActivityEvents.length} of {activityEvents.length} loaded activity events
+          </div>
+
+          <div style={{ overflowX: 'auto', border: '1px solid #d1d5db', borderRadius: '0.75rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1200px' }}>
+              <thead>
+                <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
+                  <th style={{ padding: '0.85rem', borderBottom: '1px solid #e5e7eb' }}>When</th>
+                  <th style={{ padding: '0.85rem', borderBottom: '1px solid #e5e7eb' }}>User</th>
+                  <th style={{ padding: '0.85rem', borderBottom: '1px solid #e5e7eb' }}>Page</th>
+                  <th style={{ padding: '0.85rem', borderBottom: '1px solid #e5e7eb' }}>Event Type</th>
+                  <th style={{ padding: '0.85rem', borderBottom: '1px solid #e5e7eb', width: '120px', maxWidth: '120px' }}>Action</th>
+                  <th style={{ padding: '0.85rem', borderBottom: '1px solid #e5e7eb' }}>Target</th>
+                  <th style={{ padding: '0.85rem', borderBottom: '1px solid #e5e7eb' }}>Result</th>
+                  <th style={{ padding: '0.85rem', borderBottom: '1px solid #e5e7eb' }}>Session</th>
+                  <th style={{ padding: '0.85rem', borderBottom: '1px solid #e5e7eb' }}>Metadata</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredActivityEvents.map((event) => (
+                  <tr key={event.id} style={{ borderBottom: '1px solid #f3f4f6', verticalAlign: 'top' }}>
+                    <td style={{ padding: '0.85rem', color: '#374151', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+                      {event.occurred_at ? new Date(event.occurred_at).toLocaleString() : event.created_at ? new Date(event.created_at).toLocaleString() : 'N/A'}
+                    </td>
+                    <td style={{ padding: '0.85rem', color: '#111827', fontSize: '0.9rem', wordBreak: 'break-word' }}>{event.user_email}</td>
+                    <td style={{ padding: '0.85rem', color: '#111827', fontSize: '0.9rem', wordBreak: 'break-word' }}>{event.page_path}</td>
+                    <td style={{ padding: '0.85rem', color: '#111827', fontSize: '0.9rem' }}>{event.event_type}</td>
+                    <td style={{ padding: '0.85rem', color: '#111827', fontSize: '0.9rem', width: '120px', maxWidth: '120px', wordBreak: 'break-word' }}>{event.action}</td>
+                    <td style={{ padding: '0.85rem', color: '#374151', fontSize: '0.9rem' }}>
+                      <div><strong>Type:</strong> {event.target_type || 'N/A'}</div>
+                      <div><strong>Label:</strong> {event.target_label || 'N/A'}</div>
+                      <div><strong>Name:</strong> {event.target_name || 'N/A'}</div>
+                      <div><strong>Value:</strong> {event.target_value || 'N/A'}</div>
+                    </td>
+                    <td style={{ padding: '0.85rem', fontSize: '0.9rem' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '999px',
+                        fontWeight: '600',
+                        background: event.success ? '#dcfce7' : '#fee2e2',
+                        color: event.success ? '#166534' : '#991b1b',
+                      }}>
+                        {event.success ? 'Success' : 'Failure'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '0.85rem', color: '#374151', fontSize: '0.9rem', wordBreak: 'break-word' }}>{event.session_id || 'N/A'}</td>
+                    <td style={{ padding: '0.85rem', color: '#374151', fontSize: '0.85rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxWidth: '320px' }}>
+                      {event.metadata_json || 'N/A'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {!activityLoading && filteredActivityEvents.length === 0 && (
+            <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>
+              No activity events found for the current filter.
+            </p>
+          )}
         </>
       )}
     </div>
