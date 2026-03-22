@@ -117,7 +117,7 @@ body[data-theme='east_bengal'] {
 
 body[data-theme='mohun_bagan'] {
   --theme-bg: #f5f7f4;
-  --theme-bg-accent: radial-gradient(circle at top, rgba(128, 0, 32, 0.12), transparent 34%), linear-gradient(180deg, #f8faf7 0%, #eef4ef 100%);
+  --theme-bg-accent: radial-gradient(circle at top, rgba(148, 10, 48, 0.24), transparent 36%), linear-gradient(180deg, #f8faf7 0%, #eef4ef 100%);
   --theme-surface: #ffffff;
   --theme-surface-alt: #f3f7f2;
   --theme-surface-raised: #f8fafc;
