@@ -4,6 +4,27 @@ import { apiUrl } from '../api'
 import '../styles/UserActions.css'
 import { validateMatchTab } from '../utils/routeValidation'
 
+function getEventDateTime(event) {
+  if (!event?.date) return null
+
+  const rawTime = (event.time || '').trim()
+  const normalizedTime = /^\d{1,2}:\d{2}$/.test(rawTime) ? rawTime : '23:59'
+  const parsed = new Date(`${event.date}T${normalizedTime}`)
+
+  if (Number.isNaN(parsed.getTime())) {
+    const fallback = new Date(event.date)
+    return Number.isNaN(fallback.getTime()) ? null : fallback
+  }
+
+  return parsed
+}
+
+function getEventTab(event) {
+  const eventDateTime = getEventDateTime(event)
+  if (!eventDateTime) return 'upcoming'
+  return eventDateTime.getTime() < Date.now() ? 'past' : 'upcoming'
+}
+
 // Render description with links and images (URLs on separate lines)
 function renderDescription(text) {
   if (!text) return null
@@ -86,13 +107,18 @@ export default function Events({ user }) {
       .catch(() => setMyLikedEventIds(new Set()))
   }, [user])
 
-  const filtered = events.filter((e) => e.type === tab).sort((a, b) => {
+  const filtered = events.filter((e) => getEventTab(e) === tab).sort((a, b) => {
+    const aDate = getEventDateTime(a)
+    const bDate = getEventDateTime(b)
+    const aTime = aDate ? aDate.getTime() : 0
+    const bTime = bDate ? bDate.getTime() : 0
+
     // For upcoming: ascending (nearest first)
     // For past: descending (most recent first)
     if (tab === 'upcoming') {
-      return new Date(a.date) - new Date(b.date)
+      return aTime - bTime
     } else {
-      return new Date(b.date) - new Date(a.date)
+      return bTime - aTime
     }
   })
 
