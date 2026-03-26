@@ -770,6 +770,14 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS notification_channel_history (
+                notif_type VARCHAR(50) NOT NULL,
+                channel VARCHAR(50) NOT NULL,
+                last_sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (notif_type, channel)
+            )
+            """)
             try:
                 cur.execute("""
                     DO $$ 
@@ -1064,7 +1072,7 @@ def init_db():
                 notif_type TEXT PRIMARY KEY,
                 display_name TEXT NOT NULL,
                 description TEXT,
-                app_enabled INTEGER DEFAULT 1,
+                app_enabled BOOLEAN DEFAULT TRUE,
                 email_enabled INTEGER DEFAULT 0,
                 whatsapp_enabled INTEGER DEFAULT 0,
                 target_audience TEXT NOT NULL DEFAULT 'all_active_users',
@@ -1073,6 +1081,12 @@ def init_db():
                 email_template TEXT NOT NULL,
                 whatsapp_template TEXT NOT NULL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS notification_channel_history (
+                notif_type TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                last_sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (notif_type, channel)
             );
             """)
             try:
@@ -1286,7 +1300,7 @@ def get_notification_setting(notif_type: str) -> dict:
         raise HTTPException(status_code=404, detail="Notification type not found")
     return setting
 
-def resolve_notification_recipients(target_audience: str, payload: dict) -> list:
+def resolve_notification_recipients(target_audience: str, payload: dict, notif_type: str = None) -> list:
     with get_connection() as conn:
         cur = conn.cursor()
         if target_audience == "direct_user":
@@ -1316,6 +1330,33 @@ def resolve_notification_recipients(target_audience: str, payload: dict) -> list
                 """,
                 (payload["date"], "available"),
             )
+        elif notif_type == "pending_payment_reminder":
+            cur.execute(
+                f"""
+                SELECT DISTINCT u.email, u.full_name
+                FROM practice_sessions ps
+                JOIN practice_availability pa ON ps.date = pa.date
+                JOIN users u ON pa.user_email = u.email
+                LEFT JOIN practice_payments pp ON pa.date = pp.date AND pa.user_email = pp.user_email
+                WHERE ps.payment_requested = {PLACEHOLDER}
+                  AND ps.payment_requested_at IS NOT NULL
+                  AND pa.status = {PLACEHOLDER}
+                  AND (pp.paid IS NULL OR pp.paid = {PLACEHOLDER})
+                  AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+                """,
+                (True if USE_POSTGRES else 1, "available", False if USE_POSTGRES else 0),
+            )
+            recipients = []
+            for row in cur.fetchall():
+                row_dict = dict(row)
+                cur.execute(
+                    f"SELECT date, time FROM practice_sessions WHERE payment_requested = {PLACEHOLDER} AND payment_requested_at IS NOT NULL AND date IN (SELECT date FROM practice_availability WHERE user_email = {PLACEHOLDER} AND status = {PLACEHOLDER}) ORDER BY date DESC",
+                    (True if USE_POSTGRES else 1, row_dict["email"], "available"),
+                )
+                user_sessions = [dict(session_row) for session_row in cur.fetchall()]
+                if any(is_practice_datetime_in_past(session["date"], session.get("time")) for session in user_sessions):
+                    recipients.append(row_dict)
+            return recipients
         else:
             cur.execute("SELECT email, full_name FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL)")
         return [dict(row) for row in cur.fetchall()]
@@ -1334,6 +1375,52 @@ def send_direct_notification_email_safe(notif_type: str, payload: dict, recipien
         send_direct_notification_email(notif_type, payload, recipient_email)
     except Exception as exc:
         print(f"Background email send failed for {notif_type} to {recipient_email}: {exc}")
+
+def get_notification_channel_last_sent_at(cur, notif_type: str, channel: str):
+    cur.execute(
+        f"SELECT last_sent_at FROM notification_channel_history WHERE notif_type = {PLACEHOLDER} AND channel = {PLACEHOLDER}",
+        (notif_type, channel),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    row_dict = dict(row)
+    last_sent_at = row_dict.get("last_sent_at")
+    if isinstance(last_sent_at, str):
+        try:
+            return datetime.fromisoformat(last_sent_at.replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError:
+            return None
+    return last_sent_at
+
+def record_notification_channel_sent(cur, notif_type: str, channel: str):
+    if USE_POSTGRES:
+        cur.execute(
+            f"""
+            INSERT INTO notification_channel_history (notif_type, channel, last_sent_at)
+            VALUES ({PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)
+            ON CONFLICT (notif_type, channel)
+            DO UPDATE SET last_sent_at = CURRENT_TIMESTAMP
+            """,
+            (notif_type, channel),
+        )
+    else:
+        cur.execute(
+            """
+            INSERT INTO notification_channel_history (notif_type, channel, last_sent_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(notif_type, channel) DO UPDATE SET last_sent_at = CURRENT_TIMESTAMP
+            """,
+            (notif_type, channel),
+        )
+
+def should_send_whatsapp_notification(cur, notif_type: str) -> bool:
+    if notif_type != "pending_payment_reminder":
+        return True
+    last_sent_at = get_notification_channel_last_sent_at(cur, notif_type, "whatsapp")
+    if not last_sent_at:
+        return True
+    return datetime.now() >= last_sent_at + timedelta(days=5)
 
 def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None):
     guarded_notif_types = {"practice", "match", "practice_slot_available", "session_capacity_reached"}
@@ -1355,24 +1442,31 @@ def deliver_notification(notif_type: str, payload: dict, related_date: str = Non
 
     setting = get_notification_setting(notif_type)
     context = build_notification_context(payload)
-    recipients = resolve_notification_recipients(setting["target_audience"], payload)
+    recipients = resolve_notification_recipients(setting["target_audience"], payload, notif_type)
     if exclude_email:
         recipients = [recipient for recipient in recipients if recipient["email"] != exclude_email]
 
-    if setting["app_enabled"]:
-        app_message = render_notification_template(setting["app_template"], context)
-        for recipient in recipients:
-            create_notification(recipient["email"], notif_type, app_message, related_date)
+    with get_connection() as conn:
+        cur = conn.cursor()
 
-    if setting["email_enabled"]:
-        subject = render_notification_template(setting["email_subject"], context)
-        email_body = render_notification_template(setting["email_template"], context)
-        for recipient in recipients:
-            send_email(recipient["email"], subject, email_body)
+        if setting["app_enabled"]:
+            app_message = render_notification_template(setting["app_template"], context)
+            for recipient in recipients:
+                create_notification(recipient["email"], notif_type, app_message, related_date)
 
-    if setting["whatsapp_enabled"]:
-        whatsapp_message = render_notification_template(setting["whatsapp_template"], context)
-        send_whatsapp_notification(whatsapp_message)
+        if setting["email_enabled"]:
+            subject = render_notification_template(setting["email_subject"], context)
+            email_body = render_notification_template(setting["email_template"], context)
+            for recipient in recipients:
+                send_email(recipient["email"], subject, email_body)
+
+        if setting["whatsapp_enabled"]:
+            if should_send_whatsapp_notification(cur, notif_type):
+                whatsapp_message = render_notification_template(setting["whatsapp_template"], context)
+                if send_whatsapp_notification(whatsapp_message):
+                    record_notification_channel_sent(cur, notif_type, "whatsapp")
+
+        conn.commit()
 
 def normalize_maximum_capacity(value) -> int:
     if value is None or value == "":
