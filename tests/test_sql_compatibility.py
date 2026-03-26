@@ -39,7 +39,6 @@ def setup_test_db():
             date TEXT NOT NULL,
             time TEXT,
             location TEXT,
-            type TEXT DEFAULT 'match',
             description TEXT,
             image_url TEXT,
             youtube_url TEXT
@@ -76,7 +75,6 @@ def test_create_event_sqlite():
             "date": "2026-04-01",
             "time": "15:00",
             "location": "Test Stadium",
-            "type": "match",
             "description": "Test event",
             "image_url": "",
             "youtube_url": ""
@@ -84,9 +82,9 @@ def test_create_event_sqlite():
         
         # Insert event
         cur.execute(
-            f"INSERT INTO events (name, date, time, location, type, description, image_url, youtube_url) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            f"INSERT INTO events (name, date, time, location, description, image_url, youtube_url) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
             (event_data["name"], event_data["date"], event_data["time"], event_data["location"], 
-             event_data["type"], event_data["description"], event_data["image_url"], event_data["youtube_url"])
+             event_data["description"], event_data["image_url"], event_data["youtube_url"])
         )
         conn.commit()
         

@@ -634,12 +634,27 @@ def init_db():
                 date VARCHAR(50) NOT NULL,
                 time VARCHAR(50),
                 location TEXT,
-                type VARCHAR(50) NOT NULL CHECK(type IN ('past', 'upcoming')),
                 description TEXT,
                 image_url TEXT,
                 youtube_url TEXT
             )
             """)
+            try:
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='events' AND column_name='type'
+                        ) THEN
+                            ALTER TABLE events DROP COLUMN type;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not drop legacy events.type column: {e}")
+                conn.rollback()
             cur.execute("""
             CREATE TABLE IF NOT EXISTS event_media (
                 id SERIAL PRIMARY KEY,
@@ -954,7 +969,6 @@ def init_db():
                 date TEXT NOT NULL,
                 time TEXT,
                 location TEXT,
-                type TEXT NOT NULL CHECK(type IN ('past', 'upcoming')),
                 description TEXT,
                 image_url TEXT,
                 youtube_url TEXT
@@ -1061,6 +1075,28 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
+            try:
+                cur.execute("PRAGMA table_info(events)")
+                event_columns = [row[1] for row in cur.fetchall()]
+                if "type" in event_columns:
+                    cur.executescript("""
+                    ALTER TABLE events RENAME TO events_legacy;
+                    CREATE TABLE events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        date TEXT NOT NULL,
+                        time TEXT,
+                        location TEXT,
+                        description TEXT,
+                        image_url TEXT,
+                        youtube_url TEXT
+                    );
+                    INSERT INTO events (id, name, date, time, location, description, image_url, youtube_url)
+                    SELECT id, name, date, time, location, description, image_url, youtube_url FROM events_legacy;
+                    DROP TABLE events_legacy;
+                    """)
+            except sqlite3.OperationalError as e:
+                print(f"Warning: Could not drop legacy events.type column: {e}")
             try:
                 cur.execute("ALTER TABLE events ADD COLUMN image_url TEXT")
             except sqlite3.OperationalError:
@@ -1659,7 +1695,6 @@ class EventOut(BaseModel):
     date: str
     time: Optional[str]
     location: Optional[str]
-    type: str
     description: Optional[str]
     image_url: Optional[str] = None
     youtube_url: Optional[str] = None
@@ -1671,7 +1706,6 @@ class EventCreate(BaseModel):
     date: str
     time: Optional[str]
     location: Optional[str]
-    type: str
     description: Optional[str]
     image_url: Optional[str] = None
     youtube_url: Optional[str] = None
@@ -2504,6 +2538,7 @@ def get_events():
         events = []
         for row in cur.fetchall():
             event = dict(row)
+            event.pop("type", None)
             # likes with full names
             cur.execute(
                 f"SELECT el.user_email, u.full_name FROM event_likes el JOIN users u ON el.user_email = u.email WHERE el.event_id = {PLACEHOLDER}",
@@ -2538,7 +2573,9 @@ def get_event(event_id: int):
         event = cur.fetchone()
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
-        return EventOut(**dict(event))
+        event_dict = dict(event)
+        event_dict.pop("type", None)
+        return EventOut(**event_dict)
 
 @app.post("/api/events", response_model=EventOut)
 def create_event(event: EventCreate, current_user: dict = Depends(get_current_user)):
@@ -2549,8 +2586,8 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"INSERT INTO events (name, date, time, location, type, description, image_url, youtube_url) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (event.name, event.date, event.time, event.location, event.type, event.description, event.image_url, event.youtube_url),
+            f"INSERT INTO events (name, date, time, location, description, image_url, youtube_url) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (event.name, event.date, event.time, event.location, event.description, event.image_url, event.youtube_url),
         )
         conn.commit()
         
@@ -2585,8 +2622,8 @@ def update_event(event_id: int, event: EventCreate, current_user: dict = Depends
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE events SET name={PLACEHOLDER}, date={PLACEHOLDER}, time={PLACEHOLDER}, location={PLACEHOLDER}, type={PLACEHOLDER}, description={PLACEHOLDER}, image_url={PLACEHOLDER}, youtube_url={PLACEHOLDER} WHERE id={PLACEHOLDER}",
-            (event.name, event.date, event.time, event.location, event.type, event.description, event.image_url, event.youtube_url, event_id),
+            f"UPDATE events SET name={PLACEHOLDER}, date={PLACEHOLDER}, time={PLACEHOLDER}, location={PLACEHOLDER}, description={PLACEHOLDER}, image_url={PLACEHOLDER}, youtube_url={PLACEHOLDER} WHERE id={PLACEHOLDER}",
+            (event.name, event.date, event.time, event.location, event.description, event.image_url, event.youtube_url, event_id),
         )
         conn.commit()
         if cur.rowcount == 0:
