@@ -417,7 +417,8 @@ function App() {
                             setMobileMenuOpen(false)
                             if (notif.type === 'forum_post') navigate('/forum')
                             else if (notif.type === 'match') navigate('/matches/upcoming')
-                            else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed' || notif.type === 'pending_payment_reminder') {
+                            else if (notif.type === 'pending_payment_reminder') navigate('/user-actions/payments')
+                            else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed') {
                               if (notif.related_date) {
                                 navigate(`/book-practice?date=${notif.related_date}`)
                               } else {

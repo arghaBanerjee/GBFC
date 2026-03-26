@@ -1575,16 +1575,15 @@ def notify_pending_payment_reminders():
             WHERE payment_requested = {PLACEHOLDER}
               AND payment_requested_at IS NOT NULL
             ORDER BY payment_requested_at DESC, date DESC
-            LIMIT 1
             """,
             (True if USE_POSTGRES else 1,),
         )
-        session_row = cur.fetchone()
-        if not session_row:
+        sessions = [dict(row) for row in cur.fetchall()]
+        if not sessions:
             return
 
-        session = dict(session_row)
-        payment_requested_at = session.get("payment_requested_at")
+        latest_request = sessions[0]
+        payment_requested_at = latest_request.get("payment_requested_at")
         if not payment_requested_at:
             return
         if isinstance(payment_requested_at, str):
@@ -1596,19 +1595,29 @@ def notify_pending_payment_reminders():
         if now < payment_requested_at + timedelta(hours=72):
             return
 
-        pending_count = get_pending_payment_count_for_session(cur, session["date"])
-        if pending_count <= 0:
+        has_pending_payments = False
+        reminder_session = None
+        for candidate_session in sessions:
+            if not is_practice_datetime_in_past(candidate_session["date"], candidate_session.get("time")):
+                continue
+            pending_count = get_pending_payment_count_for_session(cur, candidate_session["date"])
+            if pending_count > 0:
+                has_pending_payments = True
+                reminder_session = candidate_session
+                break
+
+        if not has_pending_payments or not reminder_session:
             return
 
         deliver_notification(
             "pending_payment_reminder",
             {
-                "date": session["date"],
-                "time": session.get("time"),
-                "location": session.get("location"),
+                "date": reminder_session["date"],
+                "time": reminder_session.get("time"),
+                "location": reminder_session.get("location"),
                 "payments_link": "https://glasgow-bengali-fc.vercel.app/user-actions/payments",
             },
-            related_date=session["date"],
+            related_date=reminder_session["date"],
         )
 
 def serialize_notification_setting(row: dict) -> dict:
