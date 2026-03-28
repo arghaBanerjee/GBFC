@@ -99,10 +99,7 @@ export default function Reports() {
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem 1rem' }}>
-      <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '2rem', color: '#1f2937' }}>
-        Reports
-      </h1>
-
+    
       <div style={{ 
         background: 'white', 
         borderRadius: '0.5rem', 
