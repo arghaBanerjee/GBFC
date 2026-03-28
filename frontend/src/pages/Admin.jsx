@@ -1236,7 +1236,7 @@ export default function Admin({ user, loading }) {
                 background: 'white',
                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
               }}>
-                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Total Users</div>
+                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Registered Users</div>
                 <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{users.length}</div>
               </div>
               <div style={{
