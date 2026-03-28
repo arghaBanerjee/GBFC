@@ -2899,6 +2899,13 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
     normalized_time = normalize_practice_time(session.time)
     with get_connection() as conn:
         cur = conn.cursor()
+        cur.execute(
+            f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}",
+            (session.date,),
+        )
+        existing_session = cur.fetchone()
+        if existing_session and existing_session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Practice session cannot be edited after payment has been requested")
         if USE_POSTGRES:
             cur.execute(
                 f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date) DO UPDATE SET time = EXCLUDED.time, location = EXCLUDED.location, session_cost = EXCLUDED.session_cost, paid_by = EXCLUDED.paid_by, maximum_capacity = EXCLUDED.maximum_capacity",
@@ -2933,6 +2940,15 @@ def update_practice_session(date_str: str, session: PracticeSessionCreate, curre
     normalized_time = normalize_practice_time(session.time)
     with get_connection() as conn:
         cur = conn.cursor()
+        cur.execute(
+            f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}",
+            (date_str,),
+        )
+        existing_session = cur.fetchone()
+        if not existing_session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+        if existing_session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Practice session cannot be edited after payment has been requested")
         cur.execute(
             f"UPDATE practice_sessions SET time = {PLACEHOLDER}, location = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
             (normalized_time, session.location, session.session_cost, session.paid_by, maximum_capacity, date_str),
@@ -3596,6 +3612,15 @@ def delete_practice(date_str: str, current_user: dict = Depends(get_current_user
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
+        cur.execute(
+            f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}",
+            (date_str,),
+        )
+        existing_session = cur.fetchone()
+        if not existing_session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+        if existing_session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Practice session cannot be deleted after payment has been requested")
         cur.execute(f"DELETE FROM practice_sessions WHERE date = {PLACEHOLDER}", (date_str,))
         conn.commit()
         return {"message": "Practice session deleted"}

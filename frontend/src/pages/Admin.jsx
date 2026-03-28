@@ -48,6 +48,8 @@ export default function Admin({ user, loading }) {
   const [practiceDate, setPracticeDate] = useState('')
   const [practiceTime, setPracticeTime] = useState('21:00')
   const [practiceLocation, setPracticeLocation] = useState('')
+  const [practiceSessionCost, setPracticeSessionCost] = useState('')
+  const [practicePaidBy, setPracticePaidBy] = useState('')
   const [practiceMaximumCapacity, setPracticeMaximumCapacity] = useState('18')
   const [practiceInlineStatus, setPracticeInlineStatus] = useState('')
   const [practiceListTab, setPracticeListTab] = useState('upcoming')
@@ -314,7 +316,10 @@ export default function Admin({ user, loading }) {
 
   const refreshTabData = (tabName) => {
     if (tabName === 'event') loadEvents()
-    else if (tabName === 'practice') loadPracticeSessions()
+    else if (tabName === 'practice') {
+      loadPracticeSessions()
+      loadUsers()
+    }
     else if (tabName === 'forum') loadForumPosts()
     else if (tabName === 'users') loadUsers()
     else if (tabName === 'expense') {
@@ -366,6 +371,7 @@ export default function Admin({ user, loading }) {
         didLoadTab = true
       } else if (activeTab === 'practice') {
         loadPracticeSessions()
+        loadUsers()
         newLoadedTabs.add('practice')
         didLoadTab = true
       } else if (activeTab === 'forum') {
@@ -492,6 +498,8 @@ export default function Admin({ user, loading }) {
     setPracticeDate('')
     setPracticeTime('21:00')
     setPracticeLocation('')
+    setPracticeSessionCost('')
+    setPracticePaidBy('')
     setPracticeMaximumCapacity('18')
     setPracticeInlineStatus('')
   }
@@ -599,6 +607,8 @@ export default function Admin({ user, loading }) {
       date: practiceDate,
       time: practiceTime,
       location: practiceLocation,
+      session_cost: practiceSessionCost !== '' ? parseFloat(practiceSessionCost) : null,
+      paid_by: practicePaidBy || null,
       maximum_capacity: practiceMaximumCapacity ? parseInt(practiceMaximumCapacity, 10) : 100,
     }
 
@@ -654,12 +664,15 @@ export default function Admin({ user, loading }) {
   }
 
   const handleEditPractice = (s) => {
+    if (s.payment_requested) return
     setActiveTab('practice')
     setPracticeInlineStatus('')
     setEditingPracticeDate(s.date)
     setPracticeDate(s.date || '')
     setPracticeTime(s.time || '')
     setPracticeLocation(s.location || '')
+    setPracticeSessionCost(s.session_cost != null ? String(s.session_cost) : '')
+    setPracticePaidBy(s.paid_by || '')
     setPracticeMaximumCapacity((s.maximum_capacity || 100).toString())
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -1059,7 +1072,7 @@ export default function Admin({ user, loading }) {
             display: 'flex', 
             flexDirection: 'column', 
             gap: '1rem', 
-            maxWidth: 600,
+            maxWidth: 560,
             border: '1px solid #d1d5db',
             borderRadius: '0.5rem',
             padding: '1.5rem',
@@ -1082,9 +1095,22 @@ export default function Admin({ user, loading }) {
               <label>Maximum Capacity</label>
               <input type="number" min="1" value={practiceMaximumCapacity} onChange={(e) => setPracticeMaximumCapacity(e.target.value)} style={{ width: '100%' }} />
             </div>
+            <div>
+              <label>Total Cost</label>
+              <input type="number" min="0" step="0.01" value={practiceSessionCost} onChange={(e) => setPracticeSessionCost(e.target.value)} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label>Paid By</label>
+              <select value={practicePaidBy} onChange={(e) => setPracticePaidBy(e.target.value)} style={{ width: '100%' }}>
+                <option value="">Select user (optional)</option>
+                {users.map((u) => (
+                  <option key={u.email} value={u.email}>{u.full_name}</option>
+                ))}
+              </select>
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>{editingPracticeDate ? 'Update Practice' : 'Add Practice'}</button>
-              {(editingPracticeDate || practiceDate || practiceTime !== '21:00' || practiceLocation || practiceMaximumCapacity !== '18') && (
+              {(editingPracticeDate || practiceDate || practiceTime !== '21:00' || practiceLocation || practiceSessionCost || practicePaidBy || practiceMaximumCapacity !== '18') && (
                 <button className="nav-btn" type="button" onClick={resetPracticeForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
                   Clear
                 </button>
@@ -1131,35 +1157,40 @@ export default function Admin({ user, loading }) {
                   onClick={() => navigate(`/book-practice?date=${encodeURIComponent(s.date)}`)}
                   style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa', cursor: 'pointer' }}
                 >
+                  {(() => {
+                    const actionsLocked = s.payment_requested
+                    return (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <strong>{s.date}</strong>
                     <div>
-                      <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} style={{ marginRight: 8, border: '1px solid #d1d5db', color: '#111827' }}>
+                      <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} disabled={actionsLocked} style={{ marginRight: 8, border: actionsLocked ? '1px solid #d1d5db' : '1px solid #d1d5db', color: actionsLocked ? '#9ca3af' : '#111827', cursor: actionsLocked ? 'not-allowed' : 'pointer', background: actionsLocked ? '#f3f4f6' : undefined }}>
                         Edit
                       </button>
                       <button
                         className="nav-btn"
                         onClick={(e) => { e.stopPropagation(); handleDeletePractice(s.date) }}
-                        disabled={practiceListTab === 'past'}
+                        disabled={actionsLocked}
                         style={{
-                          background: practiceListTab === 'past' ? '#d1d5db' : '#ef4444',
+                          background: actionsLocked ? '#d1d5db' : '#ef4444',
                           color: 'white',
-                          border: practiceListTab === 'past' ? '1px solid #d1d5db' : '1px solid #ef4444',
-                          cursor: practiceListTab === 'past' ? 'not-allowed' : 'pointer'
+                          border: actionsLocked ? '1px solid #d1d5db' : '1px solid #ef4444',
+                          cursor: actionsLocked ? 'not-allowed' : 'pointer'
                         }}
                       >
                         Delete
                       </button>
                     </div>
                   </div>
+                    )
+                  })()}
                   <div style={{ opacity: 0.8, marginTop: 6 }}>Time: {s.time || 'TBD'}</div>
                   <div style={{ opacity: 0.8 }}>Location: {s.location || 'TBD'}</div>
                   <div style={{ opacity: 0.8 }}>Maximum Capacity: {s.maximum_capacity || 100}</div>
-                  <div style={{ opacity: 0.8 }}>Total Amount: {s.session_cost != null ? `£${Number(s.session_cost).toFixed(2)}` : 'Not set'}</div>
+                  <div style={{ opacity: 0.8 }}>Total Cost: {s.session_cost != null ? `£${Number(s.session_cost).toFixed(2)}` : 'Not set'}</div>
                   <div style={{ opacity: 0.8 }}>Paid By: {s.paid_by_name || s.paid_by || 'Not set'}</div>
-                  {practiceListTab === 'past' && (
+                  {s.payment_requested && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>
-                      Past practice records can be edited but not deleted.
+                      Payment has been requested for this session, so edits are disabled.
                     </div>
                   )}
                 </div>
