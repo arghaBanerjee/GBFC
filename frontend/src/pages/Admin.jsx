@@ -74,6 +74,9 @@ export default function Admin({ user, loading }) {
   const [expenseCategory, setExpenseCategory] = useState('')
   const [expensePaymentMethod, setExpensePaymentMethod] = useState('')
   const [expenseDescription, setExpenseDescription] = useState('')
+  const [expenseSearchTerm, setExpenseSearchTerm] = useState('')
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all')
+  const [expensePaidByFilter, setExpensePaidByFilter] = useState('all')
 
   // Notifications
   const [notificationSettings, setNotificationSettings] = useState([])
@@ -207,6 +210,19 @@ export default function Admin({ user, loading }) {
     practice_slot_available: ['{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     welcome_signup: ['{{full_name}}', '{{club_name}}'],
   }
+
+  const expenseCategoryOptions = [
+    'Ground',
+    'Equipment',
+    'Transport',
+    'Refreshments',
+    'Tournament',
+    'Referee',
+    'Kit',
+    'Medical',
+    'Administration',
+    'Other',
+  ]
 
   const renderNotificationPreview = (template, notifType) => {
     const context = notificationPreviewSamples[notifType] || {}
@@ -859,6 +875,25 @@ export default function Admin({ user, loading }) {
   const todayAtMidnight = new Date()
   todayAtMidnight.setHours(0, 0, 0, 0)
 
+  const hasUpcomingBirthday = (birthday) => {
+    if (!birthday) return false
+    const parsedDate = new Date(`${birthday}T00:00:00`)
+    if (Number.isNaN(parsedDate.getTime())) return false
+
+    const nextBirthday = new Date(todayAtMidnight)
+    nextBirthday.setMonth(parsedDate.getMonth(), parsedDate.getDate())
+    nextBirthday.setHours(0, 0, 0, 0)
+
+    if (nextBirthday < todayAtMidnight) {
+      nextBirthday.setFullYear(nextBirthday.getFullYear() + 1)
+    }
+
+    const diffInDays = Math.ceil((nextBirthday.getTime() - todayAtMidnight.getTime()) / (1000 * 60 * 60 * 24))
+    return diffInDays >= 0 && diffInDays <= 30
+  }
+
+  const upcomingBirthdaysCount = users.filter((u) => hasUpcomingBirthday(u.birthday)).length
+
   const upcomingPracticeSessions = practiceSessions
     .filter((s) => new Date(`${s.date}T00:00:00`) >= todayAtMidnight)
     .sort((a, b) => new Date(a.date) - new Date(b.date))
@@ -872,6 +907,29 @@ export default function Admin({ user, loading }) {
     if (dateCompare !== 0) return dateCompare
     return (b.id || 0) - (a.id || 0)
   })
+
+  const searchableExpenseText = (expense) => [
+    expense.title,
+    expense.description,
+    expense.category,
+    expense.payment_method,
+    expense.paid_by_name,
+    expense.paid_by,
+    expense.expense_date,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  const filteredExpenses = sortedExpenses.filter((expense) => {
+    const matchesSearch = !expenseSearchTerm.trim() || searchableExpenseText(expense).includes(expenseSearchTerm.trim().toLowerCase())
+    const matchesCategory = expenseCategoryFilter === 'all' || (expense.category || '') === expenseCategoryFilter
+    const matchesPaidBy = expensePaidByFilter === 'all' || (expense.paid_by || '') === expensePaidByFilter
+    return matchesSearch && matchesCategory && matchesPaidBy
+  })
+
+  const filteredExpenseTotal = filteredExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0)
+  const availableExpenseCategories = Array.from(new Set(sortedExpenses.map((expense) => expense.category).filter(Boolean)))
 
   if (!isAdmin) {
     return (
@@ -1164,8 +1222,35 @@ export default function Admin({ user, loading }) {
 
       {activeTab === 'users' && (
         <>
-          <h3>Registered Users</h3>
           <div style={{ marginTop: '1rem' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <div style={{
+                border: '1px solid #d1d5db',
+                borderRadius: '0.75rem',
+                padding: '1rem',
+                background: 'white',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
+              }}>
+                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Total Users</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{users.length}</div>
+              </div>
+              <div style={{
+                border: '1px solid #d1d5db',
+                borderRadius: '0.75rem',
+                padding: '1rem',
+                background: 'white',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
+              }}>
+                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Upcoming Birthdays</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{upcomingBirthdaysCount}</div>
+                <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.35rem' }}>Next 30 days</div>
+              </div>
+            </div>
             <input
               type="text"
               value={userSearchTerm}
@@ -1181,15 +1266,18 @@ export default function Admin({ user, loading }) {
                 boxSizing: 'border-box'
               }}
             />
-            {filteredUsers.map((u) => (
-              <div 
-                key={u.email} 
-                style={{ 
-                  border: u.email === user?.email ? '1px solid #86efac' : '1px solid #d1d5db',
+            {filteredUsers.map((u) => {
+              const isUpcomingBirthdayUser = hasUpcomingBirthday(u.birthday)
+              return (
+              <div
+                key={u.email}
+                style={{
+                  border: isUpcomingBirthdayUser ? '1px solid #f59e0b' : u.email === user?.email ? '1px solid #86efac' : '1px solid #d1d5db',
                   borderRadius: '0.75rem',
                   padding: '1rem',
                   marginBottom: '1rem',
-                  background: u.email === user?.email ? '#f0fdf4' : 'white'
+                  background: isUpcomingBirthdayUser ? 'linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%)' : u.email === user?.email ? '#f0fdf4' : 'white',
+                  boxShadow: isUpcomingBirthdayUser ? '0 4px 14px rgba(245, 158, 11, 0.15)' : 'none'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
@@ -1263,6 +1351,23 @@ export default function Admin({ user, loading }) {
                     <div style={{ color: '#6b7280', fontSize: '0.95rem', marginBottom: '0.75rem' }}>
                       <strong>Birthday:</strong> {formatBirthday(u.birthday)}
                     </div>
+                    {isUpcomingBirthdayUser && (
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        marginBottom: '0.75rem',
+                        padding: '0.35rem 0.6rem',
+                        borderRadius: '999px',
+                        background: '#ffffff',
+                        border: '1px solid #fdba74',
+                        color: '#9a3412',
+                        fontSize: '0.8rem',
+                        fontWeight: '600'
+                      }}>
+                        🎉 Upcoming birthday
+                      </div>
+                    )}
                     <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                       <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: '#374151' }}>
                         <input
@@ -1351,7 +1456,8 @@ export default function Admin({ user, loading }) {
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
             {filteredUsers.length === 0 && <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>No users found.</p>}
           </div>
         </>
@@ -1359,6 +1465,22 @@ export default function Admin({ user, loading }) {
 
       {activeTab === 'expense' && (
         <>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '1rem',
+            marginBottom: '1rem'
+          }}>
+            <div style={{ border: '1px solid #d1d5db', borderRadius: '0.75rem', padding: '1rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)' }}>
+              <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Filtered Total</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>£{filteredExpenseTotal.toFixed(2)}</div>
+            </div>
+            <div style={{ border: '1px solid #d1d5db', borderRadius: '0.75rem', padding: '1rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)' }}>
+              <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Matching Expenses</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{filteredExpenses.length}</div>
+            </div>
+          </div>
+
           <form onSubmit={handleSubmitExpense} style={{
             display: 'flex',
             flexDirection: 'column',
@@ -1396,7 +1518,12 @@ export default function Admin({ user, loading }) {
               </div>
               <div>
                 <label>Category</label>
-                <input value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)} placeholder="e.g. Ground, Equipment, Transport" style={{ width: '100%' }} />
+                <select value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)} style={{ width: '100%' }}>
+                  <option value="">Select category (optional)</option>
+                  {expenseCategoryOptions.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div>
@@ -1420,8 +1547,64 @@ export default function Admin({ user, loading }) {
           </form>
 
           <h3 style={{ marginTop: '2rem' }}>Expenses</h3>
+          <div style={{
+            border: '1px solid #d1d5db',
+            borderRadius: '0.75rem',
+            padding: '1rem',
+            background: 'white',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
+            marginBottom: '1rem'
+          }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '1rem'
+            }}>
+              <div>
+                <label>Search</label>
+                <input
+                  value={expenseSearchTerm}
+                  onChange={(e) => setExpenseSearchTerm(e.target.value)}
+                  placeholder="Search title, description, category, payer..."
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label>Filter by Category</label>
+                <select value={expenseCategoryFilter} onChange={(e) => setExpenseCategoryFilter(e.target.value)} style={{ width: '100%' }}>
+                  <option value="all">All categories</option>
+                  {availableExpenseCategories.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label>Filter by Paid By</label>
+                <select value={expensePaidByFilter} onChange={(e) => setExpensePaidByFilter(e.target.value)} style={{ width: '100%' }}>
+                  <option value="all">All users</option>
+                  {users.map((u) => (
+                    <option key={u.email} value={u.email}>{u.full_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'end' }}>
+                <button
+                  type="button"
+                  className="nav-btn"
+                  onClick={() => {
+                    setExpenseSearchTerm('')
+                    setExpenseCategoryFilter('all')
+                    setExpensePaidByFilter('all')
+                  }}
+                  style={{ border: '1px solid #d1d5db', color: '#111827', width: '100%' }}
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+          </div>
           <div style={{ display: 'grid', gap: '1rem' }}>
-            {sortedExpenses.map((expense) => (
+            {filteredExpenses.map((expense) => (
               <div key={expense.id} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                   <div>
@@ -1447,7 +1630,7 @@ export default function Admin({ user, loading }) {
                 {expense.description && <div style={{ opacity: 0.85, fontSize: '0.9rem', whiteSpace: 'pre-wrap' }}>{expense.description}</div>}
               </div>
             ))}
-            {sortedExpenses.length === 0 && <p>No expenses recorded yet.</p>}
+            {filteredExpenses.length === 0 && <p>{sortedExpenses.length === 0 ? 'No expenses recorded yet.' : 'No expenses match the current filters.'}</p>}
           </div>
         </>
       )}
