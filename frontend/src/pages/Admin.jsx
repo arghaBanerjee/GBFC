@@ -15,6 +15,7 @@ export default function Admin({ user, loading }) {
     { value: 'event', label: 'Add Match' },
     { value: 'forum', label: 'Forum Posts' },
     { value: 'users', label: 'Users' },
+    { value: 'expense', label: 'Expense' },
     { value: 'reports', label: 'Reports' },
     ...(isSuperAdmin ? [{ value: 'notifications', label: 'Notifications' }] : []),
   ]
@@ -62,6 +63,17 @@ export default function Admin({ user, loading }) {
   const [editingUserName, setEditingUserName] = useState('')
   const [userSearchTerm, setUserSearchTerm] = useState('')
   const [userTypeStatusByEmail, setUserTypeStatusByEmail] = useState({})
+
+  // Expenses
+  const [expenses, setExpenses] = useState([])
+  const [editingExpenseId, setEditingExpenseId] = useState(null)
+  const [expenseTitle, setExpenseTitle] = useState('')
+  const [expenseAmount, setExpenseAmount] = useState('')
+  const [expensePaidBy, setExpensePaidBy] = useState('')
+  const [expenseDate, setExpenseDate] = useState('')
+  const [expenseCategory, setExpenseCategory] = useState('')
+  const [expensePaymentMethod, setExpensePaymentMethod] = useState('')
+  const [expenseDescription, setExpenseDescription] = useState('')
 
   // Notifications
   const [notificationSettings, setNotificationSettings] = useState([])
@@ -267,11 +279,32 @@ export default function Admin({ user, loading }) {
     }
   }
 
+  const loadExpenses = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/expenses'), {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        setExpenses(await res.json())
+      } else {
+        const error = await res.json().catch(() => ({}))
+        setMessage(error?.detail || 'Failed to load expenses')
+      }
+    } catch (err) {
+      console.error('Error loading expenses:', err)
+      setMessage('Error loading expenses')
+    }
+  }
+
   const refreshTabData = (tabName) => {
     if (tabName === 'event') loadEvents()
     else if (tabName === 'practice') loadPracticeSessions()
     else if (tabName === 'forum') loadForumPosts()
     else if (tabName === 'users') loadUsers()
+    else if (tabName === 'expense') {
+      loadExpenses()
+      loadUsers()
+    }
     else if (tabName === 'notifications' && isSuperAdmin) loadNotificationSettings()
   }
 
@@ -326,6 +359,11 @@ export default function Admin({ user, loading }) {
       } else if (activeTab === 'users') {
         loadUsers()
         newLoadedTabs.add('users')
+        didLoadTab = true
+      } else if (activeTab === 'expense') {
+        loadExpenses()
+        loadUsers()
+        newLoadedTabs.add('expense')
         didLoadTab = true
       } else if (activeTab === 'notifications' && isSuperAdmin) {
         loadNotificationSettings()
@@ -447,6 +485,17 @@ export default function Admin({ user, loading }) {
     setForumPostContent('')
   }
 
+  const resetExpenseForm = () => {
+    setEditingExpenseId(null)
+    setExpenseTitle('')
+    setExpenseAmount('')
+    setExpensePaidBy('')
+    setExpenseDate('')
+    setExpenseCategory('')
+    setExpensePaymentMethod('')
+    setExpenseDescription('')
+  }
+
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -476,7 +525,6 @@ export default function Admin({ user, loading }) {
       date: eventDate,
       time: eventTime,
       location: eventLocation,
-      type: new Date(eventDate) > new Date() ? 'upcoming' : 'past',
       description: eventDescription,
       image_url: eventImageUrl,
       youtube_url: eventYoutubeUrl,
@@ -643,6 +691,64 @@ export default function Admin({ user, loading }) {
     refreshTabData('forum')
   }
 
+  const handleSubmitExpense = async (e) => {
+    e.preventDefault()
+    const payload = {
+      title: expenseTitle,
+      amount: parseFloat(expenseAmount),
+      paid_by: expensePaidBy || null,
+      expense_date: expenseDate,
+      category: expenseCategory || null,
+      payment_method: expensePaymentMethod || null,
+      description: expenseDescription || null,
+    }
+    const res = await fetch(apiUrl(editingExpenseId ? `/api/expenses/${editingExpenseId}` : '/api/expenses'), {
+      method: editingExpenseId ? 'PUT' : 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMessage(data?.detail || 'Failed to save expense')
+      return
+    }
+    setMessage(editingExpenseId ? 'Expense updated.' : 'Expense created.')
+    resetExpenseForm()
+    refreshTabData('expense')
+  }
+
+  const handleEditExpense = (expense) => {
+    setActiveTab('expense')
+    setEditingExpenseId(expense.id)
+    setExpenseTitle(expense.title || '')
+    setExpenseAmount(expense.amount != null ? String(expense.amount) : '')
+    setExpensePaidBy(expense.paid_by || '')
+    setExpenseDate(expense.expense_date || '')
+    setExpenseCategory(expense.category || '')
+    setExpensePaymentMethod(expense.payment_method || '')
+    setExpenseDescription(expense.description || '')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleDeleteExpense = async (expenseId) => {
+    if (!confirm('Delete this expense?')) return
+    const res = await fetch(apiUrl(`/api/expenses/${expenseId}`), {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMessage(data?.detail || 'Failed to delete expense')
+      return
+    }
+    setMessage('Expense deleted.')
+    if (editingExpenseId === expenseId) resetExpenseForm()
+    refreshTabData('expense')
+  }
+
   const handleDeleteForumPost = async (postId) => {
     if (!confirm('Delete this post?')) return
     const res = await fetch(apiUrl(`/api/forum/${postId}`), {
@@ -760,6 +866,12 @@ export default function Admin({ user, loading }) {
   const pastPracticeSessions = practiceSessions
     .filter((s) => new Date(`${s.date}T00:00:00`) < todayAtMidnight)
     .sort((a, b) => new Date(b.date) - new Date(a.date))
+
+  const sortedExpenses = [...expenses].sort((a, b) => {
+    const dateCompare = new Date(`${b.expense_date}T00:00:00`) - new Date(`${a.expense_date}T00:00:00`)
+    if (dateCompare !== 0) return dateCompare
+    return (b.id || 0) - (a.id || 0)
+  })
 
   if (!isAdmin) {
     return (
@@ -1241,6 +1353,101 @@ export default function Admin({ user, loading }) {
               </div>
             ))}
             {filteredUsers.length === 0 && <p style={{ marginTop: '1rem', textAlign: 'center', color: '#6b7280' }}>No users found.</p>}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'expense' && (
+        <>
+          <form onSubmit={handleSubmitExpense} style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+            maxWidth: 700,
+            border: '1px solid #d1d5db',
+            borderRadius: '0.5rem',
+            padding: '1.5rem',
+            background: 'white',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+          }}>
+            <div>
+              <label>Expense Title</label>
+              <input value={expenseTitle} onChange={(e) => setExpenseTitle(e.target.value)} required style={{ width: '100%' }} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+              <div>
+                <label>Amount</label>
+                <input type="number" min="0" step="0.01" value={expenseAmount} onChange={(e) => setExpenseAmount(e.target.value)} required style={{ width: '100%' }} />
+              </div>
+              <div>
+                <label>Date</label>
+                <input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} required style={{ width: '100%' }} />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+              <div>
+                <label>Paid By</label>
+                <select value={expensePaidBy} onChange={(e) => setExpensePaidBy(e.target.value)} style={{ width: '100%' }}>
+                  <option value="">Select user (optional)</option>
+                  {users.map((u) => (
+                    <option key={u.email} value={u.email}>{u.full_name} ({u.email})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label>Category</label>
+                <input value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)} placeholder="e.g. Ground, Equipment, Transport" style={{ width: '100%' }} />
+              </div>
+            </div>
+            <div>
+              <label>Payment Method</label>
+              <input value={expensePaymentMethod} onChange={(e) => setExpensePaymentMethod(e.target.value)} placeholder="e.g. Bank transfer, Cash, Card" style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label>Description</label>
+              <textarea rows={4} value={expenseDescription} onChange={(e) => setExpenseDescription(e.target.value)} placeholder="Optional notes, vendor, invoice reference, or reason for expense" style={{ width: '100%' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>
+                {editingExpenseId ? 'Update Expense' : 'Add Expense'}
+              </button>
+              {(editingExpenseId || expenseTitle || expenseAmount || expensePaidBy || expenseDate || expenseCategory || expensePaymentMethod || expenseDescription) && (
+                <button className="nav-btn" type="button" onClick={resetExpenseForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
+                  Clear
+                </button>
+              )}
+            </div>
+          </form>
+
+          <h3 style={{ marginTop: '2rem' }}>Expenses</h3>
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            {sortedExpenses.map((expense) => (
+              <div key={expense.id} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong>{expense.expense_date}</strong>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button className="nav-btn" onClick={() => handleEditExpense(expense)} style={{ border: '1px solid #d1d5db', color: '#111827' }}>
+                      Edit
+                    </button>
+                    <button className="nav-btn" onClick={() => handleDeleteExpense(expense.id)} style={{ background: '#ef4444', color: 'white', border: '1px solid #ef4444' }}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+                <div style={{ fontWeight: '700', fontSize: '1.05rem', marginBottom: '0.4rem' }}>{expense.title}</div>
+                <div style={{ opacity: 0.85, marginBottom: '0.35rem', fontSize: '0.95rem' }}>Amount: £{Number(expense.amount || 0).toFixed(2)}</div>
+                <div style={{ opacity: 0.8, marginBottom: '0.35rem', fontSize: '0.9rem' }}>Paid By: {expense.paid_by_name || expense.paid_by || 'Not specified'}</div>
+                {(expense.category || expense.payment_method) && (
+                  <div style={{ opacity: 0.8, marginBottom: '0.35rem', fontSize: '0.9rem' }}>
+                    {[expense.category, expense.payment_method].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+                {expense.description && <div style={{ opacity: 0.85, fontSize: '0.9rem', whiteSpace: 'pre-wrap' }}>{expense.description}</div>}
+              </div>
+            ))}
+            {sortedExpenses.length === 0 && <p>No expenses recorded yet.</p>}
           </div>
         </>
       )}

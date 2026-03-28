@@ -712,6 +712,20 @@ def init_db():
             )
             """)
             cur.execute("""
+            CREATE TABLE IF NOT EXISTS expenses (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
+                paid_by VARCHAR(255),
+                expense_date VARCHAR(50) NOT NULL,
+                category VARCHAR(100),
+                payment_method VARCHAR(100),
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS forum_posts (
                 id SERIAL PRIMARY KEY,
                 user_email VARCHAR(255),
@@ -1027,6 +1041,18 @@ def init_db():
                 paid INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(date, user_email)
+            );
+            CREATE TABLE IF NOT EXISTS expenses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                amount REAL NOT NULL,
+                paid_by TEXT,
+                expense_date TEXT NOT NULL,
+                category TEXT,
+                payment_method TEXT,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS forum_posts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1730,6 +1756,21 @@ def serialize_notification_setting(row: dict) -> dict:
         "updated_at": row.get("updated_at").isoformat() if hasattr(row.get("updated_at"), "isoformat") else row.get("updated_at"),
     }
 
+def serialize_expense(row: dict) -> dict:
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "amount": float(row["amount"]),
+        "paid_by": row.get("paid_by"),
+        "expense_date": row["expense_date"],
+        "category": row.get("category"),
+        "payment_method": row.get("payment_method"),
+        "description": row.get("description"),
+        "paid_by_name": row.get("paid_by_name"),
+        "created_at": row.get("created_at").isoformat() if hasattr(row.get("created_at"), "isoformat") else row.get("created_at"),
+        "updated_at": row.get("updated_at").isoformat() if hasattr(row.get("updated_at"), "isoformat") else row.get("updated_at"),
+    }
+
 # --- Pydantic models ---
 class UserCreate(BaseModel):
     email: EmailStr
@@ -1876,6 +1917,28 @@ class PracticeSessionOut(BaseModel):
     paid_by_sort_code: Optional[str] = None
     paid_by_account_number: Optional[str] = None
     payment_requested: Optional[bool] = False
+
+class ExpenseCreate(BaseModel):
+    title: str
+    amount: float
+    paid_by: Optional[str] = None
+    expense_date: str
+    category: Optional[str] = None
+    payment_method: Optional[str] = None
+    description: Optional[str] = None
+
+class ExpenseOut(BaseModel):
+    id: int
+    title: str
+    amount: float
+    paid_by: Optional[str] = None
+    expense_date: str
+    category: Optional[str] = None
+    payment_method: Optional[str] = None
+    description: Optional[str] = None
+    paid_by_name: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 # --- Helper Functions ---
 def is_admin(current_user: dict) -> bool:
@@ -3078,6 +3141,107 @@ def unlike_event(event_id: int, current_user: dict = Depends(get_current_user)):
         conn.commit()
         return {"message": "Unliked"}
 
+@app.get("/api/expenses", response_model=List[ExpenseOut])
+def list_expenses(current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT e.id, e.title, e.amount, e.paid_by, e.expense_date, e.category, e.payment_method,
+                   e.description, e.created_at, e.updated_at, u.full_name as paid_by_name
+            FROM expenses e
+            LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC
+            """
+        )
+        return [ExpenseOut(**serialize_expense(dict(row))) for row in cur.fetchall()]
+
+@app.post("/api/expenses", response_model=ExpenseOut)
+def create_expense(expense: ExpenseCreate, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    paid_by = (expense.paid_by or "").strip() or None
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                f"""
+                INSERT INTO expenses (title, amount, paid_by, expense_date, category, payment_method, description, updated_at)
+                VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)
+                RETURNING id
+                """,
+                (expense.title, expense.amount, paid_by, expense.expense_date, expense.category, expense.payment_method, expense.description),
+            )
+            expense_id = dict(cur.fetchone())["id"]
+        else:
+            cur.execute(
+                f"""
+                INSERT INTO expenses (title, amount, paid_by, expense_date, category, payment_method, description, updated_at)
+                VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)
+                """,
+                (expense.title, expense.amount, paid_by, expense.expense_date, expense.category, expense.payment_method, expense.description),
+            )
+            expense_id = cur.lastrowid
+        conn.commit()
+        cur.execute(
+            f"""
+            SELECT e.id, e.title, e.amount, e.paid_by, e.expense_date, e.category, e.payment_method,
+                   e.description, e.created_at, e.updated_at, u.full_name as paid_by_name
+            FROM expenses e
+            LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            WHERE e.id = {PLACEHOLDER}
+            """,
+            (expense_id,),
+        )
+        row = cur.fetchone()
+        return ExpenseOut(**serialize_expense(dict(row)))
+
+@app.put("/api/expenses/{expense_id}", response_model=ExpenseOut)
+def update_expense(expense_id: int, expense: ExpenseCreate, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    paid_by = (expense.paid_by or "").strip() or None
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            UPDATE expenses
+            SET title = {PLACEHOLDER}, amount = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, expense_date = {PLACEHOLDER},
+                category = {PLACEHOLDER}, payment_method = {PLACEHOLDER}, description = {PLACEHOLDER}, updated_at = CURRENT_TIMESTAMP
+            WHERE id = {PLACEHOLDER}
+            """,
+            (expense.title, expense.amount, paid_by, expense.expense_date, expense.category, expense.payment_method, expense.description, expense_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Expense not found")
+        conn.commit()
+        cur.execute(
+            f"""
+            SELECT e.id, e.title, e.amount, e.paid_by, e.expense_date, e.category, e.payment_method,
+                   e.description, e.created_at, e.updated_at, u.full_name as paid_by_name
+            FROM expenses e
+            LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            WHERE e.id = {PLACEHOLDER}
+            """,
+            (expense_id,),
+        )
+        row = cur.fetchone()
+        return ExpenseOut(**serialize_expense(dict(row)))
+
+@app.delete("/api/expenses/{expense_id}")
+def delete_expense(expense_id: int, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"DELETE FROM expenses WHERE id = {PLACEHOLDER}", (expense_id,))
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Expense not found")
+        conn.commit()
+        return {"message": "Expense deleted"}
+
 @app.get("/api/events/likes/me")
 def get_my_event_likes(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
@@ -4055,6 +4219,74 @@ def generate_booking_report(from_date: str, to_date: str, current_user: dict = D
         
         filename = f"Booking_Report_{from_date}_to_{to_date}.xlsx"
         
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+@app.get("/api/reports/expense")
+def generate_expense_report(from_date: str, to_date: str, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT e.expense_date, e.title, e.category, e.amount, e.payment_method, e.description,
+                   e.paid_by, u.full_name as paid_by_name, e.created_at
+            FROM expenses e
+            LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            WHERE e.expense_date >= {PLACEHOLDER} AND e.expense_date <= {PLACEHOLDER}
+            ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC
+            """,
+            (from_date, to_date),
+        )
+        rows = cur.fetchall()
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Expense Report"
+
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+
+        headers = ["Expense Date", "Title", "Category", "Amount (£)", "Paid By", "Payment Method", "Description", "Created At"]
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_alignment
+
+        for row_num, row in enumerate(rows, 2):
+            row_dict = dict(row)
+            ws.cell(row=row_num, column=1, value=row_dict.get("expense_date"))
+            ws.cell(row=row_num, column=2, value=row_dict.get("title"))
+            ws.cell(row=row_num, column=3, value=row_dict.get("category") or "")
+            ws.cell(row=row_num, column=4, value=float(row_dict.get("amount") or 0))
+            ws.cell(row=row_num, column=5, value=row_dict.get("paid_by_name") or row_dict.get("paid_by") or "")
+            ws.cell(row=row_num, column=6, value=row_dict.get("payment_method") or "")
+            ws.cell(row=row_num, column=7, value=row_dict.get("description") or "")
+            created_at = row_dict.get("created_at")
+            ws.cell(row=row_num, column=8, value=created_at.isoformat(sep=' ') if hasattr(created_at, 'isoformat') else (created_at or ""))
+
+        ws.column_dimensions['A'].width = 18
+        ws.column_dimensions['B'].width = 28
+        ws.column_dimensions['C'].width = 18
+        ws.column_dimensions['D'].width = 14
+        ws.column_dimensions['E'].width = 24
+        ws.column_dimensions['F'].width = 18
+        ws.column_dimensions['G'].width = 36
+        ws.column_dimensions['H'].width = 24
+
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        filename = f"Expense_Report_{from_date}_to_{to_date}.xlsx"
+
         return StreamingResponse(
             output,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

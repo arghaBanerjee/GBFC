@@ -47,9 +47,11 @@ export default function Reports() {
     setGenerating(true)
     
     try {
-      const endpoint = reportType === 'booking' 
+      const endpoint = reportType === 'booking'
         ? `/api/reports/booking?from_date=${fromDate}&to_date=${toDate}`
-        : `/api/reports/player-payment?from_date=${fromDate}&to_date=${toDate}`
+        : reportType === 'expense'
+          ? `/api/reports/expense?from_date=${fromDate}&to_date=${toDate}`
+          : `/api/reports/player-payment?from_date=${fromDate}&to_date=${toDate}`
       
       const response = await fetch(apiUrl(endpoint), {
         headers: {
@@ -72,9 +74,11 @@ export default function Reports() {
       
       // Get filename from Content-Disposition header or use default
       const contentDisposition = response.headers.get('Content-Disposition')
-      let filename = reportType === 'booking' 
+      let filename = reportType === 'booking'
         ? `Booking_Report_${fromDate}_to_${toDate}.xlsx`
-        : `Player_Payment_Report_${fromDate}_to_${toDate}.xlsx`
+        : reportType === 'expense'
+          ? `Expense_Report_${fromDate}_to_${toDate}.xlsx`
+          : `Player_Payment_Report_${fromDate}_to_${toDate}.xlsx`
       
       if (contentDisposition) {
         const filenameMatch = contentDisposition.match(/filename="?(.+)"?/)
@@ -134,6 +138,7 @@ export default function Reports() {
             }}
           >
             <option value="booking">Booking Report</option>
+            <option value="expense">Expense Report</option>
             <option value="player-payment">Player Payment Report</option>
           </select>
         </div>
@@ -202,6 +207,10 @@ export default function Reports() {
             {reportType === 'booking' ? (
               <>
                 <strong>Booking Report</strong> includes: Practice session date, time, place, total cost, and paid by user.
+              </>
+            ) : reportType === 'expense' ? (
+              <>
+                <strong>Expense Report</strong> includes: expense date, title, category, amount, paid by, payment method, description, and creation timestamp.
               </>
             ) : (
               <>
