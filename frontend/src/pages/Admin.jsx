@@ -916,6 +916,10 @@ export default function Admin({ user, loading }) {
     expense.paid_by_name,
     expense.paid_by,
     expense.expense_date,
+    expense.practice_session_date,
+    expense.linked_practice_time,
+    expense.linked_practice_location,
+    expense.source,
   ]
     .filter(Boolean)
     .join(' ')
@@ -1151,6 +1155,8 @@ export default function Admin({ user, loading }) {
                   <div style={{ opacity: 0.8, marginTop: 6 }}>Time: {s.time || 'TBD'}</div>
                   <div style={{ opacity: 0.8 }}>Location: {s.location || 'TBD'}</div>
                   <div style={{ opacity: 0.8 }}>Maximum Capacity: {s.maximum_capacity || 100}</div>
+                  <div style={{ opacity: 0.8 }}>Total Amount: {s.session_cost != null ? `£${Number(s.session_cost).toFixed(2)}` : 'Not set'}</div>
+                  <div style={{ opacity: 0.8 }}>Paid By: {s.paid_by_name || s.paid_by || 'Not set'}</div>
                   {practiceListTab === 'past' && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>
                       Past practice records can be edited but not deleted.
@@ -1611,10 +1617,10 @@ export default function Admin({ user, loading }) {
                     <strong>{expense.expense_date}</strong>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button className="nav-btn" onClick={() => handleEditExpense(expense)} style={{ border: '1px solid #d1d5db', color: '#111827' }}>
+                    <button className="nav-btn" disabled={expense.can_edit === false} onClick={() => handleEditExpense(expense)} style={{ border: '1px solid #d1d5db', color: expense.can_edit === false ? '#9ca3af' : '#111827', opacity: expense.can_edit === false ? 0.6 : 1, cursor: expense.can_edit === false ? 'not-allowed' : 'pointer' }}>
                       Edit
                     </button>
-                    <button className="nav-btn" onClick={() => handleDeleteExpense(expense.id)} style={{ background: '#ef4444', color: 'white', border: '1px solid #ef4444' }}>
+                    <button className="nav-btn" disabled={expense.can_delete === false} onClick={() => handleDeleteExpense(expense.id)} style={{ background: expense.can_delete === false ? '#f3f4f6' : '#ef4444', color: expense.can_delete === false ? '#9ca3af' : 'white', border: expense.can_delete === false ? '1px solid #d1d5db' : '1px solid #ef4444', opacity: expense.can_delete === false ? 0.6 : 1, cursor: expense.can_delete === false ? 'not-allowed' : 'pointer' }}>
                       Delete
                     </button>
                   </div>
@@ -1622,9 +1628,9 @@ export default function Admin({ user, loading }) {
                 <div style={{ fontWeight: '700', fontSize: '1.05rem', marginBottom: '0.4rem' }}>{expense.title}</div>
                 <div style={{ opacity: 0.85, marginBottom: '0.35rem', fontSize: '0.95rem' }}>Amount: £{Number(expense.amount || 0).toFixed(2)}</div>
                 <div style={{ opacity: 0.8, marginBottom: '0.35rem', fontSize: '0.9rem' }}>Paid By: {expense.paid_by_name || expense.paid_by || 'Not specified'}</div>
-                {(expense.category || expense.payment_method) && (
+                {((!expense.is_booking_expense && expense.category) || expense.payment_method) && (
                   <div style={{ opacity: 0.8, marginBottom: '0.35rem', fontSize: '0.9rem' }}>
-                    {[expense.category, expense.payment_method].filter(Boolean).join(' · ')}
+                    {[!expense.is_booking_expense ? expense.category : null, expense.payment_method].filter(Boolean).join(' · ')}
                   </div>
                 )}
                 {expense.description && <div style={{ opacity: 0.85, fontSize: '0.9rem', whiteSpace: 'pre-wrap' }}>{expense.description}</div>}

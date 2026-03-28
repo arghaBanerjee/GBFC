@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { apiUrl } from '../api'
 
 export default function Reports() {
-  const [reportType, setReportType] = useState('booking')
+  const [reportType, setReportType] = useState('expense')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [generating, setGenerating] = useState(false)
@@ -47,11 +47,9 @@ export default function Reports() {
     setGenerating(true)
     
     try {
-      const endpoint = reportType === 'booking'
-        ? `/api/reports/booking?from_date=${fromDate}&to_date=${toDate}`
-        : reportType === 'expense'
-          ? `/api/reports/expense?from_date=${fromDate}&to_date=${toDate}`
-          : `/api/reports/player-payment?from_date=${fromDate}&to_date=${toDate}`
+      const endpoint = reportType === 'expense'
+        ? `/api/reports/expense?from_date=${fromDate}&to_date=${toDate}`
+        : `/api/reports/player-payment?from_date=${fromDate}&to_date=${toDate}`
       
       const response = await fetch(apiUrl(endpoint), {
         headers: {
@@ -74,11 +72,9 @@ export default function Reports() {
       
       // Get filename from Content-Disposition header or use default
       const contentDisposition = response.headers.get('Content-Disposition')
-      let filename = reportType === 'booking'
-        ? `Booking_Report_${fromDate}_to_${toDate}.xlsx`
-        : reportType === 'expense'
-          ? `Expense_Report_${fromDate}_to_${toDate}.xlsx`
-          : `Player_Payment_Report_${fromDate}_to_${toDate}.xlsx`
+      let filename = reportType === 'expense'
+        ? `Expense_Report_${fromDate}_to_${toDate}.xlsx`
+        : `Payment_Report_${fromDate}_to_${toDate}.xlsx`
       
       if (contentDisposition) {
         const filenameMatch = contentDisposition.match(/filename="?(.+)"?/)
@@ -137,9 +133,8 @@ export default function Reports() {
               backgroundColor: 'white'
             }}
           >
-            <option value="booking">Booking Report</option>
             <option value="expense">Expense Report</option>
-            <option value="player-payment">Player Payment Report</option>
+            <option value="player-payment">Payment Report</option>
           </select>
         </div>
 
@@ -204,17 +199,13 @@ export default function Reports() {
           border: '1px solid #e5e7eb'
         }}>
           <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0 }}>
-            {reportType === 'booking' ? (
-              <>
-                <strong>Booking Report</strong> includes: Practice session date, time, place, total cost, and paid by user.
-              </>
-            ) : reportType === 'expense' ? (
+            {reportType === 'expense' ? (
               <>
                 <strong>Expense Report</strong> includes: expense date, title, category, amount, paid by, payment method, description, and creation timestamp.
               </>
             ) : (
               <>
-                <strong>Player Payment Report</strong> includes: Practice session date, time, place, player name, availability, 
+                <strong>Payment Report</strong> includes: Practice session date, time, place, player name, availability, 
                 individual amount (for available players), payment status, and payment acknowledgement date.
               </>
             )}

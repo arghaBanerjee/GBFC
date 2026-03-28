@@ -1767,6 +1767,13 @@ def serialize_expense(row: dict) -> dict:
         "payment_method": row.get("payment_method"),
         "description": row.get("description"),
         "paid_by_name": row.get("paid_by_name"),
+        "source": row.get("source") or "expense",
+        "is_booking_expense": bool(row.get("is_booking_expense", False)),
+        "practice_session_date": row.get("practice_session_date"),
+        "linked_practice_time": row.get("linked_practice_time"),
+        "linked_practice_location": row.get("linked_practice_location"),
+        "can_edit": bool(row.get("can_edit", True)),
+        "can_delete": bool(row.get("can_delete", True)),
         "created_at": row.get("created_at").isoformat() if hasattr(row.get("created_at"), "isoformat") else row.get("created_at"),
         "updated_at": row.get("updated_at").isoformat() if hasattr(row.get("updated_at"), "isoformat") else row.get("updated_at"),
     }
@@ -1937,6 +1944,13 @@ class ExpenseOut(BaseModel):
     payment_method: Optional[str] = None
     description: Optional[str] = None
     paid_by_name: Optional[str] = None
+    source: Optional[str] = "expense"
+    is_booking_expense: Optional[bool] = False
+    practice_session_date: Optional[str] = None
+    linked_practice_time: Optional[str] = None
+    linked_practice_location: Optional[str] = None
+    can_edit: Optional[bool] = True
+    can_delete: Optional[bool] = True
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -3153,10 +3167,72 @@ def list_expenses(current_user: dict = Depends(get_current_user)):
                    e.description, e.created_at, e.updated_at, u.full_name as paid_by_name
             FROM expenses e
             LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-            ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC
             """
         )
-        return [ExpenseOut(**serialize_expense(dict(row))) for row in cur.fetchall()]
+        expense_rows = []
+        for row in cur.fetchall():
+            row_dict = dict(row)
+            row_dict.update(
+                {
+                    "source": "expense",
+                    "is_booking_expense": False,
+                    "practice_session_date": None,
+                    "linked_practice_time": None,
+                    "linked_practice_location": None,
+                    "can_edit": True,
+                    "can_delete": True,
+                }
+            )
+            expense_rows.append(serialize_expense(row_dict))
+
+        cur.execute(
+            f"""
+            SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by, ps.payment_requested_at,
+                   u.full_name as paid_by_name
+            FROM practice_sessions ps
+            LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            WHERE ps.session_cost IS NOT NULL
+            """
+        )
+        booking_rows = []
+        for row in cur.fetchall():
+            row_dict = dict(row)
+            session_date = row_dict.get("date")
+            booking_rows.append(
+                serialize_expense(
+                    {
+                        "id": -int(str(session_date).replace("-", "")),
+                        "title": f"Practice Booking - {session_date}",
+                        "amount": row_dict.get("session_cost") or 0,
+                        "paid_by": row_dict.get("paid_by"),
+                        "expense_date": session_date,
+                        "category": "Practice Booking",
+                        "payment_method": None,
+                        "description": f"Practice session booking{f' at {row_dict.get('time')}' if row_dict.get('time') else ''}{f' - {row_dict.get('location')}' if row_dict.get('location') else ''}",
+                        "paid_by_name": row_dict.get("paid_by_name"),
+                        "source": "practice_booking",
+                        "is_booking_expense": True,
+                        "practice_session_date": session_date,
+                        "linked_practice_time": row_dict.get("time"),
+                        "linked_practice_location": row_dict.get("location"),
+                        "can_edit": False,
+                        "can_delete": False,
+                        "created_at": row_dict.get("payment_requested_at"),
+                        "updated_at": row_dict.get("payment_requested_at"),
+                    }
+                )
+            )
+
+        merged_rows = expense_rows + booking_rows
+        merged_rows.sort(
+            key=lambda item: (
+                item.get("expense_date") or "",
+                item.get("created_at") or "",
+                item.get("id") or 0,
+            ),
+            reverse=True,
+        )
+        return [ExpenseOut(**row) for row in merged_rows]
 
 @app.post("/api/expenses", response_model=ExpenseOut)
 def create_expense(expense: ExpenseCreate, current_user: dict = Depends(get_current_user)):
@@ -4235,15 +4311,54 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
         cur.execute(
             f"""
             SELECT e.expense_date, e.title, e.category, e.amount, e.payment_method, e.description,
-                   e.paid_by, u.full_name as paid_by_name, e.created_at
+                   e.paid_by, u.full_name as paid_by_name, e.created_at, 'Expense' as source
             FROM expenses e
             LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
             WHERE e.expense_date >= {PLACEHOLDER} AND e.expense_date <= {PLACEHOLDER}
-            ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC
             """,
             (from_date, to_date),
         )
-        rows = cur.fetchall()
+        expense_rows = [dict(row) for row in cur.fetchall()]
+
+        cur.execute(
+            f"""
+            SELECT ps.date as expense_date,
+                   {PLACEHOLDER} as title,
+                   {PLACEHOLDER} as category,
+                   ps.session_cost as amount,
+                   NULL as payment_method,
+                   CASE
+                       WHEN ps.time IS NOT NULL AND ps.location IS NOT NULL THEN 'Practice session booking at ' || ps.time || ' - ' || ps.location
+                       WHEN ps.time IS NOT NULL THEN 'Practice session booking at ' || ps.time
+                       WHEN ps.location IS NOT NULL THEN 'Practice session booking - ' || ps.location
+                       ELSE 'Practice session booking cost'
+                   END as description,
+                   ps.paid_by,
+                   u.full_name as paid_by_name,
+                   ps.payment_requested_at as created_at,
+                   'Practice Booking' as source
+            FROM practice_sessions ps
+            LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            WHERE ps.session_cost IS NOT NULL AND ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
+            """,
+            (
+                "Practice Booking",
+                "Practice Booking",
+                from_date,
+                to_date,
+            ),
+        )
+        booking_rows = [dict(row) for row in cur.fetchall()]
+
+        rows = expense_rows + booking_rows
+        rows.sort(
+            key=lambda item: (
+                item.get("expense_date") or "",
+                item.get("created_at") or "",
+                item.get("title") or "",
+            ),
+            reverse=True,
+        )
 
         wb = Workbook()
         ws = wb.active
@@ -4309,14 +4424,18 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 ps.time,
                 ps.location,
                 ps.session_cost,
+                ps.paid_by,
+                ps.payment_requested_at,
                 pa.user_email,
                 u.full_name,
+                payer.full_name as paid_by_name,
                 pa.status,
                 pp.paid,
                 pp.created_at as payment_date
             FROM practice_sessions ps
             LEFT JOIN practice_availability pa ON ps.date = pa.date
             LEFT JOIN users u ON pa.user_email = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            LEFT JOIN users payer ON ps.paid_by = payer.email AND (payer.is_deleted = FALSE OR payer.is_deleted IS NULL)
             LEFT JOIN practice_payments pp ON ps.date = pp.date AND pa.user_email = pp.user_email
             WHERE ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
                 AND pa.status IS NOT NULL
@@ -4336,7 +4455,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
         header_alignment = Alignment(horizontal="center", vertical="center")
         
         # Headers
-        headers = ["Practice Session Date", "Time", "Place", "Player Name", "Availability", 
+        headers = ["Practice Session Date", "Time", "Place", "Total Cost (£)", "Paid By", "Payment Requested Date", "Player Name", "Availability", 
                    "Individual Amount (£)", "Paid", "Payment Acknowledgement Date"]
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_num, value=header)
@@ -4352,6 +4471,8 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 time = row["time"] or "TBD"
                 location = row["location"] or "TBD"
                 session_cost = row["session_cost"]
+                paid_by = row["paid_by_name"] or row["paid_by"]
+                payment_requested_at = row["payment_requested_at"]
                 user_email = row["user_email"]
                 full_name = row["full_name"] or user_email
                 status = row["status"]
@@ -4362,17 +4483,25 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 time = row[1] or "TBD"
                 location = row[2] or "TBD"
                 session_cost = row[3]
-                user_email = row[4]
-                full_name = row[5] or user_email
-                status = row[6]
-                paid = row[7]
-                payment_date = row[8]
+                paid_by = row[8] or row[4]
+                payment_requested_at = row[5]
+                user_email = row[6]
+                full_name = row[7] or user_email
+                status = row[9]
+                paid = row[10]
+                payment_date = row[11]
             
             ws.cell(row=row_num, column=1, value=date)
             ws.cell(row=row_num, column=2, value=time)
             ws.cell(row=row_num, column=3, value=location)
-            ws.cell(row=row_num, column=4, value=full_name)
-            ws.cell(row=row_num, column=5, value=status.capitalize() if status else "")
+            ws.cell(row=row_num, column=4, value=float(session_cost) if session_cost else 0.0)
+            ws.cell(row=row_num, column=5, value=paid_by or "")
+            if payment_requested_at:
+                ws.cell(row=row_num, column=6, value=payment_requested_at.isoformat(sep=' ') if hasattr(payment_requested_at, 'isoformat') else str(payment_requested_at))
+            else:
+                ws.cell(row=row_num, column=6, value="")
+            ws.cell(row=row_num, column=7, value=full_name)
+            ws.cell(row=row_num, column=8, value=status.capitalize() if status else "")
             
             # Individual amount only for available users
             if status == "available" and session_cost:
@@ -4387,27 +4516,27 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 
                 if available_count > 0:
                     individual_amount = float(session_cost) / available_count
-                    ws.cell(row=row_num, column=6, value=round(individual_amount, 2))
+                    ws.cell(row=row_num, column=9, value=round(individual_amount, 2))
                 else:
-                    ws.cell(row=row_num, column=6, value="")
+                    ws.cell(row=row_num, column=9, value="")
             else:
-                ws.cell(row=row_num, column=6, value="")
+                ws.cell(row=row_num, column=9, value="")
             
             # Paid status only for available users
             if status == "available":
                 if paid and payment_date:
                     # Format date
                     if isinstance(payment_date, str):
-                        ws.cell(row=row_num, column=8, value=payment_date.split(' ')[0])
+                        ws.cell(row=row_num, column=11, value=payment_date.split(' ')[0])
                     else:
-                        ws.cell(row=row_num, column=8, value=str(payment_date).split(' ')[0])
+                        ws.cell(row=row_num, column=11, value=str(payment_date).split(' ')[0])
                 else:
-                    ws.cell(row=row_num, column=8, value="")
+                    ws.cell(row=row_num, column=11, value="")
                 paid_value = "Yes" if (paid if USE_POSTGRES else bool(paid)) else "No"
-                ws.cell(row=row_num, column=7, value=paid_value)
+                ws.cell(row=row_num, column=10, value=paid_value)
             else:
-                ws.cell(row=row_num, column=7, value="")
-                ws.cell(row=row_num, column=8, value="")
+                ws.cell(row=row_num, column=10, value="")
+                ws.cell(row=row_num, column=11, value="")
             
             row_num += 1
         
@@ -4415,11 +4544,14 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
         ws.column_dimensions['A'].width = 20
         ws.column_dimensions['B'].width = 15
         ws.column_dimensions['C'].width = 25
-        ws.column_dimensions['D'].width = 25
-        ws.column_dimensions['E'].width = 15
-        ws.column_dimensions['F'].width = 20
-        ws.column_dimensions['G'].width = 10
-        ws.column_dimensions['H'].width = 25
+        ws.column_dimensions['D'].width = 14
+        ws.column_dimensions['E'].width = 24
+        ws.column_dimensions['F'].width = 24
+        ws.column_dimensions['G'].width = 25
+        ws.column_dimensions['H'].width = 15
+        ws.column_dimensions['I'].width = 20
+        ws.column_dimensions['J'].width = 10
+        ws.column_dimensions['K'].width = 25
         
         # Save to BytesIO
         output = BytesIO()
