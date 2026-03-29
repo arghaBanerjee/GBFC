@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { apiUrl } from '../api'
 
 export default function Reports() {
-  const [reportType, setReportType] = useState('expense')
+  const [reportType, setReportType] = useState('player-payment')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [generating, setGenerating] = useState(false)
