@@ -1448,6 +1448,14 @@ def should_send_whatsapp_notification(cur, notif_type: str) -> bool:
         return True
     return datetime.now() >= last_sent_at + timedelta(days=5)
 
+def should_send_app_notification(cur, notif_type: str) -> bool:
+    if notif_type != "pending_payment_reminder":
+        return True
+    last_sent_at = get_notification_channel_last_sent_at(cur, notif_type, "app")
+    if not last_sent_at:
+        return True
+    return datetime.now() >= last_sent_at + timedelta(days=5)
+
 def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None):
     guarded_notif_types = {"practice", "match", "practice_slot_available", "session_capacity_reached"}
     effective_date = related_date or payload.get("date")
@@ -1476,9 +1484,11 @@ def deliver_notification(notif_type: str, payload: dict, related_date: str = Non
         cur = conn.cursor()
 
         if setting["app_enabled"]:
-            app_message = render_notification_template(setting["app_template"], context)
-            for recipient in recipients:
-                create_notification(recipient["email"], notif_type, app_message, related_date)
+            if should_send_app_notification(cur, notif_type):
+                app_message = render_notification_template(setting["app_template"], context)
+                for recipient in recipients:
+                    create_notification(recipient["email"], notif_type, app_message, related_date)
+                record_notification_channel_sent(cur, notif_type, "app")
 
         if setting["email_enabled"]:
             subject = render_notification_template(setting["email_subject"], context)
