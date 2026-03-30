@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react'
 import { apiUrl } from '../api'
 
+const formatLocalDate = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export default function Reports() {
   const [reportType, setReportType] = useState('player-payment')
   const [fromDate, setFromDate] = useState('')
@@ -16,8 +23,8 @@ export default function Reports() {
     const thirtyDaysAgo = new Date(today)
     thirtyDaysAgo.setDate(today.getDate() - 30)
     
-    setToDate(today.toISOString().split('T')[0])
-    setFromDate(thirtyDaysAgo.toISOString().split('T')[0])
+    setToDate(formatLocalDate(today))
+    setFromDate(formatLocalDate(thirtyDaysAgo))
   }, [])
 
   const handleGenerateReport = async () => {
@@ -29,17 +36,14 @@ export default function Reports() {
       return
     }
     
-    const from = new Date(fromDate)
-    const to = new Date(toDate)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today = formatLocalDate(new Date())
     
-    if (from > to) {
+    if (fromDate > toDate) {
       setError('From date must be before or equal to To date')
       return
     }
     
-    if (to > today) {
+    if (toDate > today) {
       setError('To date cannot be in the future')
       return
     }
@@ -151,7 +155,7 @@ export default function Reports() {
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              max={new Date().toISOString().split('T')[0]}
+              max={formatLocalDate(new Date())}
               style={{
                 width: '100%',
                 padding: '0.75rem',
@@ -175,7 +179,7 @@ export default function Reports() {
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              max={new Date().toISOString().split('T')[0]}
+              max={formatLocalDate(new Date())}
               style={{
                 width: '100%',
                 padding: '0.75rem',
@@ -198,11 +202,11 @@ export default function Reports() {
           <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0 }}>
             {reportType === 'expense' ? (
               <>
-                <strong>Expense Report</strong> includes: expense date, title, category, amount, paid by, payment method, description, and creation timestamp.
+                <strong>Expense Report</strong> includes: expense date, title, category, amount, paid by, payment method, description, and creation timestamp, including bookable event costs.
               </>
             ) : (
               <>
-                <strong>Payment Report</strong> includes: Practice session date, time, place, player name, availability, 
+                <strong>Payment Report</strong> includes: event date, event type, event title, time, place, player name, availability, 
                 individual amount (for available players), payment status, and payment acknowledgement date.
               </>
             )}

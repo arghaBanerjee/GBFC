@@ -85,18 +85,19 @@ whatsapp_scheduler = BackgroundScheduler()
 
 NOTIFICATION_TARGET_OPTIONS = {"all_active_users", "admin_users", "available_players", "direct_user"}
 THEME_PREFERENCES = {"nordic_neutral", "east_bengal", "mohun_bagan"}
+EVENT_TYPE_OPTIONS = {"practice", "match", "social", "others"}
 NOTIFICATION_TYPE_DEFAULTS = {
     "practice": {
-        "display_name": "New Practice Added",
-        "description": "Sent when a new practice session is created.",
+        "display_name": "New Event Added",
+        "description": "Sent when a new bookable event is created.",
         "app_enabled": True,
         "email_enabled": False,
         "whatsapp_enabled": True,
         "target_audience": "all_active_users",
-        "app_template": "New Practice Session Added on {{date}}{{time_suffix}}{{location_suffix}}. Please vote your Availability.",
-        "email_subject": "New practice session on {{date}}",
-        "email_template": "A new practice session has been added for {{date}}{{time_suffix}}{{location_suffix}}.\n\nPlease open the app and update your availability.",
-        "whatsapp_template": "🏃 *NEW PRACTICE SESSION*\n\n📅 {{date}}\n{{time_line}}{{location_line}}\nPlease update your availability in the app.",
+        "app_template": "New {{event_name}} added on {{date}}{{time_suffix}}{{location_suffix}}. Please update your availability.",
+        "email_subject": "New {{event_name}} on {{date}}",
+        "email_template": "{{event_name}} has been added for {{date}}{{time_suffix}}{{location_suffix}}.\n\nPlease open the app and update your availability.",
+        "whatsapp_template": "📅 *NEW EVENT ADDED*\n\n{{event_name}}\n📅 {{date}}\n{{time_line}}{{location_line}}\nPlease update your availability in the app.",
     },
     "match": {
         "display_name": "New Match Added",
@@ -123,64 +124,64 @@ NOTIFICATION_TYPE_DEFAULTS = {
         "whatsapp_template": "💬 *NEW FORUM POST*\n\nBy {{author_name}}\n\n{{content_preview}}\n\nOpen the app to join the conversation.",
     },
     "payment_request": {
-        "display_name": "Practice Payment Requested",
-        "description": "Sent when payment is requested for a practice session.",
+        "display_name": "Event Payment Requested",
+        "description": "Sent when payment is requested for a bookable event.",
         "app_enabled": True,
         "email_enabled": False,
         "whatsapp_enabled": True,
         "target_audience": "available_players",
-        "app_template": "Payment requested by Admin for the Session on {{date}}{{time_suffix}}{{location_comma_suffix}}",
-        "email_subject": "Practice payment requested for {{date}}",
-        "email_template": "Payment has been requested for the practice session on {{date}}{{time_suffix}}{{location_comma_suffix}}.\n\nPlease confirm your payment in the app.",
-        "whatsapp_template": "💷 *PRACTICE PAYMENT REQUEST*\n\n📅 {{date}}\n{{time_line}}{{location_line}}\nAvailable players should confirm payment in the app.",
+        "app_template": "Payment requested by Admin for {{event_name}} on {{date}}{{time_suffix}}{{location_comma_suffix}}.",
+        "email_subject": "Payment requested for {{event_name}} on {{date}}",
+        "email_template": "Payment has been requested for {{event_name}} on {{date}}{{time_suffix}}{{location_comma_suffix}}.\n\nPlease confirm your payment in the app.",
+        "whatsapp_template": "💷 *EVENT PAYMENT REQUEST*\n\n{{event_name}}\n📅 {{date}}\n{{time_line}}{{location_line}}\nAvailable players should confirm payment in the app.",
     },
     "payment_confirmed": {
-        "display_name": "Practice Payment Confirmed",
-        "description": "Sent to admins in the app when a member confirms payment for a practice session.",
+        "display_name": "Event Payment Confirmed",
+        "description": "Sent to admins in the app when a member confirms payment for a bookable event.",
         "app_enabled": True,
         "email_enabled": False,
         "whatsapp_enabled": False,
         "target_audience": "admin_users",
-        "app_template": "{{member_name}} confirmed payment for the session on {{date}}{{time_suffix}}{{location_comma_suffix}}.",
-        "email_subject": "Payment confirmed for {{date}}",
-        "email_template": "{{member_name}} confirmed payment for the practice session on {{date}}{{time_suffix}}{{location_comma_suffix}}.",
+        "app_template": "{{member_name}} confirmed payment for {{event_name}} on {{date}}{{time_suffix}}{{location_comma_suffix}}.",
+        "email_subject": "Payment confirmed for {{event_name}} on {{date}}",
+        "email_template": "{{member_name}} confirmed payment for {{event_name}} on {{date}}{{time_suffix}}{{location_comma_suffix}}.",
         "whatsapp_template": "",
     },
     "pending_payment_reminder": {
-        "display_name": "Pending Practice Payment Reminder",
-        "description": "Sent daily at 8 PM when at least 72 hours have passed since the last admin payment request and the latest requested practice session still has pending payments.",
+        "display_name": "Pending Event Payment Reminder",
+        "description": "Sent daily at 8 PM when at least 72 hours have passed since the last admin payment request and the latest requested event still has pending payments.",
         "app_enabled": True,
         "email_enabled": False,
         "whatsapp_enabled": True,
         "target_audience": "all_active_users",
-        "app_template": "Gentle Reminder: There are some pending payments for previous sessions. Please check in the app using the link {{payments_link}}",
-        "email_subject": "Pending practice payments reminder",
-        "email_template": "Gentle Reminder: There are some pending payments for previous sessions. Please check in the app using the link {{payments_link}}",
-        "whatsapp_template": "Gentle Reminder: There are some pending payments for previous sessions. Please check in the app using the link {{payments_link}}",
+        "app_template": "Gentle reminder: There are pending payments for {{event_name}}. Please check the app using {{payments_link}}.",
+        "email_subject": "Pending payment reminder for {{event_name}}",
+        "email_template": "Gentle reminder: There are pending payments for {{event_name}} on {{date}}{{time_suffix}}{{location_comma_suffix}}. Please check in the app using {{payments_link}}.",
+        "whatsapp_template": "💷 *PENDING PAYMENT REMINDER*\n\n{{event_name}}\n📅 {{date}}\n{{time_line}}{{location_line}}Please check the app: {{payments_link}}",
     },
     "session_capacity_reached": {
-        "display_name": "Session Capacity Reached",
-        "description": "Sent when the final available slot is taken for a practice session.",
+        "display_name": "Event Capacity Reached",
+        "description": "Sent when the final available slot is taken for a bookable event.",
         "app_enabled": True,
         "email_enabled": False,
         "whatsapp_enabled": True,
         "target_audience": "all_active_users",
-        "app_template": "Practice session capacity reached for {{date}}{{time_suffix}}{{location_comma_suffix}}. Maximum capacity is {{maximum_capacity}} players, so no more Available selections are allowed right now.",
-        "email_subject": "Practice session capacity reached for {{date}}",
-        "email_template": "The practice session on {{date}}{{time_suffix}}{{location_comma_suffix}} has reached its maximum capacity of {{maximum_capacity}} players. No more Available selections are allowed right now. We will notify players if slots become available before the session.",
-        "whatsapp_template": "⛔ *PRACTICE SESSION FULL*\n\n📅 {{date}}\n{{time_line}}{{location_line}}👥 Maximum capacity reached: {{maximum_capacity}}\nNo more *Available* selections are allowed right now. We will notify everyone if slots open up before the session.",
+        "app_template": "{{event_name}} has reached maximum capacity for {{date}}{{time_suffix}}{{location_comma_suffix}}. Maximum capacity is {{maximum_capacity}} players, so no more Available selections are allowed right now.",
+        "email_subject": "{{event_name}} capacity reached for {{date}}",
+        "email_template": "{{event_name}} on {{date}}{{time_suffix}}{{location_comma_suffix}} has reached its maximum capacity of {{maximum_capacity}} players. No more Available selections are allowed right now. We will notify players if slots become available before the event.",
+        "whatsapp_template": "⛔ *EVENT FULL*\n\n{{event_name}}\n📅 {{date}}\n{{time_line}}{{location_line}}👥 Maximum capacity reached: {{maximum_capacity}}\nNo more *Available* selections are allowed right now. We will notify everyone if slots open up before the event.",
     },
     "practice_slot_available": {
-        "display_name": "Practice Slot Available",
-        "description": "Sent when upcoming practice slots are still available within 72 hours of the session.",
+        "display_name": "Event Slot Available",
+        "description": "Sent when upcoming event slots are still available within 72 hours of the event.",
         "app_enabled": True,
         "email_enabled": False,
         "whatsapp_enabled": True,
         "target_audience": "all_active_users",
-        "app_template": "There are {{remaining_slots}} practice slots available for {{date}}{{time_suffix}}{{location_comma_suffix}}. Maximum capacity: {{maximum_capacity}}.",
-        "email_subject": "Practice slots available for {{date}}",
-        "email_template": "There are {{remaining_slots}} slots available for the practice session on {{date}}{{time_suffix}}{{location_comma_suffix}}. Maximum capacity: {{maximum_capacity}}.",
-        "whatsapp_template": "✅ *PRACTICE SLOTS AVAILABLE*\n\n📅 {{date}}\n{{time_line}}{{location_line}}👥 Slots available: {{remaining_slots}} of {{maximum_capacity}}\nBook your place in the app if you want to join.",
+        "app_template": "There are {{remaining_slots}} slots available for {{event_name}} on {{date}}{{time_suffix}}{{location_comma_suffix}}. Maximum capacity: {{maximum_capacity}}.",
+        "email_subject": "Slots available for {{event_name}} on {{date}}",
+        "email_template": "There are {{remaining_slots}} slots available for {{event_name}} on {{date}}{{time_suffix}}{{location_comma_suffix}}. Maximum capacity: {{maximum_capacity}}.",
+        "whatsapp_template": "✅ *EVENT SLOTS AVAILABLE*\n\n{{event_name}}\n📅 {{date}}\n{{time_line}}{{location_line}}👥 Slots available: {{remaining_slots}} of {{maximum_capacity}}\nBook your place in the app if you want to join.",
     },
     "welcome_signup": {
         "display_name": "Welcome Email On Signup",
@@ -456,6 +457,40 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not add session_cost column: {e}")
                 conn.rollback()
+
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='practice_sessions' AND column_name='event_type'
+                        ) THEN
+                            ALTER TABLE practice_sessions ADD COLUMN event_type VARCHAR(50) DEFAULT 'practice';
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add event_type column: {e}")
+                conn.rollback()
+
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='practice_sessions' AND column_name='event_title'
+                        ) THEN
+                            ALTER TABLE practice_sessions ADD COLUMN event_title VARCHAR(50);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add event_title column: {e}")
+                conn.rollback()
             
             # Add paid_by column to practice_sessions if it doesn't exist
             try:
@@ -532,6 +567,14 @@ def init_db():
                 conn.commit()
             except Exception as e:
                 print(f"Warning: Could not backfill maximum_capacity values: {e}")
+                conn.rollback()
+
+            try:
+                cur.execute("UPDATE practice_sessions SET event_type = 'practice' WHERE event_type IS NULL OR TRIM(event_type) = ''")
+                cur.execute("UPDATE practice_sessions SET event_title = 'Session' WHERE event_title IS NULL OR TRIM(event_title) = ''")
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not backfill practice event metadata: {e}")
                 conn.rollback()
 
             try:
@@ -694,6 +737,8 @@ def init_db():
                 date VARCHAR(50) PRIMARY KEY,
                 time VARCHAR(50),
                 location TEXT,
+                event_type VARCHAR(50) DEFAULT 'practice',
+                event_title VARCHAR(50),
                 session_cost DECIMAL(10, 2),
                 paid_by VARCHAR(255),
                 payment_requested BOOLEAN DEFAULT FALSE,
@@ -934,6 +979,16 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add session_cost column: {e}")
+            try:
+                cur.execute("ALTER TABLE practice_sessions ADD COLUMN event_type TEXT DEFAULT 'practice'")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add event_type column: {e}")
+            try:
+                cur.execute("ALTER TABLE practice_sessions ADD COLUMN event_title TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add event_title column: {e}")
             # Add paid_by column to practice_sessions if it doesn't exist
             try:
                 cur.execute("ALTER TABLE practice_sessions ADD COLUMN paid_by TEXT")
@@ -956,6 +1011,11 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add maximum_capacity column: {e}")
+            try:
+                cur.execute("UPDATE practice_sessions SET event_type = 'practice' WHERE event_type IS NULL OR TRIM(event_type) = ''")
+                cur.execute("UPDATE practice_sessions SET event_title = 'Session' WHERE event_title IS NULL OR TRIM(event_title) = ''")
+            except sqlite3.OperationalError as e:
+                print(f"Warning: Could not backfill practice event metadata: {e}")
             try:
                 cur.execute("UPDATE practice_sessions SET maximum_capacity = 100 WHERE maximum_capacity IS NULL")
             except sqlite3.OperationalError as e:
@@ -1028,6 +1088,8 @@ def init_db():
                 date TEXT PRIMARY KEY,
                 time TEXT,
                 location TEXT,
+                event_type TEXT DEFAULT 'practice',
+                event_title TEXT,
                 session_cost REAL,
                 paid_by TEXT,
                 payment_requested INTEGER DEFAULT 0,
@@ -1214,6 +1276,11 @@ def build_notification_context(payload: dict) -> dict:
     location_value = payload.get("location") or ""
     content_value = (payload.get("content") or "").strip()
     content_preview = content_value[:180] + ("..." if len(content_value) > 180 else "")
+    event_type_value = normalize_event_type(payload.get("event_type")) if payload.get("event_type") else "practice"
+    event_title_value = normalize_event_title(payload.get("event_title"), event_type_value)
+    event_type_label_value = default_event_type_label(event_type_value)
+    event_type_template_value = event_type_value.upper()
+    event_name_value = payload.get("event_name") or payload.get("name") or f"{event_type_label_value} - {event_title_value}"
     return {
         "date": date_value,
         "time": time_value,
@@ -1221,7 +1288,10 @@ def build_notification_context(payload: dict) -> dict:
         "maximum_capacity": payload.get("maximum_capacity") if payload.get("maximum_capacity") is not None else "",
         "available_count": payload.get("available_count") if payload.get("available_count") is not None else "",
         "remaining_slots": payload.get("remaining_slots") if payload.get("remaining_slots") is not None else "",
-        "event_name": payload.get("event_name") or payload.get("name") or "",
+        "event_name": event_name_value,
+        "event_type": event_type_template_value,
+        "event_type_label": event_type_label_value,
+        "event_title": event_title_value,
         "author_name": payload.get("author_name") or "",
         "full_name": payload.get("full_name") or "",
         "member_name": payload.get("member_name") or payload.get("full_name") or "",
@@ -1286,6 +1356,61 @@ def seed_notification_settings():
                         defaults["email_subject"],
                         defaults["email_template"],
                         defaults["whatsapp_template"],
+                    ),
+                )
+        conn.commit()
+
+        for notif_type, defaults in NOTIFICATION_TYPE_DEFAULTS.items():
+            if USE_POSTGRES:
+                cur.execute(
+                    f"""
+                    UPDATE notification_settings
+                    SET display_name = {PLACEHOLDER},
+                        description = {PLACEHOLDER},
+                        app_template = CASE WHEN app_template IS NULL OR TRIM(app_template) = '' OR app_template = {PLACEHOLDER} THEN {PLACEHOLDER} ELSE app_template END,
+                        email_subject = CASE WHEN email_subject IS NULL OR TRIM(email_subject) = '' OR email_subject = {PLACEHOLDER} THEN {PLACEHOLDER} ELSE email_subject END,
+                        email_template = CASE WHEN email_template IS NULL OR TRIM(email_template) = '' OR email_template = {PLACEHOLDER} THEN {PLACEHOLDER} ELSE email_template END,
+                        whatsapp_template = CASE WHEN whatsapp_template IS NULL OR TRIM(whatsapp_template) = '' OR whatsapp_template = {PLACEHOLDER} THEN {PLACEHOLDER} ELSE whatsapp_template END
+                    WHERE notif_type = {PLACEHOLDER}
+                    """,
+                    (
+                        defaults["display_name"],
+                        defaults["description"],
+                        defaults["app_template"],
+                        defaults["app_template"],
+                        defaults["email_subject"],
+                        defaults["email_subject"],
+                        defaults["email_template"],
+                        defaults["email_template"],
+                        defaults["whatsapp_template"],
+                        defaults["whatsapp_template"],
+                        notif_type,
+                    ),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE notification_settings
+                    SET display_name = ?,
+                        description = ?,
+                        app_template = CASE WHEN app_template IS NULL OR TRIM(app_template) = '' OR app_template = ? THEN ? ELSE app_template END,
+                        email_subject = CASE WHEN email_subject IS NULL OR TRIM(email_subject) = '' OR email_subject = ? THEN ? ELSE email_subject END,
+                        email_template = CASE WHEN email_template IS NULL OR TRIM(email_template) = '' OR email_template = ? THEN ? ELSE email_template END,
+                        whatsapp_template = CASE WHEN whatsapp_template IS NULL OR TRIM(whatsapp_template) = '' OR whatsapp_template = ? THEN ? ELSE whatsapp_template END
+                    WHERE notif_type = ?
+                    """,
+                    (
+                        defaults["display_name"],
+                        defaults["description"],
+                        defaults["app_template"],
+                        defaults["app_template"],
+                        defaults["email_subject"],
+                        defaults["email_subject"],
+                        defaults["email_template"],
+                        defaults["email_template"],
+                        defaults["whatsapp_template"],
+                        defaults["whatsapp_template"],
+                        notif_type,
                     ),
                 )
         conn.commit()
@@ -1578,7 +1703,7 @@ def is_practice_datetime_in_past(date_value: str, time_value: Optional[str]) -> 
 
 def get_practice_session_basic(cur, date_str: str) -> Optional[dict]:
     cur.execute(
-        f"SELECT date, time, location, payment_requested, payment_requested_at, COALESCE(maximum_capacity, 100) as maximum_capacity FROM practice_sessions WHERE date = {PLACEHOLDER}",
+        f"SELECT date, time, location, event_type, event_title, payment_requested, payment_requested_at, COALESCE(maximum_capacity, 100) as maximum_capacity FROM practice_sessions WHERE date = {PLACEHOLDER}",
         (date_str,),
     )
     row = cur.fetchone()
@@ -1586,6 +1711,8 @@ def get_practice_session_basic(cur, date_str: str) -> Optional[dict]:
         return None
     session = dict(row)
     session["time"] = get_practice_effective_time(session.get("time")) if session.get("time") else "21:00"
+    session["event_type"] = normalize_event_type(session.get("event_type")) if session.get("event_type") else "practice"
+    session["event_title"] = normalize_event_title(session.get("event_title"), session["event_type"])
     return session
 
 def get_available_count_for_session(cur, date_str: str) -> int:
@@ -1606,6 +1733,8 @@ def get_practice_session_with_capacity(cur, date_str: str) -> Optional[dict]:
             ps.date,
             ps.time,
             ps.location,
+            ps.event_type,
+            ps.event_title,
             ps.session_cost,
             ps.paid_by,
             ps.payment_requested,
@@ -1632,6 +1761,8 @@ def get_practice_session_with_capacity(cur, date_str: str) -> Optional[dict]:
             session["time"] = "21:00"
     else:
         session["time"] = None
+    session["event_type"] = normalize_event_type(session.get("event_type")) if session.get("event_type") else "practice"
+    session["event_title"] = normalize_event_title(session.get("event_title"), session["event_type"])
     available_count = get_available_count_for_session(cur, date_str)
     maximum_capacity = normalize_maximum_capacity(session.get("maximum_capacity"))
     session["maximum_capacity"] = maximum_capacity
@@ -1700,7 +1831,7 @@ def notify_pending_payment_reminders():
         cur = conn.cursor()
         cur.execute(
             f"""
-            SELECT date, time, location, payment_requested_at
+            SELECT date, time, location, event_type, event_title, payment_requested_at
             FROM practice_sessions
             WHERE payment_requested = {PLACEHOLDER}
               AND payment_requested_at IS NOT NULL
@@ -1745,6 +1876,8 @@ def notify_pending_payment_reminders():
                 "date": reminder_session["date"],
                 "time": reminder_session.get("time"),
                 "location": reminder_session.get("location"),
+                "event_type": reminder_session.get("event_type"),
+                "event_title": reminder_session.get("event_title"),
                 "payments_link": "https://glasgow-bengali-fc.vercel.app/user-actions/payments",
             },
             related_date=reminder_session["date"],
@@ -1915,6 +2048,8 @@ class PracticeSessionCreate(BaseModel):
     date: str
     time: Optional[str] = None
     location: Optional[str] = None
+    event_type: str = "practice"
+    event_title: Optional[str] = None
     session_cost: Optional[float] = None
     paid_by: Optional[str] = None
     maximum_capacity: int = 100
@@ -1923,6 +2058,8 @@ class PracticeSessionOut(BaseModel):
     date: str
     time: Optional[str] = None
     location: Optional[str] = None
+    event_type: str = "practice"
+    event_title: Optional[str] = None
     session_cost: Optional[float] = None
     paid_by: Optional[str] = None
     maximum_capacity: int = 100
@@ -1983,6 +2120,34 @@ def is_admin(current_user: dict) -> bool:
     
     # Check if user_type is 'admin' OR email is 'super@admin.com'
     return user_type == "admin" or current_user.get("email") == "super@admin.com"
+
+def normalize_event_type(value: Optional[str]) -> str:
+    normalized = (value or "practice").strip().lower()
+    if normalized not in EVENT_TYPE_OPTIONS:
+        raise HTTPException(status_code=400, detail="Event type must be one of: Practice, Match, Social, Others")
+    return normalized
+
+def default_event_title_for_type(event_type: str) -> str:
+    return {
+        "practice": "Session",
+        "match": "Match",
+        "social": "Social Event",
+        "others": "Other Event",
+    }.get(event_type, "Event")
+
+def default_event_type_label(event_type: str) -> str:
+    return {
+        "practice": "Practice",
+        "match": "Match",
+        "social": "Social",
+        "others": "Other",
+    }.get(event_type, "Event")
+
+def normalize_event_title(event_title: Optional[str], event_type: str) -> str:
+    cleaned = (event_title or "").strip()
+    if len(cleaned) > 30:
+        raise HTTPException(status_code=400, detail="Event title must be 30 characters or less")
+    return cleaned if cleaned else default_event_title_for_type(event_type)
 
 # --- FastAPI app ---
 app = FastAPI(title="Glasgow Bengali FC API", version="1.0")
@@ -2907,6 +3072,8 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
         raise HTTPException(status_code=403, detail="Admins only")
     maximum_capacity = normalize_maximum_capacity(session.maximum_capacity)
     normalized_time = normalize_practice_time(session.time)
+    normalized_event_type = normalize_event_type(session.event_type)
+    normalized_event_title = normalize_event_title(session.event_title, normalized_event_type)
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -2918,13 +3085,13 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
             raise HTTPException(status_code=400, detail="Practice session cannot be edited after payment has been requested")
         if USE_POSTGRES:
             cur.execute(
-                f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date) DO UPDATE SET time = EXCLUDED.time, location = EXCLUDED.location, session_cost = EXCLUDED.session_cost, paid_by = EXCLUDED.paid_by, maximum_capacity = EXCLUDED.maximum_capacity",
-                (session.date, normalized_time, session.location, session.session_cost, session.paid_by, maximum_capacity),
+                f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, session_cost, paid_by, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date) DO UPDATE SET time = EXCLUDED.time, location = EXCLUDED.location, event_type = EXCLUDED.event_type, event_title = EXCLUDED.event_title, session_cost = EXCLUDED.session_cost, paid_by = EXCLUDED.paid_by, maximum_capacity = EXCLUDED.maximum_capacity",
+                (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.session_cost, session.paid_by, maximum_capacity),
             )
         else:
             cur.execute(
-                f"INSERT OR REPLACE INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, COALESCE((SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}), 0), {PLACEHOLDER})",
-                (session.date, normalized_time, session.location, session.session_cost, session.paid_by, session.date, maximum_capacity),
+                f"INSERT OR REPLACE INTO practice_sessions (date, time, location, event_type, event_title, session_cost, paid_by, payment_requested, payment_requested_at, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, COALESCE((SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}), 0), (SELECT payment_requested_at FROM practice_sessions WHERE date = {PLACEHOLDER}), {PLACEHOLDER})",
+                (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.session_cost, session.paid_by, session.date, session.date, maximum_capacity),
             )
         conn.commit()
         
@@ -2934,6 +3101,9 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
                 "date": session.date,
                 "time": normalized_time,
                 "location": session.location,
+                "event_type": normalized_event_type,
+                "event_title": normalized_event_title,
+                "event_name": f"{default_event_type_label(normalized_event_type)} - {normalized_event_title}",
                 "maximum_capacity": maximum_capacity,
             },
             related_date=session.date
@@ -2948,6 +3118,8 @@ def update_practice_session(date_str: str, session: PracticeSessionCreate, curre
         raise HTTPException(status_code=403, detail="Admins only")
     maximum_capacity = normalize_maximum_capacity(session.maximum_capacity)
     normalized_time = normalize_practice_time(session.time)
+    normalized_event_type = normalize_event_type(session.event_type)
+    normalized_event_title = normalize_event_title(session.event_title, normalized_event_type)
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -2960,8 +3132,8 @@ def update_practice_session(date_str: str, session: PracticeSessionCreate, curre
         if existing_session["payment_requested"]:
             raise HTTPException(status_code=400, detail="Practice session cannot be edited after payment has been requested")
         cur.execute(
-            f"UPDATE practice_sessions SET time = {PLACEHOLDER}, location = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
-            (normalized_time, session.location, session.session_cost, session.paid_by, maximum_capacity, date_str),
+            f"UPDATE practice_sessions SET time = {PLACEHOLDER}, location = {PLACEHOLDER}, event_type = {PLACEHOLDER}, event_title = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
+            (normalized_time, session.location, normalized_event_type, normalized_event_title, session.session_cost, session.paid_by, maximum_capacity, date_str),
         )
         conn.commit()
         if cur.rowcount == 0:
@@ -2985,7 +3157,7 @@ def request_payment(date_str: str, current_user: dict = Depends(get_current_user
         
         # Check if session exists and get session details
         cur.execute(
-            f"SELECT payment_requested, time, location FROM practice_sessions WHERE date = {PLACEHOLDER}", 
+            f"SELECT payment_requested, time, location, event_type, event_title FROM practice_sessions WHERE date = {PLACEHOLDER}", 
             (date_str,)
         )
         session = cur.fetchone()
@@ -3022,6 +3194,8 @@ def request_payment(date_str: str, current_user: dict = Depends(get_current_user
                 "date": date_str,
                 "time": session["time"],
                 "location": session["location"],
+                "event_type": session["event_type"],
+                "event_title": session["event_title"],
             },
             related_date=date_str
         )
@@ -3053,7 +3227,7 @@ def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(
         
         # Check if payment is requested for this session and get session details
         cur.execute(
-            f"SELECT payment_requested, time, location FROM practice_sessions WHERE date = {PLACEHOLDER}",
+            f"SELECT payment_requested, time, location, event_type, event_title FROM practice_sessions WHERE date = {PLACEHOLDER}",
             (date,)
         )
         session = cur.fetchone()
@@ -3096,6 +3270,8 @@ def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(
                     "date": date,
                     "time": session["time"],
                     "location": session["location"],
+                    "event_type": session["event_type"],
+                    "event_title": session["event_title"],
                     "member_name": current_user.get("full_name", current_user["email"]),
                     "full_name": current_user.get("full_name", current_user["email"]),
                 },
@@ -3113,7 +3289,7 @@ def confirm_payment(date_str: str, data: dict, current_user: dict = Depends(get_
         
         # Check if payment is requested for this session and get session details
         cur.execute(
-            f"SELECT payment_requested, time, location FROM practice_sessions WHERE date = {PLACEHOLDER}", 
+            f"SELECT payment_requested, time, location, event_type, event_title FROM practice_sessions WHERE date = {PLACEHOLDER}", 
             (date_str,)
         )
         session = cur.fetchone()
@@ -3150,6 +3326,8 @@ def confirm_payment(date_str: str, data: dict, current_user: dict = Depends(get_
                     "date": date_str,
                     "time": session_time,
                     "location": session_location,
+                    "event_type": session["event_type"],
+                    "event_title": session["event_title"],
                     "member_name": current_user.get("full_name", current_user["email"]),
                     "full_name": current_user.get("full_name", current_user["email"]),
                 },
@@ -3213,7 +3391,7 @@ def list_expenses(current_user: dict = Depends(get_current_user)):
 
         cur.execute(
             f"""
-            SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by, ps.payment_requested_at,
+            SELECT ps.date, ps.event_type, ps.event_title, ps.time, ps.location, ps.session_cost, ps.paid_by, ps.payment_requested_at,
                    u.full_name as paid_by_name
             FROM practice_sessions ps
             LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
@@ -3224,17 +3402,30 @@ def list_expenses(current_user: dict = Depends(get_current_user)):
         for row in cur.fetchall():
             row_dict = dict(row)
             session_date = row_dict.get("date")
+            event_type = normalize_event_type(row_dict.get("event_type")) if row_dict.get("event_type") else "practice"
+            event_title = normalize_event_title(row_dict.get("event_title"), event_type)
+            event_name = f"{default_event_type_label(event_type)} - {event_title}"
+            time_value = row_dict.get("time")
+            location_value = row_dict.get("location")
+            if time_value and location_value:
+                description = f"{event_name} booking at {time_value} - {location_value}"
+            elif time_value:
+                description = f"{event_name} booking at {time_value}"
+            elif location_value:
+                description = f"{event_name} booking - {location_value}"
+            else:
+                description = f"{event_name} booking cost"
             booking_rows.append(
                 serialize_expense(
                     {
                         "id": -int(str(session_date).replace("-", "")),
-                        "title": f"Practice Booking - {session_date}",
+                        "title": event_name,
                         "amount": row_dict.get("session_cost") or 0,
                         "paid_by": row_dict.get("paid_by"),
                         "expense_date": session_date,
-                        "category": "Practice Booking",
+                        "category": "Event Booking",
                         "payment_method": None,
-                        "description": f"Practice session booking{f' at {row_dict.get('time')}' if row_dict.get('time') else ''}{f' - {row_dict.get('location')}' if row_dict.get('location') else ''}",
+                        "description": description,
                         "paid_by_name": row_dict.get("paid_by_name"),
                         "source": "practice_booking",
                         "is_booking_expense": True,
@@ -3724,6 +3915,8 @@ def set_practice_availability_by_date(date: str, status: dict, current_user: dic
                     "date": updated_session["date"],
                     "time": updated_session.get("time"),
                     "location": updated_session.get("location"),
+                    "event_type": updated_session.get("event_type"),
+                    "event_title": updated_session.get("event_title"),
                     "maximum_capacity": updated_session["maximum_capacity"],
                     "available_count": updated_session["available_count"],
                     "remaining_slots": updated_session["remaining_slots"],
@@ -3800,6 +3993,8 @@ def set_my_practice_availability(avail: PracticeAvailability, current_user: dict
                     "date": updated_session["date"],
                     "time": updated_session.get("time"),
                     "location": updated_session.get("location"),
+                    "event_type": updated_session.get("event_type"),
+                    "event_title": updated_session.get("event_title"),
                     "maximum_capacity": updated_session["maximum_capacity"],
                     "available_count": updated_session["available_count"],
                     "remaining_slots": updated_session["remaining_slots"],
@@ -3871,6 +4066,8 @@ def admin_set_practice_availability(avail: AdminPracticeAvailability, current_us
                     "date": updated_session["date"],
                     "time": updated_session.get("time"),
                     "location": updated_session.get("location"),
+                    "event_type": updated_session.get("event_type"),
+                    "event_title": updated_session.get("event_title"),
                     "maximum_capacity": updated_session["maximum_capacity"],
                     "available_count": updated_session["available_count"],
                     "remaining_slots": updated_session["remaining_slots"],
@@ -4270,6 +4467,8 @@ def generate_booking_report(from_date: str, to_date: str, current_user: dict = D
         cur.execute(f"""
             SELECT 
                 ps.date,
+                ps.event_type,
+                ps.event_title,
                 ps.time,
                 ps.location,
                 ps.session_cost,
@@ -4294,7 +4493,7 @@ def generate_booking_report(from_date: str, to_date: str, current_user: dict = D
         header_alignment = Alignment(horizontal="center", vertical="center")
         
         # Headers
-        headers = ["Practice Session Date", "Time", "Place", "Total Cost (£)", "Paid By"]
+        headers = ["Event Date", "Event Type", "Event Title", "Time", "Place", "Total Cost (£)", "Paid By"]
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_num, value=header)
             cell.fill = header_fill
@@ -4304,24 +4503,34 @@ def generate_booking_report(from_date: str, to_date: str, current_user: dict = D
         # Data rows
         for row_num, session in enumerate(sessions, 2):
             if USE_POSTGRES:
+                event_type = normalize_event_type(session.get("event_type")) if session.get("event_type") else "practice"
+                event_title = normalize_event_title(session.get("event_title"), event_type)
                 ws.cell(row=row_num, column=1, value=session["date"])
-                ws.cell(row=row_num, column=2, value=session["time"] or "TBD")
-                ws.cell(row=row_num, column=3, value=session["location"] or "TBD")
-                ws.cell(row=row_num, column=4, value=float(session["session_cost"]) if session["session_cost"] else 0.0)
-                ws.cell(row=row_num, column=5, value=session["paid_by_name"] or session["paid_by"] or "Not Set")
+                ws.cell(row=row_num, column=2, value=default_event_type_label(event_type))
+                ws.cell(row=row_num, column=3, value=event_title)
+                ws.cell(row=row_num, column=4, value=session["time"] or "TBD")
+                ws.cell(row=row_num, column=5, value=session["location"] or "TBD")
+                ws.cell(row=row_num, column=6, value=float(session["session_cost"]) if session["session_cost"] else 0.0)
+                ws.cell(row=row_num, column=7, value=session["paid_by_name"] or session["paid_by"] or "Not Set")
             else:
+                event_type = normalize_event_type(session[1]) if session[1] else "practice"
+                event_title = normalize_event_title(session[2], event_type)
                 ws.cell(row=row_num, column=1, value=session[0])
-                ws.cell(row=row_num, column=2, value=session[1] or "TBD")
-                ws.cell(row=row_num, column=3, value=session[2] or "TBD")
-                ws.cell(row=row_num, column=4, value=float(session[3]) if session[3] else 0.0)
-                ws.cell(row=row_num, column=5, value=session[5] or session[4] or "Not Set")
+                ws.cell(row=row_num, column=2, value=default_event_type_label(event_type))
+                ws.cell(row=row_num, column=3, value=event_title)
+                ws.cell(row=row_num, column=4, value=session[3] or "TBD")
+                ws.cell(row=row_num, column=5, value=session[4] or "TBD")
+                ws.cell(row=row_num, column=6, value=float(session[5]) if session[5] else 0.0)
+                ws.cell(row=row_num, column=7, value=session[7] or session[6] or "Not Set")
         
         # Adjust column widths
         ws.column_dimensions['A'].width = 20
-        ws.column_dimensions['B'].width = 15
-        ws.column_dimensions['C'].width = 25
+        ws.column_dimensions['B'].width = 16
+        ws.column_dimensions['C'].width = 24
         ws.column_dimensions['D'].width = 15
         ws.column_dimensions['E'].width = 25
+        ws.column_dimensions['F'].width = 15
+        ws.column_dimensions['G'].width = 25
         
         # Save to BytesIO
         output = BytesIO()
@@ -4358,32 +4567,50 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
         cur.execute(
             f"""
             SELECT ps.date as expense_date,
-                   {PLACEHOLDER} as title,
-                   {PLACEHOLDER} as category,
+                   ps.event_type,
+                   ps.event_title,
                    ps.session_cost as amount,
                    NULL as payment_method,
-                   CASE
-                       WHEN ps.time IS NOT NULL AND ps.location IS NOT NULL THEN 'Practice session booking at ' || ps.time || ' - ' || ps.location
-                       WHEN ps.time IS NOT NULL THEN 'Practice session booking at ' || ps.time
-                       WHEN ps.location IS NOT NULL THEN 'Practice session booking - ' || ps.location
-                       ELSE 'Practice session booking cost'
-                   END as description,
+                   ps.time,
+                   ps.location,
                    ps.paid_by,
                    u.full_name as paid_by_name,
                    ps.payment_requested_at as created_at,
-                   'Practice Booking' as source
+                   'Event Booking' as source
             FROM practice_sessions ps
             LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
             WHERE ps.session_cost IS NOT NULL AND ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
             """,
-            (
-                "Practice Booking",
-                "Practice Booking",
-                from_date,
-                to_date,
-            ),
+            (from_date, to_date),
         )
-        booking_rows = [dict(row) for row in cur.fetchall()]
+        booking_rows = []
+        for row in cur.fetchall():
+            row_dict = dict(row)
+            event_type = normalize_event_type(row_dict.get("event_type")) if row_dict.get("event_type") else "practice"
+            event_title = normalize_event_title(row_dict.get("event_title"), event_type)
+            event_name = f"{default_event_type_label(event_type)} - {event_title}"
+            time_value = row_dict.get("time")
+            location_value = row_dict.get("location")
+            if time_value and location_value:
+                description = f"{event_name} booking at {time_value} - {location_value}"
+            elif time_value:
+                description = f"{event_name} booking at {time_value}"
+            elif location_value:
+                description = f"{event_name} booking - {location_value}"
+            else:
+                description = f"{event_name} booking cost"
+            booking_rows.append({
+                "expense_date": row_dict.get("expense_date"),
+                "title": event_name,
+                "category": "Event Booking",
+                "amount": row_dict.get("amount"),
+                "payment_method": row_dict.get("payment_method"),
+                "description": description,
+                "paid_by": row_dict.get("paid_by"),
+                "paid_by_name": row_dict.get("paid_by_name"),
+                "created_at": row_dict.get("created_at"),
+                "source": row_dict.get("source"),
+            })
 
         rows = expense_rows + booking_rows
         rows.sort(
@@ -4452,10 +4679,12 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
     with get_connection() as conn:
         cur = conn.cursor()
         
-        # Get all practice sessions in date range with availability and payment data
+        # Get all bookable events in date range with availability and payment data
         cur.execute(f"""
             SELECT 
                 ps.date,
+                ps.event_type,
+                ps.event_title,
                 ps.time,
                 ps.location,
                 ps.session_cost,
@@ -4482,7 +4711,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
         # Create Excel workbook
         wb = Workbook()
         ws = wb.active
-        ws.title = "Player Payment Report"
+        ws.title = "Event Payment Report"
         
         # Header styling
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -4490,7 +4719,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
         header_alignment = Alignment(horizontal="center", vertical="center")
         
         # Headers
-        headers = ["Practice Session Date", "Time", "Place", "Total Cost (£)", "Paid By", "Payment Requested Date", "Player Name", "Availability", 
+        headers = ["Event Date", "Event Type", "Event Title", "Time", "Place", "Total Cost (£)", "Paid By", "Payment Requested Date", "Player Name", "Availability", 
                    "Individual Amount (£)", "Paid", "Payment Acknowledgement Date"]
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_num, value=header)
@@ -4503,6 +4732,8 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
         for row in rows:
             if USE_POSTGRES:
                 date = row["date"]
+                event_type = normalize_event_type(row.get("event_type")) if row.get("event_type") else "practice"
+                event_title = normalize_event_title(row.get("event_title"), event_type)
                 time = row["time"] or "TBD"
                 location = row["location"] or "TBD"
                 session_cost = row["session_cost"]
@@ -4515,30 +4746,34 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 payment_date = row["payment_date"]
             else:
                 date = row[0]
-                time = row[1] or "TBD"
-                location = row[2] or "TBD"
-                session_cost = row[3]
-                paid_by = row[8] or row[4]
-                payment_requested_at = row[5]
-                user_email = row[6]
-                full_name = row[7] or user_email
-                status = row[9]
-                paid = row[10]
-                payment_date = row[11]
+                event_type = normalize_event_type(row[1]) if row[1] else "practice"
+                event_title = normalize_event_title(row[2], event_type)
+                time = row[3] or "TBD"
+                location = row[4] or "TBD"
+                session_cost = row[5]
+                paid_by = row[10] or row[6]
+                payment_requested_at = row[7]
+                user_email = row[8]
+                full_name = row[9] or user_email
+                status = row[11]
+                paid = row[12]
+                payment_date = row[13]
             
             ws.cell(row=row_num, column=1, value=date)
-            ws.cell(row=row_num, column=2, value=time)
-            ws.cell(row=row_num, column=3, value=location)
-            ws.cell(row=row_num, column=4, value=float(session_cost) if session_cost else 0.0)
-            ws.cell(row=row_num, column=5, value=paid_by or "")
+            ws.cell(row=row_num, column=2, value=default_event_type_label(event_type))
+            ws.cell(row=row_num, column=3, value=event_title)
+            ws.cell(row=row_num, column=4, value=time)
+            ws.cell(row=row_num, column=5, value=location)
+            ws.cell(row=row_num, column=6, value=float(session_cost) if session_cost else 0.0)
+            ws.cell(row=row_num, column=7, value=paid_by or "")
             if payment_requested_at:
-                ws.cell(row=row_num, column=6, value=payment_requested_at.isoformat(sep=' ') if hasattr(payment_requested_at, 'isoformat') else str(payment_requested_at))
+                ws.cell(row=row_num, column=8, value=payment_requested_at.isoformat(sep=' ') if hasattr(payment_requested_at, 'isoformat') else str(payment_requested_at))
             else:
-                ws.cell(row=row_num, column=6, value="")
-            ws.cell(row=row_num, column=7, value=full_name)
-            ws.cell(row=row_num, column=8, value=status.capitalize() if status else "")
-            
-            # Individual amount only for available users
+                ws.cell(row=row_num, column=8, value="")
+            ws.cell(row=row_num, column=9, value=full_name)
+            ws.cell(row=row_num, column=10, value=status.capitalize() if status else "")
+
+            individual_amount = 0.0
             if status == "available" and session_cost:
                 # Get count of available users for this session
                 cur.execute(f"""
@@ -4551,42 +4786,25 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 
                 if available_count > 0:
                     individual_amount = float(session_cost) / available_count
-                    ws.cell(row=row_num, column=9, value=round(individual_amount, 2))
-                else:
-                    ws.cell(row=row_num, column=9, value="")
-            else:
-                ws.cell(row=row_num, column=9, value="")
-            
-            # Paid status only for available users
-            if status == "available":
-                if paid and payment_date:
-                    # Format date
-                    if isinstance(payment_date, str):
-                        ws.cell(row=row_num, column=11, value=payment_date.split(' ')[0])
-                    else:
-                        ws.cell(row=row_num, column=11, value=str(payment_date).split(' ')[0])
-                else:
-                    ws.cell(row=row_num, column=11, value="")
-                paid_value = "Yes" if (paid if USE_POSTGRES else bool(paid)) else "No"
-                ws.cell(row=row_num, column=10, value=paid_value)
-            else:
-                ws.cell(row=row_num, column=10, value="")
-                ws.cell(row=row_num, column=11, value="")
-            
+            ws.cell(row=row_num, column=11, value=round(individual_amount, 2))
+            ws.cell(row=row_num, column=12, value="Yes" if (paid if USE_POSTGRES else bool(paid)) else "No")
+            ws.cell(row=row_num, column=13, value=payment_date.isoformat(sep=' ') if hasattr(payment_date, 'isoformat') else (payment_date or ''))
             row_num += 1
         
         # Adjust column widths
         ws.column_dimensions['A'].width = 20
-        ws.column_dimensions['B'].width = 15
-        ws.column_dimensions['C'].width = 25
-        ws.column_dimensions['D'].width = 14
-        ws.column_dimensions['E'].width = 24
-        ws.column_dimensions['F'].width = 24
-        ws.column_dimensions['G'].width = 25
-        ws.column_dimensions['H'].width = 15
-        ws.column_dimensions['I'].width = 20
-        ws.column_dimensions['J'].width = 10
-        ws.column_dimensions['K'].width = 25
+        ws.column_dimensions['B'].width = 16
+        ws.column_dimensions['C'].width = 24
+        ws.column_dimensions['D'].width = 15
+        ws.column_dimensions['E'].width = 25
+        ws.column_dimensions['F'].width = 15
+        ws.column_dimensions['G'].width = 24
+        ws.column_dimensions['H'].width = 22
+        ws.column_dimensions['I'].width = 24
+        ws.column_dimensions['J'].width = 16
+        ws.column_dimensions['K'].width = 18
+        ws.column_dimensions['L'].width = 12
+        ws.column_dimensions['M'].width = 24
         
         # Save to BytesIO
         output = BytesIO()
@@ -4603,12 +4821,12 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
 
 @app.get("/api/user-actions/upcoming-sessions")
 def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
-    """Get all upcoming practice sessions for user to set availability"""
+    """Get all upcoming bookable events for user to set availability"""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             f"""
-            SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
+            SELECT ps.date, ps.time, ps.location, ps.event_type, ps.event_title, ps.session_cost, ps.paid_by,
                    COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
                    pa.status as user_status
             FROM practice_sessions ps
@@ -4632,6 +4850,8 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
                 "date": row_dict["date"],
                 "time": normalized_time,
                 "location": row_dict["location"],
+                "event_type": normalize_event_type(row_dict.get("event_type")) if row_dict.get("event_type") else "practice",
+                "event_title": normalize_event_title(row_dict.get("event_title"), normalize_event_type(row_dict.get("event_type")) if row_dict.get("event_type") else "practice"),
                 "session_cost": row_dict["session_cost"],
                 "paid_by": row_dict["paid_by"],
                 "user_status": row_dict["user_status"],
@@ -4645,12 +4865,12 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
 
 @app.get("/api/user-actions/payments")
 def get_pending_payments(current_user: dict = Depends(get_current_user)):
-    """Get all sessions where user was available but hasn't confirmed payment"""
+    """Get all events where user was available but hasn't confirmed payment"""
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             f"""
-            SELECT ps.date, ps.time, ps.location, ps.session_cost, ps.paid_by,
+            SELECT ps.date, ps.time, ps.location, ps.event_type, ps.event_title, ps.session_cost, ps.paid_by,
                    u.full_name as paid_by_name,
                    u.bank_name as paid_by_bank_name,
                    u.sort_code as paid_by_sort_code,
@@ -4698,6 +4918,8 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                     "date": row["date"],
                     "time": row["time"],
                     "location": row["location"],
+                    "event_type": normalize_event_type(row.get("event_type")) if row.get("event_type") else "practice",
+                    "event_title": normalize_event_title(row.get("event_title"), normalize_event_type(row.get("event_type")) if row.get("event_type") else "practice"),
                     "session_cost": session_cost,
                     "individual_amount": round(individual_amount, 2),
                     "paid_by": row["paid_by"],
@@ -4716,21 +4938,23 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                     (row[0],)
                 )
                 available_count = cur.fetchone()[0]
-                session_cost = float(row[3]) if row[3] is not None else 0
+                session_cost = float(row[5]) if row[5] is not None else 0
                 individual_amount = session_cost / available_count if available_count > 0 and session_cost > 0 else 0
                 
                 payments.append({
                     "date": row[0],
                     "time": row[1],
                     "location": row[2],
+                    "event_type": normalize_event_type(row[3]) if row[3] else "practice",
+                    "event_title": normalize_event_title(row[4], normalize_event_type(row[3]) if row[3] else "practice"),
                     "session_cost": session_cost,
                     "individual_amount": round(individual_amount, 2),
-                    "paid_by": row[4],
-                    "paid_by_name": row[5],
-                    "paid_by_bank_name": row[6],
-                    "paid_by_sort_code": row[7],
-                    "paid_by_account_number": row[8],
-                    "paid": bool(row[10])
+                    "paid_by": row[6],
+                    "paid_by_name": row[7],
+                    "paid_by_bank_name": row[8],
+                    "paid_by_sort_code": row[9],
+                    "paid_by_account_number": row[10],
+                    "paid": row[12]
                 })
         
         return {"payments": payments}

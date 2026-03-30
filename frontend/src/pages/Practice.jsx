@@ -11,7 +11,6 @@ export default function Practice({ user }) {
   const [selectedDate, setSelectedDate] = useState(null)
   const [availability, setAvailability] = useState({})
   const [adminSessions, setAdminSessions] = useState([])
-  const [matches, setMatches] = useState([])
   const [voteSummary, setVoteSummary] = useState(null)
   const [allUsers, setAllUsers] = useState([])
   const [isAdmin, setIsAdmin] = useState(false)
@@ -31,6 +30,27 @@ export default function Practice({ user }) {
   const [availabilityError, setAvailabilityError] = useState('')
   const [adminAvailabilityError, setAdminAvailabilityError] = useState('')
   const token = localStorage.getItem('token')
+
+  const eventTypeLabelMap = {
+    practice: 'Practice',
+    match: 'Match',
+    social: 'Social',
+    others: 'Other',
+  }
+
+  const eventTypeColorMap = {
+    practice: 'color-mix(in srgb, var(--theme-success) 26%, white)',
+    match: '#bfdbfe',
+    social: '#fed7aa',
+    others: '#ddd6fe',
+  }
+
+  const eventTypeAccentMap = {
+    practice: 'var(--theme-success-strong)',
+    match: 'var(--theme-accent-strong)',
+    social: '#c2410c',
+    others: '#6d28d9',
+  }
 
   const formatDateStr = (dt) => {
     if (!dt) return null
@@ -67,6 +87,14 @@ export default function Practice({ user }) {
     const sessionDateTime = getSessionDateTime(dateStr, timeStr)
     if (!sessionDateTime) return false
     return sessionDateTime.getTime() < Date.now()
+  }
+
+  const getEventTypeLabel = (eventType) => eventTypeLabelMap[eventType] || 'Event'
+
+  const getEventDisplayTitle = (session) => {
+    if (!session) return 'Event'
+    const title = session.event_title?.trim()
+    return title || getEventTypeLabel(session.event_type)
   }
 
   const mergeUpdatedSession = (updatedSession) => {
@@ -174,16 +202,10 @@ export default function Practice({ user }) {
   }, [location.search])
 
   useEffect(() => {
-    // Fetch admin-created practice sessions
+    // Fetch admin-created events
     fetch(apiUrl('/api/practice/sessions'))
       .then(r => r.json())
       .then(data => setAdminSessions(data || []))
-    
-    // Fetch matches/events to highlight on calendar
-    fetch(apiUrl('/api/events'))
-      .then(r => r.json())
-      .then(data => setMatches(data || []))
-      .catch(() => setMatches([]))
     
     // Fetch user availability
     if (user && token) {
@@ -361,6 +383,8 @@ export default function Practice({ user }) {
         date: selectedDateStr,
         time: selectedSession.time,
         location: selectedSession.location,
+        event_type: selectedSession.event_type,
+        event_title: selectedSession.event_title,
         session_cost: sessionCost ? parseFloat(sessionCost) : null,
         paid_by: paidBy || null,
         maximum_capacity: maximumCapacity ? parseInt(maximumCapacity, 10) : 100,
@@ -393,7 +417,7 @@ export default function Practice({ user }) {
     if (!window.confirm(
       '⚠️ WARNING: This action cannot be reversed!\n\n' +
       'Before enabling payment request, please review:\n' +
-      `• Total session cost: £${sessionCost || '0'}\n` +
+      `• Total Cost: £${sessionCost || '0'}\n` +
       `• Paid by: ${paidBy || 'Not set'}\n` +
       `• Available users: ${voteSummary?.available?.length || 0}\n\n` +
       'Once enabled, users will be asked to confirm payment.\n\n' +
@@ -590,15 +614,11 @@ export default function Practice({ user }) {
 
     return calendar.map((day, index) => {
       const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      const isThursday = day && new Date(currentDate.getFullYear(), currentDate.getMonth(), day).getDay() === 4
-      const isAdminSession = adminSessions.some(s => s.date === dateStr)
-      const hasMatch = matches.some(m => m.date === dateStr)
+      const sessionForDate = adminSessions.find(s => s.date === dateStr)
       const isSelected = Boolean(day) && formatDateStr(selectedDate) === dateStr
 
       let backgroundColor = '#ffffff'
-      if (hasMatch) backgroundColor = '#bfdbfe' // Light blue for match days
-      else if (isAdminSession) backgroundColor = '#86efac' // Green for any day with practice session
-      else if (isThursday) backgroundColor = '#f0fdf4' // Light green for Thursdays without session
+      if (sessionForDate) backgroundColor = eventTypeColorMap[sessionForDate.event_type] || eventTypeColorMap.practice
 
       return (
         <div
@@ -626,9 +646,10 @@ export default function Practice({ user }) {
 
   const selectedDateStr = selectedDate ? formatDateStr(selectedDate) : null
   const selectedSession = adminSessions.find(s => s.date === selectedDateStr)
-  const selectedMatch = matches.find(m => m.date === selectedDateStr)
   const selectedStatus = selectedDateStr ? availability[selectedDateStr] : null
   const selectedPaidByUser = allUsers.find((u) => u.email === paidBy)
+  const selectedEventTypeLabel = getEventTypeLabel(selectedSession?.event_type)
+  const selectedEventTitle = getEventDisplayTitle(selectedSession)
   const paidByBankDetails = selectedSession?.payment_requested
     ? {
         full_name: selectedSession?.paid_by_name || selectedSession?.paid_by,
@@ -709,8 +730,8 @@ export default function Practice({ user }) {
 
   return (
     <div className="container">
-      <h2>Book Practice</h2>
-      <p style={{ marginBottom: '1rem', color: 'var(--theme-text-muted)' }}>Click on a date to select your availability</p>
+      <h2>Club Calendar</h2>
+      <p style={{ marginBottom: '1rem', color: 'var(--theme-text-muted)' }}>Click a date to view events and set availability.</p>
       
       {/* Color Legend */}
       <div style={{ 
@@ -721,14 +742,12 @@ export default function Practice({ user }) {
         border: '1px solid var(--theme-border)'
       }}>
         <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.875rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ width: '20px', height: '20px', background: 'color-mix(in srgb, var(--theme-success) 38%, white)', borderRadius: '4px', border: '1px solid var(--theme-border)' }}></div>
-            <span style={{ color: 'var(--theme-text)' }}>Practice Session</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ width: '20px', height: '20px', background: '#bfdbfe', borderRadius: '4px', border: '1px solid var(--theme-border)' }}></div>
-            <span style={{ color: 'var(--theme-text)' }}>Football Match</span>
-          </div>
+          {Object.entries(eventTypeLabelMap).map(([eventType, label]) => (
+            <div key={eventType} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ width: '20px', height: '20px', background: eventTypeColorMap[eventType], borderRadius: '4px', border: '1px solid var(--theme-border)' }}></div>
+              <span style={{ color: 'var(--theme-text)' }}>{label}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -748,43 +767,12 @@ export default function Practice({ user }) {
       {selectedDate && (
         <div ref={selectedSessionRef} style={{ background: 'var(--theme-surface)', borderRadius: 12, padding: '1.5rem', minHeight: 220, boxShadow: 'var(--theme-card-shadow)', border: '1px solid var(--theme-border)' }}>
           <h3 style={{ marginBottom: '1rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Select a date'}</h3>
-          {selectedMatch ? (
-            <div style={{ 
-              padding: '1rem', 
-              background: 'color-mix(in srgb, var(--theme-accent) 12%, white)', 
-              borderRadius: '0.5rem', 
-              border: '1px solid color-mix(in srgb, var(--theme-accent) 26%, white)',
-              marginTop: '0.75rem'
-            }}>
-              <p style={{ marginBottom: '0.75rem', fontSize: '1.1rem' }}>
-                <strong>⚽ Football Match</strong>
-              </p>
-              <p style={{ marginBottom: '0.5rem', fontSize: '1rem', fontWeight: '600' }}>
-                {selectedMatch.name}
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 6v6l4 2"/>
-                </svg>
-                <span>Time: {selectedMatch.time || 'TBD'}</span>
-              </div>
-              <p style={{ 
-                marginTop: '0.75rem', 
-                padding: '0.75rem', 
-                background: 'var(--theme-surface)', 
-                borderRadius: '0.375rem',
-                color: 'var(--theme-accent-strong)',
-                fontWeight: '500'
-              }}>
-                ℹ️ There will be no practice session on this date as there is a football match already planned.
-              </p>
-            </div>
-          ) : selectedSession ? (
+          {selectedSession ? (
             <div>
-              <p style={{ marginBottom: '0.75rem' }}>
-                <strong>Practice Session</strong>
-              </p>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <strong style={{ color: eventTypeAccentMap[selectedSession.event_type] || 'var(--theme-heading)', fontSize: '1.25rem' }}>{selectedEventTypeLabel}</strong>
+                <div style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: '500', color: 'var(--theme-heading)' }}>{selectedEventTitle}</div>
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/>
@@ -806,14 +794,14 @@ export default function Practice({ user }) {
             </div>
           ) : (
             <p>
-              No practice session on this date. Please select a date highlighted in green to book your practice.<br />
+              No event is scheduled on this date. Please select a highlighted date to book your event.<br />
               {user && selectedStatus && `Your status: ${selectedStatus}`}
               {!user && 'Log in to set your availability'}
             </p>
           )}
-          {selectedSession && !selectedMatch && (
+          {selectedSession && (
             <>
-              <div style={{ marginTop: '1rem' }}>
+              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
                 <strong>Your Selection</strong>
                 <div style={{ marginTop: '0.5rem' }}>
                   <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
@@ -821,7 +809,7 @@ export default function Practice({ user }) {
                   <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
                 </div>
                 {!user && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)' }}>Log in to vote your availability.</p>}
-                {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after session time has passed.</p>}
+                {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after event time has passed.</p>}
                 {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after payment requested.</p>}
                 {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
                   <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>
@@ -835,7 +823,7 @@ export default function Practice({ user }) {
                 <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)' }}>
                   <strong style={{ color: 'var(--theme-warning-strong)' }}>Payment Request</strong>
                   <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-warning-strong)' }}>
-                    Total session cost £ {selectedSession.session_cost != null ? Number(selectedSession.session_cost).toFixed(2) : '0.00'}
+                    Total Cost £ {selectedSession.session_cost != null ? Number(selectedSession.session_cost).toFixed(2) : '0.00'}
                   </p>
                   {hasPaidByBankDetails && (
                     <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 26%, white)' }}>
@@ -906,7 +894,7 @@ export default function Practice({ user }) {
                         <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Payment Information</div>
                         <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
                           <div style={{ flex: '0 0 100px' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Session Cost (£)</label>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Event Cost (£)</label>
                             <input
                               type="number"
                               step="0.01"

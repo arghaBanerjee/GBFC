@@ -207,7 +207,7 @@ function App() {
   }, [notificationsOpen])
 
 
-  const navItems = ['Home', 'Matches', 'Book Practice', 'Forum']
+  const navItems = ['Home', 'Matches', 'Calendar', 'Forum']
   const isActive = (path) => location.pathname === path
   const isSectionActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`)
   const isUserActionsActive = location.pathname === '/user-actions' || location.pathname.startsWith('/user-actions/')
@@ -295,7 +295,7 @@ function App() {
               )
             })}
             {isAdmin && (
-              <Link to="/admin/practice" className="nav-link">
+              <Link to="/admin/events" className="nav-link">
                 <button className={`nav-btn ${isSectionActive('/admin') ? 'active' : ''}`}>Admin</button>
               </Link>
             )}
@@ -420,9 +420,9 @@ function App() {
                             else if (notif.type === 'pending_payment_reminder') navigate('/user-actions/payments')
                             else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed') {
                               if (notif.related_date) {
-                                navigate(`/book-practice?date=${notif.related_date}`)
+                                navigate(`/calendar?date=${notif.related_date}`)
                               } else {
-                                navigate('/book-practice')
+                                navigate('/calendar')
                               }
                             }
                           }}
@@ -504,7 +504,7 @@ function App() {
               })}
               {isAdmin && (
                 <Link 
-                  to="/admin/practice" 
+                  to="/admin/events" 
                   className="mobile-nav-link"
                   onClick={() => setMobileMenuOpen(false)}
                 >
@@ -563,11 +563,12 @@ function App() {
               <Events user={user} />
             </ProtectedRoute>
           } />
-          <Route path="/book-practice" element={
+          <Route path="/calendar" element={
             <ProtectedRoute user={user} loading={loading}>
               <Practice user={user} />
             </ProtectedRoute>
           } />
+          <Route path="/book-practice" element={<Navigate to="/calendar" replace />} />
           <Route path="/forum" element={
             <ProtectedRoute user={user} loading={loading}>
               <Forum user={user} />
@@ -578,7 +579,8 @@ function App() {
               <Profile user={user} setUser={setUser} loading={loading} />
             </ProtectedRoute>
           } />
-          <Route path="/admin" element={<Navigate to="/admin/practice" replace />} />
+          <Route path="/admin" element={<Navigate to="/admin/events" replace />} />
+          <Route path="/admin/practice" element={<Navigate to="/admin/events" replace />} />
           <Route path="/admin/:tab" element={
             <ProtectedRoute user={user} loading={loading}>
               <Admin user={user} loading={loading} />

@@ -11,7 +11,7 @@ export default function Admin({ user, loading }) {
   const token = localStorage.getItem('token')
   const isSuperAdmin = user?.email === 'super@admin.com'
   const adminTabs = [
-    { value: 'practice', label: 'Add Practice' },
+    { value: 'events', label: 'Events' },
     { value: 'event', label: 'Add Match' },
     { value: 'forum', label: 'Forum Posts' },
     { value: 'users', label: 'Users' },
@@ -27,7 +27,7 @@ export default function Admin({ user, loading }) {
   
   // Route validation
   const validatedTab = validateAdminTab(routeTab)
-  const activeTab = validatedTab || 'practice'
+  const activeTab = validatedTab || 'events'
   const setActiveTab = (tab) => navigate(`/admin/${tab}`)
 
   // Events
@@ -48,6 +48,8 @@ export default function Admin({ user, loading }) {
   const [practiceDate, setPracticeDate] = useState('')
   const [practiceTime, setPracticeTime] = useState('21:00')
   const [practiceLocation, setPracticeLocation] = useState('')
+  const [practiceEventType, setPracticeEventType] = useState('practice')
+  const [practiceEventTitle, setPracticeEventTitle] = useState('Session')
   const [practiceSessionCost, setPracticeSessionCost] = useState('')
   const [practicePaidBy, setPracticePaidBy] = useState('')
   const [practiceMaximumCapacity, setPracticeMaximumCapacity] = useState('18')
@@ -94,7 +96,10 @@ export default function Admin({ user, loading }) {
       date: '2026-03-20',
       time: '7:30 PM',
       location: 'Glasgow Green',
-      event_name: '',
+      event_name: 'Practice - Session',
+      event_type: 'practice',
+      event_type_label: 'Practice',
+      event_title: 'Session',
       author_name: '',
       content: '',
       content_preview: '',
@@ -136,7 +141,10 @@ export default function Admin({ user, loading }) {
       date: '2026-04-02',
       time: '8:00 PM',
       location: 'Scotstoun Sports Campus',
-      event_name: '',
+      event_name: 'Practice - Session',
+      event_type: 'practice',
+      event_type_label: 'Practice',
+      event_title: 'Session',
       author_name: '',
       content: '',
       content_preview: '',
@@ -150,6 +158,10 @@ export default function Admin({ user, loading }) {
       date: '2026-04-02',
       time: '8:00 PM',
       location: 'Scotstoun Sports Campus',
+      event_name: 'Practice - Session',
+      event_type: 'practice',
+      event_type_label: 'Practice',
+      event_title: 'Session',
       member_name: 'Rahim Uddin',
       full_name: 'Rahim Uddin',
       time_suffix: ' at 8:00 PM',
@@ -162,6 +174,10 @@ export default function Admin({ user, loading }) {
       date: '2026-04-02',
       time: '8:00 PM',
       location: 'Scotstoun Sports Campus',
+      event_name: 'Practice - Session',
+      event_type: 'practice',
+      event_type_label: 'Practice',
+      event_title: 'Session',
       payments_link: 'https://glasgow-bengali-fc.vercel.app/user-actions/payments',
       time_suffix: ' at 8:00 PM',
       location_suffix: ' at Scotstoun Sports Campus',
@@ -173,6 +189,10 @@ export default function Admin({ user, loading }) {
       date: '2026-04-10',
       time: '7:00 PM',
       location: 'Glasgow Green',
+      event_name: 'Practice - Session',
+      event_type: 'practice',
+      event_type_label: 'Practice',
+      event_title: 'Session',
       maximum_capacity: '18',
       available_count: '18',
       remaining_slots: '0',
@@ -186,6 +206,10 @@ export default function Admin({ user, loading }) {
       date: '2026-04-12',
       time: '8:30 PM',
       location: 'Scotstoun Sports Campus',
+      event_name: 'Practice - Session',
+      event_type: 'practice',
+      event_type_label: 'Practice',
+      event_title: 'Session',
       maximum_capacity: '20',
       available_count: '14',
       remaining_slots: '6',
@@ -202,14 +226,14 @@ export default function Admin({ user, loading }) {
   }
 
   const notificationVariableMap = {
-    practice: ['{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    practice: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     match: ['{{event_name}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     forum_post: ['{{author_name}}', '{{content}}', '{{content_preview}}'],
-    payment_request: ['{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    payment_confirmed: ['{{member_name}}', '{{full_name}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    pending_payment_reminder: ['{{payments_link}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    session_capacity_reached: ['{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    practice_slot_available: ['{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    payment_request: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    payment_confirmed: ['{{member_name}}', '{{full_name}}', '{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    pending_payment_reminder: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{payments_link}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    session_capacity_reached: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    practice_slot_available: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     welcome_signup: ['{{full_name}}', '{{club_name}}'],
   }
 
@@ -256,8 +280,8 @@ export default function Admin({ user, loading }) {
 
     const isValidTab = Boolean(validateAdminTab(routeTab))
     if (!isValidTab) {
-      setMessage(`Invalid admin tab: "${routeTab}". Redirecting to practice tab.`)
-      navigate('/admin/practice', { replace: true })
+      setMessage(`Invalid admin tab: "${routeTab}". Redirecting to events tab.`)
+      navigate('/admin/events', { replace: true })
       const timer = setTimeout(() => setMessage(''), 3000)
       return () => clearTimeout(timer)
     }
@@ -316,7 +340,7 @@ export default function Admin({ user, loading }) {
 
   const refreshTabData = (tabName) => {
     if (tabName === 'event') loadEvents()
-    else if (tabName === 'practice') {
+    else if (tabName === 'events') {
       loadPracticeSessions()
       loadUsers()
     }
@@ -369,10 +393,10 @@ export default function Admin({ user, loading }) {
         loadEvents()
         newLoadedTabs.add('event')
         didLoadTab = true
-      } else if (activeTab === 'practice') {
+      } else if (activeTab === 'events') {
         loadPracticeSessions()
         loadUsers()
-        newLoadedTabs.add('practice')
+        newLoadedTabs.add('events')
         didLoadTab = true
       } else if (activeTab === 'forum') {
         loadForumPosts()
@@ -498,6 +522,8 @@ export default function Admin({ user, loading }) {
     setPracticeDate('')
     setPracticeTime('21:00')
     setPracticeLocation('')
+    setPracticeEventType('practice')
+    setPracticeEventTitle('Session')
     setPracticeSessionCost('')
     setPracticePaidBy('')
     setPracticeMaximumCapacity('18')
@@ -607,6 +633,8 @@ export default function Admin({ user, loading }) {
       date: practiceDate,
       time: practiceTime,
       location: practiceLocation,
+      event_type: practiceEventType,
+      event_title: practiceEventTitle,
       session_cost: practiceSessionCost !== '' ? parseFloat(practiceSessionCost) : null,
       paid_by: practicePaidBy || null,
       maximum_capacity: practiceMaximumCapacity ? parseInt(practiceMaximumCapacity, 10) : 100,
@@ -621,7 +649,7 @@ export default function Admin({ user, loading }) {
       })
       if (!del.ok) {
         const delData = await del.json().catch(() => ({}))
-        setMessage(delData?.detail || 'Failed to update practice (delete old)')
+        setMessage(delData?.detail || 'Failed to update event (delete old)')
         return
       }
       res = await fetch(apiUrl('/api/practice/sessions'), {
@@ -654,23 +682,25 @@ export default function Admin({ user, loading }) {
 
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      setMessage(data?.detail || 'Failed to save practice session')
+      setMessage(data?.detail || 'Failed to save event')
       return
     }
-    setMessage(isEditingPractice ? 'Practice session updated.' : 'Practice session created.')
+    setMessage(isEditingPractice ? 'Event updated.' : 'Event created.')
     resetPracticeForm()
-    setPracticeInlineStatus(isEditingPractice ? 'Record updated successfully!' : 'New Practice Session Added !')
-    refreshTabData('practice')
+    setPracticeInlineStatus(isEditingPractice ? 'Record updated successfully!' : 'New event added!')
+    refreshTabData('events')
   }
 
   const handleEditPractice = (s) => {
     if (s.payment_requested) return
-    setActiveTab('practice')
+    setActiveTab('events')
     setPracticeInlineStatus('')
     setEditingPracticeDate(s.date)
     setPracticeDate(s.date || '')
     setPracticeTime(s.time || '')
     setPracticeLocation(s.location || '')
+    setPracticeEventType(s.event_type || 'practice')
+    setPracticeEventTitle(s.event_title || '')
     setPracticeSessionCost(s.session_cost != null ? String(s.session_cost) : '')
     setPracticePaidBy(s.paid_by || '')
     setPracticeMaximumCapacity((s.maximum_capacity || 100).toString())
@@ -678,18 +708,18 @@ export default function Admin({ user, loading }) {
   }
 
   const handleDeletePractice = async (dateStr) => {
-    if (!confirm('Delete this practice session?')) return
+    if (!confirm('Delete this event?')) return
     const res = await fetch(apiUrl(`/api/practice/${dateStr}`), {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      setMessage(data?.detail || 'Failed to delete practice session')
+      setMessage(data?.detail || 'Failed to delete event')
       return
     }
-    setMessage('Practice session deleted.')
-    refreshTabData('practice')
+    setMessage('Event deleted.')
+    refreshTabData('events')
   }
 
   const handleEditForumPost = (p) => {
@@ -907,6 +937,17 @@ export default function Admin({ user, loading }) {
 
   const upcomingBirthdaysCount = users.filter((u) => hasUpcomingBirthday(u.birthday)).length
 
+  const eventTypeOptions = [
+    { value: 'practice', label: 'Practice' },
+    { value: 'match', label: 'Match' },
+    { value: 'social', label: 'Social' },
+    { value: 'others', label: 'Others' },
+  ]
+
+  const formatEventTypeLabel = (value) => {
+    return eventTypeOptions.find((option) => option.value === value)?.label || 'Practice'
+  }
+
   const upcomingPracticeSessions = practiceSessions
     .filter((s) => new Date(`${s.date}T00:00:00`) >= todayAtMidnight)
     .sort((a, b) => new Date(a.date) - new Date(b.date))
@@ -1058,15 +1099,21 @@ export default function Admin({ user, loading }) {
                   </div>
                 </div>
                 <div style={{ fontWeight: '700', fontSize: '1.05rem', marginBottom: '0.4rem' }}>{ev.name}</div>
-                <div style={{ opacity: 0.8, marginBottom: '0.35rem', fontSize: '0.9rem' }}>Time: {ev.time || 'TBD'}</div>
-                {ev.location && <div style={{ opacity: 0.8, fontSize: '0.9rem' }}>Location: {ev.location}</div>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: 0.8, marginBottom: '0.35rem', fontSize: '0.9rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span>{ev.date} {ev.time || 'TBD'}</span>
+                </div>
+                {ev.location && <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: 0.8, fontSize: '0.9rem' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>{ev.location}</span></div>}
               </div>
             ))}
           </div>
         </>
       )}
 
-      {activeTab === 'practice' && (
+      {activeTab === 'events' && (
         <>
           <form onSubmit={handleSubmitPractice} style={{ 
             display: 'flex', 
@@ -1079,6 +1126,24 @@ export default function Admin({ user, loading }) {
             background: 'white',
             boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
           }}>
+            <div>
+              <label>Event Type</label>
+              <select value={practiceEventType} onChange={(e) => {
+                const nextEventType = e.target.value
+                setPracticeEventType(nextEventType)
+                if (nextEventType !== 'practice') {
+                  setPracticeEventTitle('')
+                }
+              }} style={{ width: '100%' }}>
+                {eventTypeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label>Event Title</label>
+              <input value={practiceEventTitle} onChange={(e) => setPracticeEventTitle(e.target.value.slice(0, 30))} maxLength={30} placeholder="Enter event title" style={{ width: '100%' }} />
+            </div>
             <div>
               <label>Date</label>
               <input type="date" value={practiceDate} onChange={(e) => setPracticeDate(e.target.value)} required style={{ width: '100%' }} />
@@ -1109,8 +1174,8 @@ export default function Admin({ user, loading }) {
               </select>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>{editingPracticeDate ? 'Update Practice' : 'Add Practice'}</button>
-              {(editingPracticeDate || practiceDate || practiceTime !== '21:00' || practiceLocation || practiceSessionCost || practicePaidBy || practiceMaximumCapacity !== '18') && (
+              <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>{editingPracticeDate ? 'Update Event' : 'Add Event'}</button>
+              {(editingPracticeDate || practiceDate || practiceTime !== '21:00' || practiceLocation || practiceEventType !== 'practice' || practiceEventTitle !== 'Session' || practiceSessionCost || practicePaidBy || practiceMaximumCapacity !== '18') && (
                 <button className="nav-btn" type="button" onClick={resetPracticeForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
                   Clear
                 </button>
@@ -1154,14 +1219,17 @@ export default function Admin({ user, loading }) {
               {(practiceListTab === 'upcoming' ? upcomingPracticeSessions : pastPracticeSessions).map((s) => (
                 <div
                   key={s.date}
-                  onClick={() => navigate(`/book-practice?date=${encodeURIComponent(s.date)}`)}
+                  onClick={() => navigate(`/calendar?date=${encodeURIComponent(s.date)}`)}
                   style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa', cursor: 'pointer' }}
                 >
                   {(() => {
                     const actionsLocked = s.payment_requested
                     return (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <strong>{s.date}</strong>
+                    <div>
+                      <strong>{formatEventTypeLabel(s.event_type)}</strong>
+                      <div style={{ opacity: 0.7, fontSize: '0.85rem', marginTop: 2 }}>{s.event_title || formatEventTypeLabel(s.event_type)}</div>
+                    </div>
                     <div>
                       <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} disabled={actionsLocked} style={{ marginRight: 8, border: actionsLocked ? '1px solid #d1d5db' : '1px solid #d1d5db', color: actionsLocked ? '#9ca3af' : '#111827', cursor: actionsLocked ? 'not-allowed' : 'pointer', background: actionsLocked ? '#f3f4f6' : undefined }}>
                         Edit
@@ -1183,20 +1251,33 @@ export default function Admin({ user, loading }) {
                   </div>
                     )
                   })()}
-                  <div style={{ opacity: 0.8, marginTop: 6 }}>Time: {s.time || 'TBD'}</div>
-                  <div style={{ opacity: 0.8 }}>Location: {s.location || 'TBD'}</div>
-                  <div style={{ opacity: 0.8 }}>Maximum Capacity: {s.maximum_capacity || 100}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: 0.8, marginTop: 6 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M12 6v6l4 2"/>
+                    </svg>
+                    <span>{s.date} {s.time || ''}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: 0.8 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    <span>{s.location || 'TBC'}</span>
+                  </div>
+                  <hr style={{ border: 'none', borderTop: '1px solid color-mix(in srgb, var(--theme-text) 15%, transparent)' }} />
+                  <div style={{ opacity: 0.8 }}>Max Capacity: {s.maximum_capacity || 100}</div>
                   <div style={{ opacity: 0.8 }}>Total Cost: {s.session_cost != null ? `£${Number(s.session_cost).toFixed(2)}` : 'Not set'}</div>
                   <div style={{ opacity: 0.8 }}>Paid By: {s.paid_by_name || s.paid_by || 'Not set'}</div>
                   {s.payment_requested && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>
-                      Payment has been requested for this session, so edits are disabled.
+                      Payment requested hence changes not allowed.
                     </div>
                   )}
                 </div>
               ))}
               {(practiceListTab === 'upcoming' ? upcomingPracticeSessions : pastPracticeSessions).length === 0 && (
-                <p>{practiceListTab === 'upcoming' ? 'No upcoming practice sessions.' : 'No past practice sessions.'}</p>
+                <p>{practiceListTab === 'upcoming' ? 'No upcoming events.' : 'No past events.'}</p>
               )}
             </div>
           </div>

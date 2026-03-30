@@ -13,6 +13,13 @@ function UserActions({ user, loading }) {
   const [loadingData, setLoadingData] = useState(true)
   const [error, setError] = useState('')
   const [updatingAvailabilityDates, setUpdatingAvailabilityDates] = useState({})
+
+  const eventTypeLabelMap = {
+    practice: 'Practice',
+    match: 'Match',
+    social: 'Social',
+    others: 'Misc',
+  }
   
   // Validate route tab and redirect if invalid
   const pathTab = location.pathname.split('/').pop()
@@ -200,8 +207,15 @@ function UserActions({ user, loading }) {
     return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
   }
 
+  const getEventTypeLabel = (eventType) => eventTypeLabelMap[eventType] || 'Event'
+
+  const getEventDisplayTitle = (item) => {
+    const title = item?.event_title?.trim()
+    return title || getEventTypeLabel(item?.event_type)
+  }
+
   const navigateToPracticeDate = (date) => {
-    navigate(`/book-practice?date=${date}`)
+    navigate(`/calendar?date=${date}`)
   }
 
   if (loading || !user) {
@@ -253,7 +267,7 @@ function UserActions({ user, loading }) {
         ) : activeTab === 'events' ? (
           <div className="upcoming-sessions">
             {upcomingSessions.length === 0 ? (
-              <p className="empty-message">No upcoming practice sessions</p>
+              <p className="empty-message">No upcoming events</p>
             ) : (
               upcomingSessions.map(session => (
                 <div key={session.date} className="session-card">
@@ -263,7 +277,8 @@ function UserActions({ user, loading }) {
                     onClick={() => navigateToPracticeDate(session.date)}
                   >
                     <div className="card-header-main">
-                      <h3>Practice</h3>
+                      <h3>{getEventTypeLabel(session.event_type)}&nbsp;</h3>
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{getEventDisplayTitle(session)}</p>
                     </div>
                     <div className="card-header-meta">
                       <span className="card-header-cta">View details →</span>
@@ -312,7 +327,7 @@ function UserActions({ user, loading }) {
                       </div>
                       {session.capacity_reached && session.user_status !== 'available' && (
                         <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-warning-strong, color-mix(in srgb, var(--theme-warning) 84%, black 16%))' }}>
-                          Maximum capacity reached. Available is disabled until a slot opens up.
+                          Full capacity. No Availability until a slot opens.
                         </p>
                       )}
                     </div>
@@ -334,7 +349,8 @@ function UserActions({ user, loading }) {
                     onClick={() => navigateToPracticeDate(payment.date)}
                   >
                     <div className="card-header-main">
-                      <h3>Practice</h3>
+                      <h3>{getEventTypeLabel(payment.event_type)}&nbsp;</h3>
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{getEventDisplayTitle(payment)}</p>
                     </div>
                     <div className="card-header-meta">
                       <span className="card-header-cta">View details →</span>
