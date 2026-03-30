@@ -16,7 +16,7 @@ from openpyxl import load_workbook
 # Set test mode before importing api
 os.environ["TEST_MODE"] = "true"
 
-from api import app, init_db, hash_password, USE_POSTGRES, get_connection, PLACEHOLDER
+from api import app, init_db, hash_password, USE_POSTGRES, get_connection, PLACEHOLDER, DB_PATH
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -56,17 +56,17 @@ def setup_test_data():
         # Create practice sessions with payment info
         today = datetime.now().date()
         sessions = [
-            (str(today - timedelta(days=30)), "18:00", "Location A", 20.0, admin_email, True),
-            (str(today - timedelta(days=20)), "19:00", "Location B", 30.0, "user1@test.com", True),
-            (str(today - timedelta(days=10)), "20:00", "Location C", 25.0, admin_email, True),
-            (str(today + timedelta(days=5)), "18:30", "Location D", 20.0, None, False),  # Future session
+            (str(today - timedelta(days=30)), "practice", "Session", "18:00", "Location A", 20.0, admin_email, True),
+            (str(today - timedelta(days=20)), "match", "League Match", "19:00", "Location B", 30.0, "user1@test.com", True),
+            (str(today - timedelta(days=10)), "social", "Team Dinner", "20:00", "Location C", 25.0, admin_email, True),
+            (str(today + timedelta(days=5)), "practice", "Recovery", "18:30", "Location D", 20.0, None, False),  # Future session
         ]
         
-        for date, time, location, cost, paid_by, payment_requested in sessions:
+        for date, event_type, event_title, time, location, cost, paid_by, payment_requested in sessions:
             cur.execute(
-                f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested) "
-                f"VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (date, time, location, cost, paid_by, payment_requested if USE_POSTGRES else (1 if payment_requested else 0))
+                f"INSERT INTO practice_sessions (date, event_type, event_title, time, location, session_cost, paid_by, payment_requested) "
+                f"VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (date, event_type, event_title, time, location, cost, paid_by, payment_requested if USE_POSTGRES else (1 if payment_requested else 0))
             )
         
         # Add availability for past sessions
@@ -185,11 +185,18 @@ def test_booking_report_generation():
     ws = wb.active
     
     # Check headers
-    assert ws.cell(1, 1).value == "Practice Session Date"
-    assert ws.cell(1, 2).value == "Time"
-    assert ws.cell(1, 3).value == "Place"
-    assert ws.cell(1, 4).value == "Total Cost (£)"
-    assert ws.cell(1, 5).value == "Paid By"
+    assert ws.cell(1, 1).value == "Event Date"
+    assert ws.cell(1, 2).value == "Event Type"
+    assert ws.cell(1, 3).value == "Event Title"
+    assert ws.cell(1, 4).value == "Time"
+    assert ws.cell(1, 5).value == "Place"
+    assert ws.cell(1, 6).value == "Total Cost (£)"
+    assert ws.cell(1, 7).value == "Paid By"
+
+    assert ws.cell(2, 2).value == "Practice"
+    assert ws.cell(2, 3).value == "Session"
+    assert ws.cell(3, 2).value == "Match"
+    assert ws.cell(3, 3).value == "League Match"
     
     # Check that we have data rows (at least 3 past sessions)
     assert ws.cell(2, 1).value is not None  # First data row
@@ -228,19 +235,26 @@ def test_player_payment_report_generation():
     ws = wb.active
     
     # Check headers
-    assert ws.cell(1, 1).value == "Practice Session Date"
-    assert ws.cell(1, 2).value == "Time"
-    assert ws.cell(1, 3).value == "Place"
-    assert ws.cell(1, 4).value == "Player Name"
-    assert ws.cell(1, 5).value == "Availability"
-    assert ws.cell(1, 6).value == "Individual Amount (£)"
-    assert ws.cell(1, 7).value == "Paid"
-    assert ws.cell(1, 8).value == "Payment Acknowledgement Date"
+    assert ws.cell(1, 1).value == "Event Date"
+    assert ws.cell(1, 2).value == "Event Type"
+    assert ws.cell(1, 3).value == "Event Title"
+    assert ws.cell(1, 4).value == "Time"
+    assert ws.cell(1, 5).value == "Place"
+    assert ws.cell(1, 6).value == "Total Cost (£)"
+    assert ws.cell(1, 7).value == "Paid By"
+    assert ws.cell(1, 8).value == "Payment Requested Date"
+    assert ws.cell(1, 9).value == "Player Name"
+    assert ws.cell(1, 10).value == "Availability"
+    assert ws.cell(1, 11).value == "Individual Amount (£)"
+    assert ws.cell(1, 12).value == "Paid"
+    assert ws.cell(1, 13).value == "Payment Acknowledgement Date"
     
     # Check that we have data rows
     assert ws.cell(2, 1).value is not None  # First data row
-    assert ws.cell(2, 4).value is not None  # Player name
-    assert ws.cell(2, 5).value is not None  # Availability status
+    assert ws.cell(2, 2).value is not None  # Event type
+    assert ws.cell(2, 3).value is not None  # Event title
+    assert ws.cell(2, 9).value is not None  # Player name
+    assert ws.cell(2, 10).value is not None  # Availability status
     
     print("✓ Player payment report generated successfully with correct format")
 
@@ -304,7 +318,7 @@ def test_player_payment_report_only_voted_users():
     # Check that all rows have availability status (meaning they voted)
     row = 2
     while ws.cell(row, 1).value is not None:
-        availability = ws.cell(row, 5).value
+        availability = ws.cell(row, 10).value
         assert availability is not None and availability != ""
         row += 1
     
@@ -315,6 +329,10 @@ def run_all_tests():
     print("\n" + "="*80)
     print("Running Reports Feature Tests")
     print("="*80 + "\n")
+
+    if not USE_POSTGRES and os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+        init_db()
     
     # Check if tables exist, if not create them
     with get_connection() as conn:

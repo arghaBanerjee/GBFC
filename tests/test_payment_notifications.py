@@ -8,6 +8,7 @@ Verify that notifications are sent to:
 import os
 import sys
 from datetime import date, timedelta
+from fastapi.testclient import TestClient
 
 # Add parent directory to path to import api
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,7 +17,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['USE_POSTGRES'] = 'false'
 os.environ['TEST_MODE'] = 'true'  # Use test_football_club.db instead of football_club.db
 
-from api import app, get_connection, PLACEHOLDER
+from api import app, get_connection, PLACEHOLDER, hash_password, build_notification_context, init_db
+
+client = TestClient(app)
 
 # Test data
 TEST_ADMIN1 = {
@@ -57,22 +60,49 @@ def setup_test_database():
         cur.execute("DELETE FROM practice_sessions")
         cur.execute("DELETE FROM users")
         conn.commit()
-        
-        # Create test admin users
-        for admin in [TEST_ADMIN1, TEST_ADMIN2]:
-            cur.execute(
-                f"INSERT INTO users (email, password, full_name, user_type) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (admin["email"], "hashed_password", admin["full_name"], "admin")
-            )
-        
-        # Create test member users
-        for user in [TEST_MEMBER1, TEST_MEMBER2, TEST_MEMBER3]:
-            cur.execute(
-                f"INSERT INTO users (email, password, full_name, user_type) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (user["email"], "hashed_password", user["full_name"], "member")
-            )
-        
+
+
+def setup_test_database_with_auth_users():
+    """Setup test database with login-capable users"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        cur.execute("DELETE FROM notifications")
+        cur.execute("DELETE FROM practice_payments")
+        cur.execute("DELETE FROM practice_availability")
+        cur.execute("DELETE FROM practice_sessions")
+        cur.execute("DELETE FROM users")
         conn.commit()
+
+        hashed_password = hash_password("pass123")
+
+        cur.execute(
+            f"INSERT INTO users (email, password, full_name, user_type) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (TEST_ADMIN1["email"], hashed_password, TEST_ADMIN1["full_name"], "admin")
+        )
+        cur.execute(
+            f"INSERT INTO users (email, password, full_name, user_type) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (TEST_ADMIN2["email"], hashed_password, TEST_ADMIN2["full_name"], "admin")
+        )
+        cur.execute(
+            f"INSERT INTO users (email, password, full_name, user_type) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (TEST_MEMBER1["email"], hashed_password, TEST_MEMBER1["full_name"], "member")
+        )
+        cur.execute(
+            f"INSERT INTO users (email, password, full_name, user_type) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (TEST_MEMBER2["email"], hashed_password, TEST_MEMBER2["full_name"], "member")
+        )
+        cur.execute(
+            f"INSERT INTO users (email, password, full_name, user_type) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (TEST_MEMBER3["email"], hashed_password, TEST_MEMBER3["full_name"], "member")
+        )
+        conn.commit()
+
+
+def login(email: str, password: str = "pass123") -> str:
+    response = client.post("/api/login", data={"username": email, "password": password})
+    assert response.status_code == 200, response.text
+    return response.json()["access_token"]
 
 
 def test_payment_request_notifications():
@@ -213,7 +243,7 @@ def test_notification_message_format():
 
 def test_admin_notification_on_payment_confirmation():
     """Test that all admins receive notification when a user confirms payment"""
-    setup_test_database()
+    setup_test_database_with_auth_users()
     
     with get_connection() as conn:
         cur = conn.cursor()
@@ -290,7 +320,7 @@ def test_admin_notification_on_payment_confirmation():
 
 def test_no_admin_notification_when_unchecking_payment():
     """Test that admins do NOT receive notification when user unchecks payment"""
-    setup_test_database()
+    setup_test_database_with_auth_users()
     
     with get_connection() as conn:
         cur = conn.cursor()
@@ -339,11 +369,122 @@ def test_no_admin_notification_when_unchecking_payment():
         print("✓ No admin notifications sent when user unchecks payment")
 
 
+def test_build_notification_context_uppercases_event_type_but_preserves_title():
+    """Notification templates should expose uppercase event_type and preserve user-entered title."""
+    context = build_notification_context({
+        "event_type": "practice",
+        "event_title": "Elite Session",
+        "date": "2026-01-02",
+    })
+
+    assert context["event_type"] == "PRACTICE"
+    assert context["event_title"] == "Elite Session"
+    assert context["event_name"] == "Practice - Elite Session"
+
+
+def test_request_payment_endpoint_succeeds_and_creates_notifications():
+    """Regression test for SQLite request_payment flow using real API call."""
+    setup_test_database_with_auth_users()
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        past_date = (date.today() - timedelta(days=2)).strftime("%Y-%m-%d")
+        cur.execute(
+            f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, session_cost, paid_by, payment_requested) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (past_date, "19:00", "Test Ground", "practice", "Winter Session", 30.0, TEST_ADMIN1["email"], 0)
+        )
+        cur.execute(
+            f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (past_date, TEST_MEMBER1["email"], TEST_MEMBER1["full_name"], "available")
+        )
+        cur.execute(
+            f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (past_date, TEST_MEMBER2["email"], TEST_MEMBER2["full_name"], "available")
+        )
+        conn.commit()
+
+    admin_token = login(TEST_ADMIN1["email"])
+    response = client.post(
+        f"/api/practice/sessions/{past_date}/request-payment",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+
+    assert response.status_code == 200, response.text
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}",
+            (past_date,)
+        )
+        session_row = cur.fetchone()
+        assert bool(session_row[0]) is True
+
+        cur.execute(
+            f"SELECT user_email, type, message FROM notifications WHERE related_date = {PLACEHOLDER} AND type = {PLACEHOLDER}",
+            (past_date, "payment_request")
+        )
+        notifications = cur.fetchall()
+
+    assert len(notifications) == 2
+    assert all(notification[1] == "payment_request" for notification in notifications)
+    assert all("Winter Session" in notification[2] for notification in notifications)
+
+
+def test_confirm_payment_endpoint_succeeds_and_notifies_admins():
+    """Regression test for SQLite confirm_payment flow using real API call."""
+    setup_test_database_with_auth_users()
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        past_date = (date.today() - timedelta(days=2)).strftime("%Y-%m-%d")
+        cur.execute(
+            f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, session_cost, paid_by, payment_requested) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (past_date, "20:00", "City Ground", "match", "Cup Tie", 24.0, TEST_ADMIN1["email"], 1)
+        )
+        cur.execute(
+            f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (past_date, TEST_MEMBER1["email"], TEST_MEMBER1["full_name"], "available")
+        )
+        conn.commit()
+
+    member_token = login(TEST_MEMBER1["email"])
+    response = client.post(
+        f"/api/practice/sessions/{past_date}/payment",
+        json={"paid": True},
+        headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["paid"] is True
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT paid FROM practice_payments WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (past_date, TEST_MEMBER1["email"])
+        )
+        payment_row = cur.fetchone()
+        assert bool(payment_row[0]) is True
+
+        cur.execute(
+            f"SELECT user_email, type, message FROM notifications WHERE related_date = {PLACEHOLDER} AND type = {PLACEHOLDER}",
+            (past_date, "payment_confirmed")
+        )
+        notifications = cur.fetchall()
+
+    assert len(notifications) == 2
+    assert TEST_ADMIN1["email"] in [notification[0] for notification in notifications]
+    assert TEST_ADMIN2["email"] in [notification[0] for notification in notifications]
+    assert all("Cup Tie" in notification[2] for notification in notifications)
+
+
 if __name__ == "__main__":
     print("Testing Payment Request Notifications...")
     print("=" * 70)
     
     try:
+        init_db()
         test_payment_request_notifications()
         print()
         test_notification_message_format()
@@ -351,6 +492,12 @@ if __name__ == "__main__":
         test_admin_notification_on_payment_confirmation()
         print()
         test_no_admin_notification_when_unchecking_payment()
+        print()
+        test_build_notification_context_uppercases_event_type_but_preserves_title()
+        print()
+        test_request_payment_endpoint_succeeds_and_creates_notifications()
+        print()
+        test_confirm_payment_endpoint_succeeds_and_notifies_admins()
         print()
         print("=" * 70)
         print("✅ All notification tests passed!")
