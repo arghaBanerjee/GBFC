@@ -808,7 +808,7 @@ export default function Practice({ user }) {
   return (
     <div className="container">
       <h2>Club Calendar</h2>
-      <p style={{ marginBottom: '1rem', color: 'var(--theme-text-muted)' }}>Click a date to view events and set availability.</p>
+      <p style={{ marginBottom: '1rem', color: 'var(--theme-text-muted)' }}>Select a date to view events and set availability.</p>
       
       {/* Color Legend */}
       <div style={{ 
