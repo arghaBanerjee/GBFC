@@ -23,7 +23,7 @@ export default function Home({ user }) {
             </div>
             <div className="hero-card" onClick={() => navigate('/forum')}>
               <h4>Community Forum</h4>
-              <p>Share your ideas and help to grow the thriving football community of football lovers and volunteers.</p>
+              <p>Share your ideas and help to grow the thriving community of football lovers, players and volunteers.</p>
             </div>
           </div>
         </div>

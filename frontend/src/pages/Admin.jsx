@@ -12,7 +12,6 @@ export default function Admin({ user, loading }) {
   const isSuperAdmin = user?.email === 'super@admin.com'
   const adminTabs = [
     { value: 'events', label: 'Events' },
-    { value: 'event', label: 'Add Match' },
     { value: 'forum', label: 'Forum Posts' },
     { value: 'users', label: 'Users' },
     { value: 'expense', label: 'Expense' },
@@ -50,10 +49,16 @@ export default function Admin({ user, loading }) {
   const [practiceLocation, setPracticeLocation] = useState('')
   const [practiceEventType, setPracticeEventType] = useState('practice')
   const [practiceEventTitle, setPracticeEventTitle] = useState('Session')
+  const [practiceDescription, setPracticeDescription] = useState('')
+  const [practiceImageUrl, setPracticeImageUrl] = useState('')
+  const [practiceYoutubeUrl, setPracticeYoutubeUrl] = useState('')
+  const [practiceOptionAText, setPracticeOptionAText] = useState('')
+  const [practiceOptionBText, setPracticeOptionBText] = useState('')
   const [practiceSessionCost, setPracticeSessionCost] = useState('')
   const [practicePaidBy, setPracticePaidBy] = useState('')
   const [practiceMaximumCapacity, setPracticeMaximumCapacity] = useState('18')
   const [practiceInlineStatus, setPracticeInlineStatus] = useState('')
+  const [isSubmittingPractice, setIsSubmittingPractice] = useState(false)
   const [practiceListTab, setPracticeListTab] = useState('upcoming')
 
   // Forum posts
@@ -339,8 +344,7 @@ export default function Admin({ user, loading }) {
   }
 
   const refreshTabData = (tabName) => {
-    if (tabName === 'event') loadEvents()
-    else if (tabName === 'events') {
+    if (tabName === 'events') {
       loadPracticeSessions()
       loadUsers()
     }
@@ -389,11 +393,7 @@ export default function Admin({ user, loading }) {
       const newLoadedTabs = new Set(loadedTabs)
       let didLoadTab = false
       
-      if (activeTab === 'event') {
-        loadEvents()
-        newLoadedTabs.add('event')
-        didLoadTab = true
-      } else if (activeTab === 'events') {
+      if (activeTab === 'events') {
         loadPracticeSessions()
         loadUsers()
         newLoadedTabs.add('events')
@@ -524,6 +524,11 @@ export default function Admin({ user, loading }) {
     setPracticeLocation('')
     setPracticeEventType('practice')
     setPracticeEventTitle('Session')
+    setPracticeDescription('')
+    setPracticeImageUrl('')
+    setPracticeYoutubeUrl('')
+    setPracticeOptionAText('')
+    setPracticeOptionBText('')
     setPracticeSessionCost('')
     setPracticePaidBy('')
     setPracticeMaximumCapacity('18')
@@ -560,7 +565,7 @@ export default function Admin({ user, loading }) {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.detail || 'Upload failed')
-      setEventImageUrl(data.image_url)
+      setPracticeImageUrl(data.image_url)
     } catch (err) {
       setMessage(String(err))
     } finally {
@@ -627,7 +632,18 @@ export default function Admin({ user, loading }) {
   const handleSubmitPractice = async (e) => {
     e.preventDefault()
     const isEditingPractice = Boolean(editingPracticeDate)
-    setPracticeInlineStatus('')
+    const trimmedOptionA = practiceOptionAText.trim()
+    const trimmedOptionB = practiceOptionBText.trim()
+
+    if ((trimmedOptionA && !trimmedOptionB) || (!trimmedOptionA && trimmedOptionB)) {
+      setMessage('')
+      setPracticeInlineStatus('Please either add both event options or remove both. Option A and Option B must be saved together.')
+      setIsSubmittingPractice(false)
+      return
+    }
+
+    setPracticeInlineStatus(isEditingPractice ? 'Saving changes...' : 'Saving new event...')
+    setIsSubmittingPractice(true)
 
     const payload = {
       date: practiceDate,
@@ -635,6 +651,11 @@ export default function Admin({ user, loading }) {
       location: practiceLocation,
       event_type: practiceEventType,
       event_title: practiceEventTitle,
+      description: practiceDescription || null,
+      image_url: practiceImageUrl || null,
+      youtube_url: practiceYoutubeUrl || null,
+      option_a_text: trimmedOptionA || null,
+      option_b_text: trimmedOptionB || null,
       session_cost: practiceSessionCost !== '' ? parseFloat(practiceSessionCost) : null,
       paid_by: practicePaidBy || null,
       maximum_capacity: practiceMaximumCapacity ? parseInt(practiceMaximumCapacity, 10) : 100,
@@ -650,6 +671,7 @@ export default function Admin({ user, loading }) {
       if (!del.ok) {
         const delData = await del.json().catch(() => ({}))
         setMessage(delData?.detail || 'Failed to update event (delete old)')
+        setPracticeInlineStatus('')
         return
       }
       res = await fetch(apiUrl('/api/practice/sessions'), {
@@ -683,12 +705,26 @@ export default function Admin({ user, loading }) {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setMessage(data?.detail || 'Failed to save event')
+      setPracticeInlineStatus('')
       return
     }
     setMessage(isEditingPractice ? 'Event updated.' : 'Event created.')
     resetPracticeForm()
     setPracticeInlineStatus(isEditingPractice ? 'Record updated successfully!' : 'New event added!')
     refreshTabData('events')
+    setTimeout(() => {
+      setPracticeInlineStatus((currentStatus) => (
+        currentStatus === (isEditingPractice ? 'Record updated successfully!' : 'New event added!') ? '' : currentStatus
+      ))
+    }, 2500)
+  }
+
+  const handleSubmitPracticeWithReset = async (e) => {
+    try {
+      await handleSubmitPractice(e)
+    } finally {
+      setIsSubmittingPractice(false)
+    }
   }
 
   const handleEditPractice = (s) => {
@@ -701,6 +737,11 @@ export default function Admin({ user, loading }) {
     setPracticeLocation(s.location || '')
     setPracticeEventType(s.event_type || 'practice')
     setPracticeEventTitle(s.event_title || '')
+    setPracticeDescription(s.description || '')
+    setPracticeImageUrl(s.image_url || '')
+    setPracticeYoutubeUrl(s.youtube_url || '')
+    setPracticeOptionAText(s.option_a_text || '')
+    setPracticeOptionBText(s.option_b_text || '')
     setPracticeSessionCost(s.session_cost != null ? String(s.session_cost) : '')
     setPracticePaidBy(s.paid_by || '')
     setPracticeMaximumCapacity((s.maximum_capacity || 100).toString())
@@ -1029,93 +1070,9 @@ export default function Admin({ user, loading }) {
         ))}
       </div>
 
-      {activeTab === 'event' && (
-        <>
-          <form onSubmit={handleSubmitEvent} style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '1rem', 
-            maxWidth: 600,
-            border: '1px solid #d1d5db',
-            borderRadius: '0.5rem',
-            padding: '1.5rem',
-            background: 'white',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div>
-              <label>Event Name</label>
-              <input value={eventName} onChange={(e) => setEventName(e.target.value)} required style={{ width: '100%' }} />
-            </div>
-            <div>
-              <label>Date</label>
-              <input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} required style={{ width: '100%' }} />
-            </div>
-            <div>
-              <label>Time</label>
-              <input value={eventTime} onChange={(e) => setEventTime(e.target.value)} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <label>Location</label>
-              <input value={eventLocation} onChange={(e) => setEventLocation(e.target.value)} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <label>Image Upload</label>
-              <input type="file" accept="image/*" onChange={handleImageUpload} disabled={uploading} />
-              {eventImageUrl && <div style={{ marginTop: 8 }}><img src={eventImageUrl} alt="" style={{ maxWidth: 200, borderRadius: 6 }} /></div>}
-            </div>
-            <div>
-              <label>YouTube URL</label>
-              <input value={eventYoutubeUrl} onChange={(e) => setEventYoutubeUrl(e.target.value)} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <label>Description</label>
-              <textarea rows={6} value={eventDescription} onChange={(e) => setEventDescription(e.target.value)} style={{ width: '100%' }} />
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>{editingEventId ? 'Update Match' : 'Add Match'}</button>
-              {editingEventId && (
-                <button className="nav-btn" type="button" onClick={resetEventForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
-                  Cancel
-                </button>
-              )}
-            </div>
-          </form>
-
-          <h3 style={{ marginTop: '2rem' }}>Matches</h3>
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            {events.sort((a, b) => new Date(b.date) - new Date(a.date)).map((ev) => (
-              <div key={ev.id} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-                  <div>
-                    <strong>{ev.date}</strong>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                    <button className="nav-btn" onClick={() => handleEditEvent(ev)} style={{ border: '1px solid #d1d5db', color: '#111827' }}>
-                      Edit
-                    </button>
-                    <button className="nav-btn" onClick={() => handleDeleteEvent(ev.id)} style={{ background: '#ef4444', color: 'white', border: '1px solid #ef4444' }}>
-                      Delete
-                    </button>
-                  </div>
-                </div>
-                <div style={{ fontWeight: '700', fontSize: '1.05rem', marginBottom: '0.4rem' }}>{ev.name}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: 0.8, marginBottom: '0.35rem', fontSize: '0.9rem' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M12 6v6l4 2"/>
-                  </svg>
-                  <span>{ev.date} {ev.time || 'TBD'}</span>
-                </div>
-                {ev.location && <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', opacity: 0.8, fontSize: '0.9rem' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>{ev.location}</span></div>}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
       {activeTab === 'events' && (
         <>
-          <form onSubmit={handleSubmitPractice} style={{ 
+          <form onSubmit={handleSubmitPracticeWithReset} style={{ 
             display: 'flex', 
             flexDirection: 'column', 
             gap: '1rem', 
@@ -1157,6 +1114,40 @@ export default function Admin({ user, loading }) {
               <input value={practiceLocation} onChange={(e) => setPracticeLocation(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div>
+              <label>Option A</label>
+              <input value={practiceOptionAText} onChange={(e) => setPracticeOptionAText(e.target.value)} placeholder="Optional member choice label" style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label>Option B</label>
+              <input value={practiceOptionBText} onChange={(e) => setPracticeOptionBText(e.target.value)} placeholder="Optional member choice label" style={{ width: '100%' }} />
+              {((practiceOptionAText.trim() && !practiceOptionBText.trim()) || (!practiceOptionAText.trim() && practiceOptionBText.trim())) && (
+                <div style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: '500', marginTop: '-0.5rem' }}>
+                  Add both options together, or clear both fields before saving.
+                </div>
+              )}
+            </div>
+            {practiceEventType === 'match' && (
+              <>
+                <div>
+                  <label>Description</label>
+                  <textarea value={practiceDescription} onChange={(e) => setPracticeDescription(e.target.value)} rows={5} style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <label>Match Image</label>
+                  <div style={{ display: 'grid', gap: '0.5rem' }}>
+                    <input value={practiceImageUrl} onChange={(e) => setPracticeImageUrl(e.target.value)} placeholder="Image URL" style={{ width: '100%' }} />
+                    <input type="file" accept="image/*" onChange={handleImageUpload} disabled={uploading} style={{ width: '100%' }} />
+                    {uploading && <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Uploading image...</div>}
+                    {practiceImageUrl && <img src={practiceImageUrl} alt="Match" style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 8, objectFit: 'cover' }} />}
+                  </div>
+                </div>
+                <div>
+                  <label>YouTube URL</label>
+                  <input value={practiceYoutubeUrl} onChange={(e) => setPracticeYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." style={{ width: '100%' }} />
+                </div>
+              </>
+            )}
+            <div>
               <label>Maximum Capacity</label>
               <input type="number" min="1" value={practiceMaximumCapacity} onChange={(e) => setPracticeMaximumCapacity(e.target.value)} style={{ width: '100%' }} />
             </div>
@@ -1174,15 +1165,15 @@ export default function Admin({ user, loading }) {
               </select>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>{editingPracticeDate ? 'Update Event' : 'Add Event'}</button>
-              {(editingPracticeDate || practiceDate || practiceTime !== '21:00' || practiceLocation || practiceEventType !== 'practice' || practiceEventTitle !== 'Session' || practiceSessionCost || practicePaidBy || practiceMaximumCapacity !== '18') && (
-                <button className="nav-btn" type="button" onClick={resetPracticeForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
+              <button className="nav-btn" type="submit" disabled={isSubmittingPractice} style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600', opacity: isSubmittingPractice ? 0.7 : 1, cursor: isSubmittingPractice ? 'not-allowed' : 'pointer' }}>{isSubmittingPractice ? (editingPracticeDate ? 'Updating Event...' : 'Adding Event...') : (editingPracticeDate ? 'Update Event' : 'Add Event')}</button>
+              {(editingPracticeDate || practiceDate || practiceTime !== '21:00' || practiceLocation || practiceEventType !== 'practice' || practiceEventTitle !== 'Session' || practiceDescription || practiceImageUrl || practiceYoutubeUrl || practiceOptionAText || practiceOptionBText || practiceSessionCost || practicePaidBy || practiceMaximumCapacity !== '18') && (
+                <button className="nav-btn" type="button" onClick={resetPracticeForm} disabled={isSubmittingPractice} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600', opacity: isSubmittingPractice ? 0.7 : 1, cursor: isSubmittingPractice ? 'not-allowed' : 'pointer' }}>
                   Clear
                 </button>
               )}
             </div>
             {practiceInlineStatus && (
-              <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500' }}>
+              <div style={{ color: practiceInlineStatus.includes('both event options') || practiceInlineStatus.includes('saved together') ? '#dc2626' : (isSubmittingPractice ? '#6b7280' : '#16a34a'), fontSize: '0.875rem', fontWeight: '500' }}>
                 {practiceInlineStatus}
               </div>
             )}
@@ -1269,6 +1260,18 @@ export default function Admin({ user, loading }) {
                   <div style={{ opacity: 0.8 }}>Max Capacity: {s.maximum_capacity || 100}</div>
                   <div style={{ opacity: 0.8 }}>Total Cost: {s.session_cost != null ? `£${Number(s.session_cost).toFixed(2)}` : 'Not set'}</div>
                   <div style={{ opacity: 0.8 }}>Paid By: {s.paid_by_name || s.paid_by || 'Not set'}</div>
+                  {(s.option_a_text && s.option_b_text) && (
+                    <div style={{ opacity: 0.8 }}>Options: {s.option_a_text} / {s.option_b_text}</div>
+                  )}
+                  {s.event_type === 'match' && s.youtube_url && (
+                    <div style={{ opacity: 0.8, wordBreak: 'break-word' }}>YouTube: {s.youtube_url}</div>
+                  )}
+                  {s.event_type === 'match' && s.description && (
+                    <div style={{ opacity: 0.8, whiteSpace: 'pre-wrap' }}>{s.description}</div>
+                  )}
+                  {s.event_type === 'match' && s.image_url && (
+                    <img src={s.image_url} alt={s.event_title || 'Match'} style={{ marginTop: '0.5rem', maxWidth: '100%', maxHeight: 180, borderRadius: 8, objectFit: 'cover' }} />
+                  )}
                   {s.payment_requested && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>
                       Payment requested hence changes not allowed.

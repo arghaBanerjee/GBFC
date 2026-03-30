@@ -29,6 +29,7 @@ export default function Practice({ user }) {
   const [adminAvailabilityUpdating, setAdminAvailabilityUpdating] = useState(false)
   const [availabilityError, setAvailabilityError] = useState('')
   const [adminAvailabilityError, setAdminAvailabilityError] = useState('')
+  const [optionSelectionUpdating, setOptionSelectionUpdating] = useState(false)
   const token = localStorage.getItem('token')
 
   const eventTypeLabelMap = {
@@ -39,7 +40,7 @@ export default function Practice({ user }) {
   }
 
   const eventTypeColorMap = {
-    practice: 'color-mix(in srgb, var(--theme-success) 26%, white)',
+    practice: 'color-mix(in srgb, var(--theme-success) 38%, white)',
     match: '#bfdbfe',
     social: '#fed7aa',
     others: '#ddd6fe',
@@ -370,6 +371,59 @@ export default function Practice({ user }) {
       .finally(() => setAvailabilityUpdating(false))
   }
 
+  const handleOptionSelection = (optionChoice) => {
+    if (!user || !selectedSession || selectedStatus !== 'available' || optionSelectionUpdating) return
+
+    const dateStr = formatDateStr(selectedDate)
+    const currentChoice = selectedOptionChoice
+    const nextChoice = currentChoice === optionChoice ? null : optionChoice
+    const previousVoteSummary = voteSummary
+    const currentName = user.full_name || user.email
+
+    setAvailabilityError('')
+    setOptionSelectionUpdating(true)
+    setVoteSummary((prev) => {
+      if (!prev) return prev
+      const nextOptionA = (prev.option_a || []).filter((name) => name !== currentName)
+      const nextOptionB = (prev.option_b || []).filter((name) => name !== currentName)
+      if (nextChoice === 'A') nextOptionA.push(currentName)
+      if (nextChoice === 'B') nextOptionB.push(currentName)
+      return {
+        ...prev,
+        option_a: nextOptionA,
+        option_b: nextOptionB,
+      }
+    })
+
+    fetch(apiUrl('/api/practice/availability'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        date: dateStr,
+        status: 'available',
+        option_choice: nextChoice,
+      }),
+    })
+      .then(r => {
+        if (!r.ok) {
+          return r.json().then(err => {
+            throw new Error(err.detail || 'Failed to update option selection')
+          })
+        }
+        return r.json()
+      })
+      .then(() => refreshSelectedDateData(dateStr))
+      .catch(err => {
+        setVoteSummary(previousVoteSummary)
+        setAvailabilityError(err.message || 'Failed to update option selection')
+        console.error('Failed to update option selection:', err)
+      })
+      .finally(() => setOptionSelectionUpdating(false))
+  }
+
   const handleSavePaymentInfo = () => {
     if (!selectedSession) return
     
@@ -385,6 +439,11 @@ export default function Practice({ user }) {
         location: selectedSession.location,
         event_type: selectedSession.event_type,
         event_title: selectedSession.event_title,
+        description: selectedSession.description,
+        image_url: selectedSession.image_url,
+        youtube_url: selectedSession.youtube_url,
+        option_a_text: selectedSession.option_a_text,
+        option_b_text: selectedSession.option_b_text,
         session_cost: sessionCost ? parseFloat(sessionCost) : null,
         paid_by: paidBy || null,
         maximum_capacity: maximumCapacity ? parseInt(maximumCapacity, 10) : 100,
@@ -568,15 +627,13 @@ export default function Practice({ user }) {
       })
       .catch(err => {
         setAdminAvailabilityError(err.message || 'Failed to delete availability')
-        console.error('Failed to delete availability:', err)
       })
       .finally(() => setAdminAvailabilityUpdating(false))
   }
 
   const voteBtnStyle = (btnStatus) => {
     const isActive = selectedStatus === btnStatus
-    
-    // Color-coded highlighting: green for available, yellow for tentative, red for unavailable
+
     let activeColor, activeBg, activeBorder
     if (btnStatus === 'available') {
       activeColor = 'var(--theme-success-strong)'
@@ -586,22 +643,28 @@ export default function Practice({ user }) {
       activeColor = 'var(--theme-warning-strong)'
       activeBg = 'var(--theme-warning-soft)'
       activeBorder = 'var(--theme-warning)'
-    } else { // not_available
+    } else {
       activeColor = 'var(--theme-danger-strong)'
       activeBg = 'var(--theme-danger-soft)'
       activeBorder = 'var(--theme-danger)'
     }
-    
+
     return {
-      marginRight: btnStatus !== 'not_available' ? '0.5rem' : undefined,
-      padding: '1rem 1.2rem',
+      padding: '0.85rem 0.75rem',
       borderRadius: '0.375rem',
       border: isActive ? `2px solid ${activeBorder}` : '1px solid var(--theme-border)',
       background: isActive ? activeBg : 'var(--theme-surface)',
       color: isActive ? activeColor : 'var(--theme-text)',
       fontWeight: isActive ? 700 : 400,
-      fontSize: '0.98rem',
-      minWidth: '100px',
+      fontSize: '0.95rem',
+      minWidth: 0,
+      minHeight: '48px',
+      width: '100%',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      textAlign: 'center',
+      boxSizing: 'border-box',
       cursor: user ? 'pointer' : 'not-allowed',
       opacity: user ? 1 : 0.6,
     }
@@ -720,6 +783,20 @@ export default function Practice({ user }) {
   const isCapacityReached = Boolean(voteSummary?.capacity_reached ?? selectedSession?.capacity_reached ?? (sessionAvailableCount >= sessionMaximumCapacity))
   const hasSelectedSessionPassed = Boolean(selectedSession && isSessionPast(selectedSession.date, selectedSession.time))
   const canSelectAvailable = selectedStatus === 'available' || !isCapacityReached
+  const optionSectionEnabled = Boolean(selectedSession?.option_a_text && selectedSession?.option_b_text)
+  const getDisplayFirstName = (name) => {
+    const trimmedName = (name || '').trim()
+    if (!trimmedName) return ''
+    return trimmedName.split(/\s+/)[0]
+  }
+  const formatDisplayNames = (names = []) => names.map(getDisplayFirstName).filter(Boolean).join(', ')
+  const selectedOptionChoice = user && voteSummary?.user_emails
+    ? (voteSummary.option_a || []).some((name) => voteSummary.user_emails[name] === user.email)
+      ? 'A'
+      : (voteSummary.option_b || []).some((name) => voteSummary.user_emails[name] === user.email)
+        ? 'B'
+        : null
+    : null
   const canSavePaymentInfo = Boolean(sessionCost && paidBy && maximumCapacity && Number(maximumCapacity) > 0)
   const availablePlayersForPayment = voteSummary?.available?.length || 0
   const paidAvailablePlayersCount = (voteSummary?.available || []).reduce((count, name) => {
@@ -803,7 +880,7 @@ export default function Practice({ user }) {
             <>
               <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
                 <strong>Your Selection</strong>
-                <div style={{ marginTop: '0.5rem' }}>
+                <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
                   <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
                   <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Tentative</button>
                   <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
@@ -818,6 +895,77 @@ export default function Practice({ user }) {
                 )}
                 {availabilityError && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)', fontSize: '0.875rem' }}>{availabilityError}</p>}
               </div>
+
+              {optionSectionEnabled && (
+                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
+                  <strong>Event Options</strong>
+                  <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.75rem' }}>
+                    <button
+                      onClick={() => handleOptionSelection('A')}
+                      disabled={!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating}
+                      style={{
+                        padding: '0.85rem 0.75rem',
+                        borderRadius: '0.5rem',
+                        minWidth: 0,
+                        minHeight: '48px',
+                        width: '100%',
+                        border: selectedOptionChoice === 'A' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                        background: selectedOptionChoice === 'A' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
+                        color: 'var(--theme-text)',
+                        fontWeight: selectedOptionChoice === 'A' ? 700 : 500,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        boxSizing: 'border-box',
+                        cursor: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating) ? 'not-allowed' : 'pointer',
+                        opacity: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested) ? 0.6 : 1,
+                      }}
+                    >
+                      {selectedSession.option_a_text}
+                    </button>
+                    <button
+                      onClick={() => handleOptionSelection('B')}
+                      disabled={!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating}
+                      style={{
+                        padding: '0.85rem 0.75rem',
+                        borderRadius: '0.5rem',
+                        minWidth: 0,
+                        minHeight: '48px',
+                        width: '100%',
+                        border: selectedOptionChoice === 'B' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                        background: selectedOptionChoice === 'B' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
+                        color: 'var(--theme-text)',
+                        fontWeight: selectedOptionChoice === 'B' ? 700 : 500,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        boxSizing: 'border-box',
+                        cursor: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating) ? 'not-allowed' : 'pointer',
+                        opacity: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested) ? 0.6 : 1,
+                      }}
+                    >
+                      {selectedSession.option_b_text}
+                    </button>
+                  </div>
+                  {selectedStatus !== 'available' && (
+                    <p style={{ marginTop: '0.5rem', color: 'var(--theme-text-muted)', fontSize: '0.875rem' }}>Set your availability to Available to choose an option.</p>
+                  )}
+                  {(voteSummary?.option_a?.length || voteSummary?.option_b?.length) > 0 && (
+                    <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.75rem' }}>
+                      <div>
+                        <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.35rem' }}>{selectedSession.option_a_text}</div>
+                        <div style={{ color: 'var(--theme-text)' }}>{(voteSummary?.option_a || []).length > 0 ? formatDisplayNames(voteSummary.option_a || []) : 'No selections yet'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.35rem' }}>{selectedSession.option_b_text}</div>
+                        <div style={{ color: 'var(--theme-text)' }}>{(voteSummary?.option_b || []).length > 0 ? formatDisplayNames(voteSummary.option_b || []) : 'No selections yet'}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {selectedSession?.payment_requested && user && isUserAvailable && voteSummary?.available?.length > 0 && (
                 <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)' }}>
@@ -1024,7 +1172,7 @@ export default function Practice({ user }) {
                         return (
                           <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <span style={{ color: 'var(--theme-text)' }}>{n.split(' ')[0]}</span>
+                              <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
                               {selectedSession?.payment_requested && hasPaid && <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>}
                             </div>
                             {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(userEmail)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
@@ -1039,7 +1187,7 @@ export default function Practice({ user }) {
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.tentative || []).map((n, idx) => (
                         <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                          <span style={{ color: 'var(--theme-text)' }}>{n.split(' ')[0]}</span>
+                          <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
                           {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                         </div>
                       ))}
@@ -1051,7 +1199,7 @@ export default function Practice({ user }) {
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.not_available || []).map((n, idx) => (
                         <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                          <span style={{ color: 'var(--theme-text)' }}>{n.split(' ')[0]}</span>
+                          <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
                           {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                         </div>
                       ))}

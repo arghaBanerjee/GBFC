@@ -18,7 +18,7 @@ function UserActions({ user, loading }) {
     practice: 'Practice',
     match: 'Match',
     social: 'Social',
-    others: 'Misc',
+    others: 'Other',
   }
   
   // Validate route tab and redirect if invalid

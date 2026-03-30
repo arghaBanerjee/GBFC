@@ -418,7 +418,13 @@ function App() {
                             if (notif.type === 'forum_post') navigate('/forum')
                             else if (notif.type === 'match') navigate('/matches/upcoming')
                             else if (notif.type === 'pending_payment_reminder') navigate('/user-actions/payments')
-                            else if (notif.type === 'practice' || notif.type === 'payment_request' || notif.type === 'payment_confirmed') {
+                            else if (
+                              notif.type === 'practice' ||
+                              notif.type === 'payment_request' ||
+                              notif.type === 'payment_confirmed' ||
+                              notif.type === 'session_capacity_reached' ||
+                              notif.type === 'practice_slot_available'
+                            ) {
                               if (notif.related_date) {
                                 navigate(`/calendar?date=${notif.related_date}`)
                               } else {
