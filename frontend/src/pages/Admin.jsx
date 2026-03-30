@@ -719,6 +719,13 @@ export default function Admin({ user, loading }) {
     }, 2500)
   }
 
+  const hasPartialPracticeOptions = (practiceOptionAText.trim() && !practiceOptionBText.trim()) || (!practiceOptionAText.trim() && practiceOptionBText.trim())
+  const practiceOptionInputStyle = {
+    width: '100%',
+    background: hasPartialPracticeOptions ? '#fff7ed' : undefined,
+    border: hasPartialPracticeOptions ? '1px solid #f59e0b' : undefined,
+  }
+
   const handleSubmitPracticeWithReset = async (e) => {
     try {
       await handleSubmitPractice(e)
@@ -1115,17 +1122,17 @@ export default function Admin({ user, loading }) {
             </div>
             <div>
               <label>Option A</label>
-              <input value={practiceOptionAText} onChange={(e) => setPracticeOptionAText(e.target.value)} placeholder="Optional member choice label" style={{ width: '100%' }} />
+              <input value={practiceOptionAText} onChange={(e) => setPracticeOptionAText(e.target.value)} placeholder="Optional member choice label" style={practiceOptionInputStyle} />
             </div>
             <div>
               <label>Option B</label>
-              <input value={practiceOptionBText} onChange={(e) => setPracticeOptionBText(e.target.value)} placeholder="Optional member choice label" style={{ width: '100%' }} />
-              {((practiceOptionAText.trim() && !practiceOptionBText.trim()) || (!practiceOptionAText.trim() && practiceOptionBText.trim())) && (
-                <div style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: '500', marginTop: '-0.5rem' }}>
-                  Add both options together, or clear both fields before saving.
-                </div>
-              )}
+              <input value={practiceOptionBText} onChange={(e) => setPracticeOptionBText(e.target.value)} placeholder="Optional member choice label" style={practiceOptionInputStyle} />
             </div>
+            {hasPartialPracticeOptions && (
+              <div style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: '500', marginTop: '0.5rem' }}>
+                Add both options together, or clear both and save.
+              </div>
+            )}
             {practiceEventType === 'match' && (
               <>
                 <div>
@@ -1265,9 +1272,6 @@ export default function Admin({ user, loading }) {
                   )}
                   {s.event_type === 'match' && s.youtube_url && (
                     <div style={{ opacity: 0.8, wordBreak: 'break-word' }}>YouTube: {s.youtube_url}</div>
-                  )}
-                  {s.event_type === 'match' && s.description && (
-                    <div style={{ opacity: 0.8, whiteSpace: 'pre-wrap' }}>{s.description}</div>
                   )}
                   {s.event_type === 'match' && s.image_url && (
                     <img src={s.image_url} alt={s.event_title || 'Match'} style={{ marginTop: '0.5rem', maxWidth: '100%', maxHeight: 180, borderRadius: 8, objectFit: 'cover' }} />
