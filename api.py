@@ -3909,20 +3909,20 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
         )
 
 @app.put("/api/forum/{post_id}", response_model=ForumPostOut)
-def admin_update_forum_post(
+def update_forum_post(
     post_id: int,
     payload: ForumPostUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    if not is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Admins only")
-
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(f"SELECT * FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Post not found")
+
+        if row["user_email"] != current_user["email"] and not is_admin(current_user):
+            raise HTTPException(status_code=403, detail="You can only edit your own posts")
 
         cur.execute(f"UPDATE forum_posts SET content = {PLACEHOLDER} WHERE id = {PLACEHOLDER}", (payload.content, post_id))
         conn.commit()

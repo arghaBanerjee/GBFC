@@ -12,7 +12,6 @@ export default function Admin({ user, loading }) {
   const isSuperAdmin = user?.email === 'super@admin.com'
   const adminTabs = [
     { value: 'events', label: 'Events' },
-    { value: 'forum', label: 'Forum Posts' },
     { value: 'users', label: 'Users' },
     { value: 'expense', label: 'Expense' },
     { value: 'reports', label: 'Reports' },
@@ -60,11 +59,6 @@ export default function Admin({ user, loading }) {
   const [practiceInlineStatus, setPracticeInlineStatus] = useState('')
   const [isSubmittingPractice, setIsSubmittingPractice] = useState(false)
   const [practiceListTab, setPracticeListTab] = useState('upcoming')
-
-  // Forum posts
-  const [forumPosts, setForumPosts] = useState([])
-  const [editingForumPostId, setEditingForumPostId] = useState(null)
-  const [forumPostContent, setForumPostContent] = useState('')
 
   // Users
   const [users, setUsers] = useState([])
@@ -302,11 +296,6 @@ export default function Admin({ user, loading }) {
     if (res.ok) setPracticeSessions(await res.json())
   }
 
-  const loadForumPosts = async () => {
-    const res = await fetch(apiUrl('/api/forum'))
-    if (res.ok) setForumPosts(await res.json())
-  }
-
   const loadUsers = async () => {
     try {
       const res = await fetch(apiUrl('/api/users'), {
@@ -348,7 +337,6 @@ export default function Admin({ user, loading }) {
       loadPracticeSessions()
       loadUsers()
     }
-    else if (tabName === 'forum') loadForumPosts()
     else if (tabName === 'users') loadUsers()
     else if (tabName === 'expense') {
       loadExpenses()
@@ -397,10 +385,6 @@ export default function Admin({ user, loading }) {
         loadPracticeSessions()
         loadUsers()
         newLoadedTabs.add('events')
-        didLoadTab = true
-      } else if (activeTab === 'forum') {
-        loadForumPosts()
-        newLoadedTabs.add('forum')
         didLoadTab = true
       } else if (activeTab === 'users') {
         loadUsers()
@@ -529,11 +513,6 @@ export default function Admin({ user, loading }) {
     setPracticePaidBy('')
     setPracticeMaximumCapacity('18')
     setPracticeInlineStatus('')
-  }
-
-  const resetForumPostForm = () => {
-    setEditingForumPostId(null)
-    setForumPostContent('')
   }
 
   const resetExpenseForm = () => {
@@ -767,34 +746,6 @@ export default function Admin({ user, loading }) {
     refreshTabData('events')
   }
 
-  const handleEditForumPost = (p) => {
-    setActiveTab('forum')
-    setEditingForumPostId(p.id)
-    setForumPostContent(p.content || '')
-  }
-
-  const handleSubmitForumPost = async (e) => {
-    e.preventDefault()
-    if (!editingForumPostId) return
-
-    const res = await fetch(apiUrl(`/api/forum/${editingForumPostId}`), {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ content: forumPostContent }),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      setMessage(data?.detail || 'Failed to update post')
-      return
-    }
-    setMessage('Post updated.')
-    resetForumPostForm()
-    refreshTabData('forum')
-  }
-
   const handleSubmitExpense = async (e) => {
     e.preventDefault()
     const payload = {
@@ -851,22 +802,6 @@ export default function Admin({ user, loading }) {
     setMessage('Expense deleted.')
     if (editingExpenseId === expenseId) resetExpenseForm()
     refreshTabData('expense')
-  }
-
-  const handleDeleteForumPost = async (postId) => {
-    if (!confirm('Delete this post?')) return
-    const res = await fetch(apiUrl(`/api/forum/${postId}`), {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      setMessage(data?.detail || 'Failed to delete post')
-      return
-    }
-    setMessage('Post deleted.')
-    if (editingForumPostId === postId) resetForumPostForm()
-    refreshTabData('forum')
   }
 
   const handleUpdateUserType = async (email, userType) => {
@@ -931,10 +866,10 @@ export default function Admin({ user, loading }) {
     }
     setMessage('User deleted.')
     refreshTabData('users')
-    refreshTabData('forum')
   }
 
   const filteredUsers = [...users]
+    .filter((u) => !u.is_deleted)
     .filter((u) => (u.full_name || '').toLowerCase().includes(userSearchTerm.trim().toLowerCase()))
     .sort((a, b) => {
       const aLastLogin = a.last_login ? new Date(a.last_login).getTime() : 0
@@ -1067,12 +1002,68 @@ export default function Admin({ user, loading }) {
           <button
             key={tab.value}
             className={`admin-menu-tab ${activeTab === tab.value ? 'active' : ''}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+            }}
             onClick={() => setActiveTab(tab.value)}
           >
             {tab.label}
           </button>
         ))}
       </div>
+
+      <style>{`
+        .admin-mobile-action-group {
+          display: flex;
+          gap: 0.5rem;
+          align-items: flex-start;
+          flex-wrap: wrap;
+        }
+        .admin-mobile-action-btn {
+          min-width: 88px;
+          justify-content: center;
+        }
+        .admin-mobile-action-icon {
+          display: none;
+        }
+        .admin-card-header {
+          display: flex;
+          justify-content: space-between;
+          gap: 1rem;
+          flex-wrap: wrap;
+          margin-bottom: 1rem;
+        }
+        .admin-card-header-main {
+          min-width: 0;
+          flex: 1;
+        }
+        @media (max-width: 640px) {
+          .admin-mobile-action-group {
+            flex-wrap: nowrap;
+            flex-shrink: 0;
+            margin-left: auto;
+          }
+          .admin-mobile-action-btn {
+            min-width: 40px;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border-radius: 0.625rem;
+            flex: 0 0 40px;
+          }
+          .admin-mobile-action-text {
+            display: none;
+          }
+          .admin-mobile-action-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+          }
+        }
+      `}</style>
 
       {activeTab === 'events' && (
         <>
@@ -1233,22 +1224,39 @@ export default function Admin({ user, loading }) {
                       <strong>{formatEventTypeLabel(s.event_type)}</strong>
                       <div style={{ opacity: 0.7, fontSize: '0.85rem', marginTop: 2 }}>{s.event_title || formatEventTypeLabel(s.event_type)}</div>
                     </div>
-                    <div>
-                      <button className="nav-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} disabled={actionsLocked} style={{ marginRight: 8, border: actionsLocked ? '1px solid #d1d5db' : '1px solid #d1d5db', color: actionsLocked ? '#9ca3af' : '#111827', cursor: actionsLocked ? 'not-allowed' : 'pointer', background: actionsLocked ? '#f3f4f6' : undefined }}>
-                        Edit
+                    <div className="admin-mobile-action-group">
+                      <button className="nav-btn admin-mobile-action-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} disabled={actionsLocked} aria-label="Edit event" title="Edit event" style={{ border: '1px solid #d1d5db', color: actionsLocked ? '#9ca3af' : '#111827', cursor: actionsLocked ? 'not-allowed' : 'pointer', background: actionsLocked ? '#f3f4f6' : 'var(--theme-surface-alt)' }}>
+                        <span className="admin-mobile-action-text">Edit</span>
+                        <span className="admin-mobile-action-icon" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                          </svg>
+                        </span>
                       </button>
                       <button
-                        className="nav-btn"
+                        className="nav-btn admin-mobile-action-btn"
                         onClick={(e) => { e.stopPropagation(); handleDeletePractice(s.date) }}
                         disabled={actionsLocked}
+                        aria-label="Delete event"
+                        title="Delete event"
                         style={{
-                          background: actionsLocked ? '#d1d5db' : '#ef4444',
-                          color: 'white',
-                          border: actionsLocked ? '1px solid #d1d5db' : '1px solid #ef4444',
+                          background: actionsLocked ? '#d1d5db' : 'var(--theme-danger-soft)',
+                          color: actionsLocked ? '#6b7280' : 'var(--theme-danger-strong)',
+                          border: actionsLocked ? '1px solid #d1d5db' : '1px solid color-mix(in srgb, var(--theme-danger) 30%, white)',
                           cursor: actionsLocked ? 'not-allowed' : 'pointer'
                         }}
                       >
-                        Delete
+                        <span className="admin-mobile-action-text">Delete</span>
+                        <span className="admin-mobile-action-icon" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18" />
+                            <path d="M8 6V4h8v2" />
+                            <path d="M19 6l-1 14H6L5 6" />
+                            <path d="M10 11v6" />
+                            <path d="M14 11v6" />
+                          </svg>
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -1292,60 +1300,6 @@ export default function Admin({ user, loading }) {
                 <p>{practiceListTab === 'upcoming' ? 'No upcoming events.' : 'No past events.'}</p>
               )}
             </div>
-          </div>
-        </>
-      )}
-
-      {activeTab === 'forum' && (
-        <>
-          <h3>Forum Posts</h3>
-
-          {editingForumPostId && (
-            <form onSubmit={handleSubmitForumPost} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: 900, marginTop: '1rem' }}>
-              <div>
-                <label>Edit Post Content</label>
-                <textarea
-                  rows={8}
-                  value={forumPostContent}
-                  onChange={(e) => setForumPostContent(e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981' }}>Update Post</button>
-                <button className="nav-btn" type="button" onClick={resetForumPostForm} style={{ background: 'white', color: '#111827', border: '1px solid #111827' }}>Cancel</button>
-              </div>
-            </form>
-          )}
-
-          <div style={{ display: 'grid', gap: '1rem', marginTop: '1rem' }}>
-            {forumPosts.map((p) => (
-              <div key={p.id} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <div>
-                    <strong>{p.user_full_name}</strong>
-                    <div style={{ opacity: 0.8, marginTop: 4 }}>{new Date(p.created_at).toLocaleString()}</div>
-                  </div>
-                  <div>
-                    <button className="nav-btn" onClick={() => handleEditForumPost(p)} style={{ marginRight: 8, border: '1px solid #d1d5db', color: '#111827' }}>
-                      Edit
-                    </button>
-                    <button className="nav-btn" onClick={() => handleDeleteForumPost(p.id)} style={{ background: '#ef4444', color: 'white', border: '#ef4444' }}>
-                      Delete
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 10, opacity: 0.95 }}>
-                  <div dangerouslySetInnerHTML={{ __html: p.content }} />
-                </div>
-
-                <div style={{ marginTop: 10, opacity: 0.8 }}>
-                  Likes: {p.likes_count} · Comments: {p.comments.length}
-                </div>
-              </div>
-            ))}
-            {forumPosts.length === 0 && <p>No posts yet.</p>}
           </div>
         </>
       )}
@@ -1402,12 +1356,12 @@ export default function Admin({ user, loading }) {
               <div
                 key={u.email}
                 style={{
-                  border: isUpcomingBirthdayUser ? '1px solid #f59e0b' : u.email === user?.email ? '1px solid #86efac' : '1px solid #d1d5db',
+                  border: isUpcomingBirthdayUser ? '1px solid #f59e0b' : u.email === user?.email ? '1px solid #86efac' : u.user_type === 'admin' ? '1px solid #fdba74' : '1px solid #d1d5db',
                   borderRadius: '0.75rem',
                   padding: '1rem',
                   marginBottom: '1rem',
-                  background: isUpcomingBirthdayUser ? 'linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%)' : u.email === user?.email ? '#f0fdf4' : 'white',
-                  boxShadow: isUpcomingBirthdayUser ? '0 4px 14px rgba(245, 158, 11, 0.15)' : 'none'
+                  background: isUpcomingBirthdayUser ? 'linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%)' : u.email === user?.email ? '#f0fdf4' : u.user_type === 'admin' ? '#fff7ed' : 'white',
+                  boxShadow: isUpcomingBirthdayUser ? '0 4px 14px rgba(245, 158, 11, 0.15)' : u.user_type === 'admin' ? '0 2px 8px rgba(245, 158, 11, 0.08)' : 'none'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
@@ -1527,42 +1481,65 @@ export default function Admin({ user, loading }) {
                     )}
                   </div>
                   {editingUserId !== u.email && (
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'nowrap', flexShrink: 0 }}>
+                    <div className="admin-mobile-action-group" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
                       <button 
-                        className="nav-btn" 
+                        className="nav-btn admin-mobile-action-btn" 
+                        disabled={u.user_type === 'admin' && u.email !== user?.email}
                         onClick={() => {
                           if (u.email === user?.email) {
                             navigate('/profile')
                             return
                           }
+                          if (u.user_type === 'admin') {
+                            return
+                          }
                           setEditingUserId(u.email)
                           setEditingUserName(u.full_name)
                         }}
+                        aria-label={u.email === user?.email ? 'Edit profile' : 'Edit user'}
+                        title={u.email === user?.email ? 'Edit profile' : 'Edit user'}
                         style={{ 
-                          padding: '0.5rem 1rem',
                           fontSize: '0.875rem',
                           border: u.email === user?.email ? '1px solid #16a34a' : '1px solid #d1d5db',
-                          color: u.email === user?.email ? '#16a34a' : '#374151',
-                          background: 'white'
+                          color: u.email === user?.email ? '#16a34a' : u.user_type === 'admin' ? '#9ca3af' : '#111827',
+                          background: u.user_type === 'admin' && u.email !== user?.email ? '#f3f4f6' : 'var(--theme-surface-alt)',
+                          cursor: u.user_type === 'admin' && u.email !== user?.email ? 'not-allowed' : 'pointer',
+                          opacity: u.user_type === 'admin' && u.email !== user?.email ? 0.7 : 1
                         }}
                       >
-                        Edit
+                        <span className="admin-mobile-action-text">Edit</span>
+                        <span className="admin-mobile-action-icon" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                          </svg>
+                        </span>
                       </button>
                       <button 
-                        className="nav-btn" 
+                        className="nav-btn admin-mobile-action-btn" 
                         onClick={() => handleDeleteUser(u.email)}
-                        disabled={u.email === user?.email}
+                        disabled={u.email === user?.email || u.user_type === 'admin'}
+                        aria-label="Delete user"
+                        title="Delete user"
                         style={{ 
-                          background: u.email === user?.email ? '#f3f4f6' : '#ef4444', 
-                          color: u.email === user?.email ? '#9ca3af' : 'white', 
-                          border: u.email === user?.email ? '1px solid #d1d5db' : '1px solid #ef4444',
-                          padding: '0.5rem 1rem',
+                          background: u.email === user?.email || u.user_type === 'admin' ? '#f3f4f6' : 'var(--theme-danger-soft)', 
+                          color: u.email === user?.email || u.user_type === 'admin' ? '#9ca3af' : 'var(--theme-danger-strong)', 
+                          border: u.email === user?.email || u.user_type === 'admin' ? '1px solid #d1d5db' : '1px solid color-mix(in srgb, var(--theme-danger) 30%, white)',
                           fontSize: '0.875rem',
-                          cursor: u.email === user?.email ? 'not-allowed' : 'pointer',
-                          opacity: u.email === user?.email ? 1 : 1
+                          cursor: u.email === user?.email || u.user_type === 'admin' ? 'not-allowed' : 'pointer',
+                          opacity: 1
                         }}
                       >
-                        Delete
+                        <span className="admin-mobile-action-text">Delete</span>
+                        <span className="admin-mobile-action-icon" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18" />
+                            <path d="M8 6V4h8v2" />
+                            <path d="M19 6l-1 14H6L5 6" />
+                            <path d="M10 11v6" />
+                            <path d="M14 11v6" />
+                          </svg>
+                        </span>
                       </button>
                     </div>
                   )}
@@ -1740,12 +1717,27 @@ export default function Admin({ user, loading }) {
                   <div>
                     <strong>{expense.expense_date}</strong>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button className="nav-btn" disabled={expense.can_edit === false} onClick={() => handleEditExpense(expense)} style={{ border: '1px solid #d1d5db', color: expense.can_edit === false ? '#9ca3af' : '#111827', opacity: expense.can_edit === false ? 0.6 : 1, cursor: expense.can_edit === false ? 'not-allowed' : 'pointer' }}>
-                      Edit
+                  <div className="admin-mobile-action-group">
+                    <button className="nav-btn admin-mobile-action-btn" disabled={expense.can_edit === false} onClick={() => handleEditExpense(expense)} aria-label="Edit expense" title="Edit expense" style={{ border: '1px solid #d1d5db', color: expense.can_edit === false ? '#9ca3af' : '#111827', background: expense.can_edit === false ? '#f3f4f6' : 'var(--theme-surface-alt)', opacity: expense.can_edit === false ? 0.6 : 1, cursor: expense.can_edit === false ? 'not-allowed' : 'pointer' }}>
+                      <span className="admin-mobile-action-text">Edit</span>
+                      <span className="admin-mobile-action-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                        </svg>
+                      </span>
                     </button>
-                    <button className="nav-btn" disabled={expense.can_delete === false} onClick={() => handleDeleteExpense(expense.id)} style={{ background: expense.can_delete === false ? '#f3f4f6' : '#ef4444', color: expense.can_delete === false ? '#9ca3af' : 'white', border: expense.can_delete === false ? '1px solid #d1d5db' : '1px solid #ef4444', opacity: expense.can_delete === false ? 0.6 : 1, cursor: expense.can_delete === false ? 'not-allowed' : 'pointer' }}>
-                      Delete
+                    <button className="nav-btn admin-mobile-action-btn" disabled={expense.can_delete === false} onClick={() => handleDeleteExpense(expense.id)} aria-label="Delete expense" title="Delete expense" style={{ background: expense.can_delete === false ? '#f3f4f6' : 'var(--theme-danger-soft)', color: expense.can_delete === false ? '#9ca3af' : 'var(--theme-danger-strong)', border: expense.can_delete === false ? '1px solid #d1d5db' : '1px solid color-mix(in srgb, var(--theme-danger) 30%, white)', opacity: expense.can_delete === false ? 0.6 : 1, cursor: expense.can_delete === false ? 'not-allowed' : 'pointer' }}>
+                      <span className="admin-mobile-action-text">Delete</span>
+                      <span className="admin-mobile-action-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 6h18" />
+                          <path d="M8 6V4h8v2" />
+                          <path d="M19 6l-1 14H6L5 6" />
+                          <path d="M10 11v6" />
+                          <path d="M14 11v6" />
+                        </svg>
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -1789,28 +1781,45 @@ export default function Admin({ user, loading }) {
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                  <div>
+                <div className="admin-card-header">
+                  <div className="admin-card-header-main">
                     <div style={{ fontWeight: '700', fontSize: '1.05rem', marginBottom: '0.25rem' }}>{setting.display_name}</div>
                     <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>{setting.description || 'No description set.'}</div>
                     <div style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: '0.35rem' }}>Type: {setting.notif_type}</div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div className="admin-mobile-action-group">
                     <button
-                      className="nav-btn"
+                      className="nav-btn admin-mobile-action-btn"
                       onClick={() => handleSaveNotificationSetting(setting.notif_type)}
                       disabled={notificationSaving === setting.notif_type}
+                      aria-label="Save notification setting"
+                      title="Save notification setting"
                       style={{ background: '#10b981', color: 'white', border: '1px solid #10b981' }}
                     >
-                      {notificationSaving === setting.notif_type ? 'Saving...' : 'Save'}
+                      <span className="admin-mobile-action-text">{notificationSaving === setting.notif_type ? 'Saving...' : 'Save'}</span>
+                      <span className="admin-mobile-action-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                          <path d="M17 21v-8H7v8" />
+                          <path d="M7 3v5h8" />
+                        </svg>
+                      </span>
                     </button>
                     <button
-                      className="nav-btn"
+                      className="nav-btn admin-mobile-action-btn"
                       onClick={() => handleResetNotificationSetting(setting.notif_type)}
                       disabled={notificationSaving === setting.notif_type}
+                      aria-label="Reset notification setting"
+                      title="Reset notification setting"
                       style={{ border: '1px solid #d1d5db', color: '#111827' }}
                     >
-                      Reset
+                      <span className="admin-mobile-action-text">Reset</span>
+                      <span className="admin-mobile-action-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 12a9 9 0 1 0 3-6.7" />
+                          <path d="M3 3v6h6" />
+                        </svg>
+                      </span>
                     </button>
                   </div>
                 </div>

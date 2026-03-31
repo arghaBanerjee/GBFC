@@ -6,6 +6,9 @@ export default function Forum({ user }) {
   const [showCreate, setShowCreate] = useState(false)
   const [newContent, setNewContent] = useState('')
   const editorRef = useRef(null)
+  const [editingPostId, setEditingPostId] = useState(null)
+  const [editingPostContent, setEditingPostContent] = useState('')
+  const [savingPostId, setSavingPostId] = useState(null)
   const [commentingPostId, setCommentingPostId] = useState(null)
   const [commentText, setCommentText] = useState('')
   const [myLikedPostIds, setMyLikedPostIds] = useState(new Set())
@@ -201,6 +204,50 @@ export default function Forum({ user }) {
     }
   }
 
+  const canManagePost = (post) => Boolean(
+    user && (user.email === post.user_email || user.user_type === 'admin' || user.email === 'super@admin.com')
+  )
+
+  const handleStartEditPost = (post) => {
+    setEditingPostId(post.id)
+    setEditingPostContent(post.content || '')
+    setCommentingPostId((current) => (current === post.id ? null : current))
+  }
+
+  const handleCancelEditPost = () => {
+    setEditingPostId(null)
+    setEditingPostContent('')
+  }
+
+  const handleSaveEditPost = async (postId) => {
+    if (!user) return alert('Please log in to edit')
+    if (!editingPostContent.trim()) {
+      return alert('Post content cannot be empty')
+    }
+    if (editingPostContent.length > 500) {
+      return alert('Post content must be 500 characters or less')
+    }
+
+    setSavingPostId(postId)
+    const res = await fetch(apiUrl(`/api/forum/${postId}`), {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ content: editingPostContent }),
+    })
+    setSavingPostId(null)
+
+    if (res.ok) {
+      handleCancelEditPost()
+      await refreshPostsAndLikes()
+    } else {
+      const data = await res.json().catch(() => ({}))
+      alert(data?.detail || 'Failed to update post')
+    }
+  }
+
   return (
     <div className="container">
       <style>{`
@@ -218,6 +265,45 @@ export default function Forum({ user }) {
           margin-top: 0.5rem;
           border-radius: 0.5rem;
           object-fit: contain;
+        }
+        .forum-post-actions {
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: nowrap;
+          justify-content: flex-end;
+          flex-shrink: 0;
+        }
+        .forum-post-action-btn {
+          min-width: 88px;
+          justify-content: center;
+        }
+        .forum-post-action-icon {
+          display: none;
+        }
+        @media (max-width: 640px) {
+          .forum-post-header {
+            gap: 0.75rem;
+          }
+          .forum-post-meta {
+            min-width: 0;
+            flex: 1;
+          }
+          .forum-post-action-btn {
+            min-width: 40px;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border-radius: 0.625rem;
+            flex: 0 0 40px;
+          }
+          .forum-post-action-text {
+            display: none;
+          }
+          .forum-post-action-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+          }
         }
       `}</style>
       <h2>Club Forum</h2>
@@ -333,8 +419,73 @@ export default function Forum({ user }) {
               boxShadow: 'var(--theme-card-shadow)',
             }}
           >
-            <p style={{ color: 'var(--theme-text)', marginTop: 0 }}><strong style={{ color: 'var(--theme-heading)' }}>{post.user_full_name}</strong> · {new Date(post.created_at).toLocaleString()}</p>
-            <div className="forum-post-content" dangerouslySetInnerHTML={{ __html: post.content }} />
+            <div className="forum-post-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginBottom: '0.75rem' }}>
+              <div className="forum-post-meta" style={{ minWidth: 0 }}>
+                <div style={{ color: 'var(--theme-heading)', fontWeight: '700', lineHeight: 1.35 }}>{post.user_full_name}</div>
+                <div style={{ color: 'var(--theme-text-muted)', marginTop: '0.2rem', fontSize: '0.9rem', lineHeight: 1.35 }}>{new Date(post.created_at).toLocaleString()}</div>
+              </div>
+              {canManagePost(post) && (
+                <div className="forum-post-actions">
+                  <button
+                    className="nav-btn forum-post-action-btn"
+                    onClick={() => handleStartEditPost(post)}
+                    aria-label="Edit post"
+                    title="Edit post"
+                    style={{ border: '1px solid #d1d5db', color: '#111827', background: 'var(--theme-surface-alt)' }}
+                  >
+                    <span className="forum-post-action-text">Edit</span>
+                    <span className="forum-post-action-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                      </svg>
+                    </span>
+                  </button>
+                  <button
+                    className="nav-btn forum-post-action-btn"
+                    onClick={() => handleDeletePost(post.id)}
+                    aria-label="Delete post"
+                    title="Delete post"
+                    style={{ background: 'var(--theme-danger-soft)', color: 'var(--theme-danger-strong)', border: '1px solid color-mix(in srgb, var(--theme-danger) 30%, white)' }}
+                  >
+                    <span className="forum-post-action-text">Delete</span>
+                    <span className="forum-post-action-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4h8v2" />
+                        <path d="M19 6l-1 14H6L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+            {editingPostId === post.id ? (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <textarea
+                  value={editingPostContent}
+                  onChange={(e) => setEditingPostContent(e.target.value)}
+                  maxLength={500}
+                  rows={6}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', boxSizing: 'border-box', fontSize: '1rem', fontFamily: 'inherit', resize: 'vertical' }}
+                />
+                <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'right', marginTop: '0.25rem' }}>
+                  {editingPostContent.length}/500 characters
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                  <button className="nav-btn theme-primary-btn" onClick={() => handleSaveEditPost(post.id)} disabled={savingPostId === post.id} style={{ padding: '0.5rem 1rem' }}>
+                    {savingPostId === post.id ? 'Saving...' : 'Save'}
+                  </button>
+                  <button className="nav-btn theme-secondary-btn" onClick={handleCancelEditPost} disabled={savingPostId === post.id} style={{ padding: '0.5rem 1rem' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="forum-post-content" dangerouslySetInnerHTML={{ __html: post.content }} />
+            )}
             <div style={{ marginTop: '0.5rem', position: 'relative' }}>
               <button
                 className={`nav-btn ${myLikedPostIds.has(post.id) ? 'active' : ''}`}
@@ -370,15 +521,6 @@ export default function Forum({ user }) {
               >
                 💬 Comment ({post.comments.length})
               </button>
-              {user && user.email === post.user_email && (
-                <button 
-                  className="nav-btn" 
-                  onClick={() => handleDeletePost(post.id)}
-                  style={{ background: 'var(--theme-danger-soft)', color: 'var(--theme-danger-strong)', border: '1px solid color-mix(in srgb, var(--theme-danger) 30%, white)' }}
-                >
-                  🗑️ Delete
-                </button>
-              )}
               {/* Hover tooltip for likes */}
               {likesHover === post.id && post.likes && post.likes.length > 0 && (
                 <div style={{

@@ -2,7 +2,7 @@ import React from 'react'
 
 // Route validation middleware and utilities
 
-export const VALID_ADMIN_TABS = ['events', 'forum', 'users', 'expense', 'reports', 'notifications']
+export const VALID_ADMIN_TABS = ['events', 'users', 'expense', 'reports', 'notifications']
 
 export const VALID_MATCH_TABS = ['upcoming', 'past']
 
