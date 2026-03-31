@@ -40,7 +40,7 @@ export default function Practice({ user }) {
   }
 
   const eventTypeColorMap = {
-    practice: '#A8DE92',
+    practice: '#86EFAC',
     match: '#bfdbfe',
     social: '#fed7aa',
     others: '#ddd6fe',
