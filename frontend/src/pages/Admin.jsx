@@ -46,7 +46,7 @@ export default function Admin({ user, loading }) {
   const [editingPracticeDate, setEditingPracticeDate] = useState(null)
   const [practiceDate, setPracticeDate] = useState('')
   const [practiceTime, setPracticeTime] = useState('21:00')
-  const [practiceLocation, setPracticeLocation] = useState('')
+  const [practiceLocation, setPracticeLocation] = useState('Toryglen')
   const [practiceEventType, setPracticeEventType] = useState('practice')
   const [practiceEventTitle, setPracticeEventTitle] = useState('Session')
   const [practiceDescription, setPracticeDescription] = useState('')
@@ -511,17 +511,13 @@ export default function Admin({ user, loading }) {
     setEventName('')
     setEventDate('')
     setEventTime('')
-    setEventLocation('')
-    setEventDescription('')
-    setEventImageUrl('')
-    setEventYoutubeUrl('')
   }
 
   const resetPracticeForm = () => {
     setEditingPracticeDate(null)
     setPracticeDate('')
     setPracticeTime('21:00')
-    setPracticeLocation('')
+    setPracticeLocation('Toryglen')
     setPracticeEventType('practice')
     setPracticeEventTitle('Session')
     setPracticeDescription('')
@@ -720,6 +716,7 @@ export default function Admin({ user, loading }) {
   }
 
   const hasPartialPracticeOptions = (practiceOptionAText.trim() && !practiceOptionBText.trim()) || (!practiceOptionAText.trim() && practiceOptionBText.trim())
+  const showPracticeOptionInputs = practiceEventType === 'match' || practiceEventType === 'social'
   const practiceOptionInputStyle = {
     width: '100%',
     background: hasPartialPracticeOptions ? '#fff7ed' : undefined,
@@ -1098,6 +1095,10 @@ export default function Admin({ user, loading }) {
                 if (nextEventType !== 'practice') {
                   setPracticeEventTitle('')
                 }
+                if (nextEventType !== 'match' && nextEventType !== 'social') {
+                  setPracticeOptionAText('')
+                  setPracticeOptionBText('')
+                }
               }} style={{ width: '100%' }}>
                 {eventTypeOptions.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -1120,18 +1121,22 @@ export default function Admin({ user, loading }) {
               <label>Location</label>
               <input value={practiceLocation} onChange={(e) => setPracticeLocation(e.target.value)} style={{ width: '100%' }} />
             </div>
-            <div>
-              <label>Option A</label>
-              <input value={practiceOptionAText} onChange={(e) => setPracticeOptionAText(e.target.value)} placeholder="Optional member choice label" style={practiceOptionInputStyle} />
-            </div>
-            <div>
-              <label>Option B</label>
-              <input value={practiceOptionBText} onChange={(e) => setPracticeOptionBText(e.target.value)} placeholder="Optional member choice label" style={practiceOptionInputStyle} />
-            </div>
-            {hasPartialPracticeOptions && (
-              <div style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: '500', marginTop: '0.5rem' }}>
-                Add both options together, or clear both and save.
-              </div>
+            {showPracticeOptionInputs && (
+              <>
+                <div>
+                  <label>Option A</label>
+                  <input value={practiceOptionAText} onChange={(e) => setPracticeOptionAText(e.target.value)} placeholder="Optional member choice label" style={practiceOptionInputStyle} />
+                </div>
+                <div>
+                  <label>Option B</label>
+                  <input value={practiceOptionBText} onChange={(e) => setPracticeOptionBText(e.target.value)} placeholder="Optional member choice label" style={practiceOptionInputStyle} />
+                </div>
+                {hasPartialPracticeOptions && (
+                  <div style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: '500', marginTop: '0.5rem' }}>
+                    Add both options together, or clear both and save.
+                  </div>
+                )}
+              </>
             )}
             {practiceEventType === 'match' && (
               <>
@@ -1165,7 +1170,7 @@ export default function Admin({ user, loading }) {
             <div>
               <label>Paid By</label>
               <select value={practicePaidBy} onChange={(e) => setPracticePaidBy(e.target.value)} style={{ width: '100%' }}>
-                <option value="">Select user (optional)</option>
+                <option value="">Select User</option>
                 {users.map((u) => (
                   <option key={u.email} value={u.email}>{u.full_name}</option>
                 ))}
@@ -1635,7 +1640,7 @@ export default function Admin({ user, loading }) {
               <div>
                 <label>Paid By</label>
                 <select value={expensePaidBy} onChange={(e) => setExpensePaidBy(e.target.value)} style={{ width: '100%' }}>
-                  <option value="">Select user (optional)</option>
+                  <option value="">Select User</option>
                   {users.map((u) => (
                     <option key={u.email} value={u.email}>{u.full_name} ({u.email})</option>
                   ))}
