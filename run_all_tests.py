@@ -226,6 +226,7 @@ def main():
         'test_database_compatibility.py',
         'test_payment_request_comprehensive.py',
         'test_payment_notifications.py',
+        'test_forum_crud.py',
         # 'test_user_actions.py',  # TODO: Fix test database integration
         # 'test_reports.py',  # TODO: Fix test database integration
     ]
