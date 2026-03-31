@@ -40,7 +40,7 @@ export default function Practice({ user }) {
   }
 
   const eventTypeColorMap = {
-    practice: 'color-mix(in srgb, var(--theme-success) 38%, white)',
+    practice: '#A8DE92',
     match: '#bfdbfe',
     social: '#fed7aa',
     others: '#ddd6fe',
