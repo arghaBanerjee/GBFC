@@ -101,18 +101,6 @@ NOTIFICATION_TYPE_DEFAULTS = {
         "email_template": "{{event_name}} has been added for {{date}}{{time_suffix}}{{location_suffix}}.\n\nPlease open the app and update your availability.",
         "whatsapp_template": "📅 *NEW EVENT ADDED*\n\n{{event_name}}\n📅 {{date}}\n{{time_line}}{{location_line}}\nPlease update your availability in the app.",
     },
-    "match": {
-        "display_name": "New Match Added",
-        "description": "Sent when a new football match is created.",
-        "app_enabled": True,
-        "email_enabled": False,
-        "whatsapp_enabled": True,
-        "target_audience": "all_active_users",
-        "app_template": "New Football Match on {{date}}{{time_suffix}}{{location_suffix}}",
-        "email_subject": "New match scheduled for {{date}}",
-        "email_template": "{{event_name}}\n\nA new football match has been scheduled for {{date}}{{time_suffix}}{{location_suffix}}.",
-        "whatsapp_template": "⚽ *NEW MATCH*\n\n{{event_name}}\n📅 {{date}}\n{{time_line}}{{location_line}}\nCheck the app for full details.",
-    },
     "forum_post": {
         "display_name": "New Forum Post Added",
         "description": "Sent when a new forum post is created.",
@@ -1446,6 +1434,7 @@ def build_notification_context(payload: dict) -> dict:
 def seed_notification_settings():
     with get_connection() as conn:
         cur = conn.cursor()
+        cur.execute(f"DELETE FROM notification_settings WHERE notif_type = {PLACEHOLDER}", ("match",))
         for notif_type, defaults in NOTIFICATION_TYPE_DEFAULTS.items():
             if USE_POSTGRES:
                 cur.execute(
@@ -2797,12 +2786,14 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
                     user_dict["created_at"] = user_dict["created_at"].isoformat()
                 else:
                     user_dict["created_at"] = str(user_dict["created_at"])
+            
             # Convert last_login datetime to ISO string if needed, or set to None
             if user_dict.get("last_login"):
                 if hasattr(user_dict["last_login"], 'isoformat'):
                     user_dict["last_login"] = user_dict["last_login"].isoformat()
                 else:
                     user_dict["last_login"] = str(user_dict["last_login"])
+            
             # Convert birthday date to ISO string if needed, or set to None
             if user_dict.get("birthday"):
                 if hasattr(user_dict["birthday"], 'isoformat'):
@@ -3173,7 +3164,7 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
             event_id = cur.lastrowid
         
         deliver_notification(
-            "match",
+            "practice",
             {
                 "date": event.date,
                 "time": event.time,

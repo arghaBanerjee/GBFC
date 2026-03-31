@@ -108,20 +108,6 @@ export default function Admin({ user, loading }) {
       time_line: '🕐 7:30 PM\n',
       location_line: '📍 Glasgow Green\n',
     },
-    match: {
-      date: '2026-03-28',
-      time: '2:00 PM',
-      location: 'Toryglen Regional Football Centre',
-      event_name: 'GBFC vs Rivals FC',
-      author_name: '',
-      content: '',
-      content_preview: '',
-      time_suffix: ' at 2:00 PM',
-      location_suffix: ' at Toryglen Regional Football Centre',
-      location_comma_suffix: ', Toryglen Regional Football Centre',
-      time_line: '🕐 2:00 PM\n',
-      location_line: '📍 Toryglen Regional Football Centre\n',
-    },
     forum_post: {
       date: '',
       time: '',
@@ -226,7 +212,6 @@ export default function Admin({ user, loading }) {
 
   const notificationVariableMap = {
     practice: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    match: ['{{event_name}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     forum_post: ['{{author_name}}', '{{content}}', '{{content_preview}}'],
     payment_request: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     payment_confirmed: ['{{member_name}}', '{{full_name}}', '{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
