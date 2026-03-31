@@ -3887,10 +3887,21 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
     
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(
-            f"INSERT INTO forum_posts (user_email, user_full_name, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (current_user["email"], current_user["full_name"], post.content),
-        )
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO forum_posts (user_email, user_full_name, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) RETURNING id, created_at",
+                (current_user["email"], current_user["full_name"], post.content),
+            )
+            inserted_post = cur.fetchone()
+            post_id = inserted_post["id"]
+            created_at = inserted_post["created_at"].isoformat() if hasattr(inserted_post["created_at"], 'isoformat') else inserted_post["created_at"]
+        else:
+            cur.execute(
+                f"INSERT INTO forum_posts (user_email, user_full_name, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (current_user["email"], current_user["full_name"], post.content),
+            )
+            post_id = cur.lastrowid
+            created_at = datetime.utcnow().isoformat()
         conn.commit()
         
         deliver_notification(
@@ -3902,11 +3913,11 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
         )
         
         return ForumPostOut(
-            id=cur.lastrowid,
+            id=post_id,
             user_full_name=current_user["full_name"],
             user_email=current_user["email"],
             content=post.content,
-            created_at=datetime.utcnow().isoformat(),
+            created_at=created_at,
             likes_count=0,
             comments=[],
         )
