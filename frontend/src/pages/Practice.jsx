@@ -688,15 +688,15 @@ export default function Practice({ user }) {
           key={`cal-${index}`}
           onClick={() => day && handleDateClick(day)}
           style={{
-            border: isSelected ? '3px solid #3b82f6' : '1px solid #e5e7eb',
+            border: isSelected ? '2px solid var(--theme-accent-strong)' : '1px solid #e5e7eb',
             padding: '0.5rem',
             margin: '2px',
             minHeight: '40px',
             backgroundColor,
             cursor: day ? 'pointer' : 'default',
-            borderRadius: '4px',
-            boxShadow: isSelected ? '0 0 0 3px rgba(59, 130, 246, 0.3)' : 'none',
-            transform: isSelected ? 'scale(1.05)' : 'scale(1)',
+            borderRadius: '6px',
+            boxShadow: isSelected ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 0 3px color-mix(in srgb, var(--theme-accent) 24%, transparent), 0 8px 20px rgba(0, 0, 0, 0.14)' : 'none',
+            transform: isSelected ? 'scale(1.03)' : 'scale(1)',
             transition: 'all 0.2s ease',
             fontWeight: isSelected ? '700' : '400',
           }}
