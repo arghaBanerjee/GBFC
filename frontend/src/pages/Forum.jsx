@@ -5,9 +5,12 @@ export default function Forum({ user }) {
   const [posts, setPosts] = useState([])
   const [showCreate, setShowCreate] = useState(false)
   const [newContent, setNewContent] = useState('')
+  const [newYoutubeUrl, setNewYoutubeUrl] = useState('')
   const editorRef = useRef(null)
   const [editingPostId, setEditingPostId] = useState(null)
   const [editingPostContent, setEditingPostContent] = useState('')
+  const [editingPostImagePreview, setEditingPostImagePreview] = useState(null)
+  const [editingPostYoutubeUrl, setEditingPostYoutubeUrl] = useState('')
   const [savingPostId, setSavingPostId] = useState(null)
   const [commentingPostId, setCommentingPostId] = useState(null)
   const [commentText, setCommentText] = useState('')
@@ -41,6 +44,64 @@ export default function Forum({ user }) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/
     const match = url.match(regExp)
     return (match && match[2].length === 11) ? match[2] : null
+  }
+
+  const getYouTubeWatchUrl = (url) => {
+    const videoId = getYouTubeVideoId(url || '')
+    return videoId ? `https://www.youtube.com/watch?v=${videoId}` : ''
+  }
+
+  const buildForumPostContent = ({ text, imageUrl, youtubeUrl }) => {
+    let finalContent = convertUrlsToLinks(sanitizeInput((text || '').trim()).replace(/\n/g, '<br>'))
+    const normalizedYoutubeUrl = getYouTubeWatchUrl(youtubeUrl)
+    const videoId = getYouTubeVideoId(normalizedYoutubeUrl)
+    if (videoId) {
+      finalContent += `${finalContent ? '<br>' : ''}<div style="margin: 1rem 0;"><iframe width="100%" height="315" style="max-width: 560px; border-radius: 0.5rem;" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`
+    }
+    if (imageUrl) {
+      finalContent += `${finalContent ? '<br>' : ''}<img src="${imageUrl}" style="max-width: 600px; width: 100%; height: auto; display: block; margin-top: 0.5rem; border-radius: 0.5rem;" />`
+    }
+    return finalContent
+  }
+
+  const extractEditablePostData = (content) => {
+    if (typeof window === 'undefined') {
+      return { text: content || '', imageUrl: null, youtubeUrl: '' }
+    }
+    const parser = new window.DOMParser()
+    const doc = parser.parseFromString(content || '', 'text/html')
+    const imageEl = doc.querySelector('img')
+    const iframeEl = doc.querySelector('iframe')
+    const imageUrl = imageEl?.getAttribute('src') || null
+    const youtubeUrl = iframeEl?.getAttribute('src') ? getYouTubeWatchUrl(iframeEl.getAttribute('src')) : ''
+
+    doc.querySelectorAll('img').forEach((node) => node.remove())
+    doc.querySelectorAll('iframe').forEach((node) => node.remove())
+
+    doc.querySelectorAll('br').forEach((node) => node.replaceWith('\n'))
+    doc.querySelectorAll('a').forEach((node) => {
+      const href = node.getAttribute('href') || node.textContent || ''
+      node.replaceWith(href)
+    })
+    doc.querySelectorAll('div').forEach((node) => {
+      if (node.childNodes.length === 0) {
+        node.replaceWith('')
+        return
+      }
+      if (node.previousSibling) {
+        node.before('\n')
+      }
+      if (node.nextSibling) {
+        node.after('\n')
+      }
+      node.replaceWith(...node.childNodes)
+    })
+
+    const text = (doc.body.textContent || '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+
+    return { text, imageUrl, youtubeUrl }
   }
 
   const convertUrlsToLinks = (text) => {
@@ -92,7 +153,7 @@ export default function Forum({ user }) {
 
   const handleCreate = async () => {
     if (!user) return alert('Please log in to post')
-    if (!newContent.trim() && !imagePreview) return
+    if (!newContent.trim() && !imagePreview && !newYoutubeUrl.trim()) return
     
     // Limit post content to 500 characters
     if (newContent.length > 500) {
@@ -100,10 +161,7 @@ export default function Forum({ user }) {
     }
     
     // Convert URLs to links and YouTube embeds (convertUrlsToLinks handles safe rendering)
-    let finalContent = convertUrlsToLinks(newContent.replace(/\n/g, '<br>'))
-    if (imagePreview) {
-      finalContent += `<br><img src="${imagePreview}" style="max-width: 600px; width: 100%; height: auto; display: block; margin-top: 0.5rem; border-radius: 0.5rem;" />`
-    }
+    const finalContent = buildForumPostContent({ text: newContent, imageUrl: imagePreview, youtubeUrl: newYoutubeUrl })
     
     await fetch(apiUrl('/api/forum'), {
       method: 'POST',
@@ -114,17 +172,23 @@ export default function Forum({ user }) {
       body: JSON.stringify({ content: finalContent }),
     })
     setNewContent('')
+    setNewYoutubeUrl('')
     setImagePreview(null)
     setShowCreate(false)
     const updated = await fetch(apiUrl('/api/forum'))
     setPosts(await updated.json())
   }
 
-  const handleAttachImage = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!user) return alert('Please log in to attach images')
-    if (!file.type.startsWith('image/')) return alert('Please select an image file')
+  const uploadForumImage = async (file) => {
+    if (!file) return null
+    if (!user) {
+      alert('Please log in to attach images')
+      return null
+    }
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return null
+    }
 
     const formData = new FormData()
     formData.append('file', file)
@@ -136,9 +200,24 @@ export default function Forum({ user }) {
       body: formData,
     })
     const data = await res.json().catch(() => ({}))
-    if (!res.ok) return alert(data?.detail || 'Image upload failed')
-    
-    setImagePreview(data.image_url)
+    if (!res.ok) {
+      alert(data?.detail || 'Image upload failed')
+      return null
+    }
+    return data.image_url
+  }
+
+  const handleAttachImage = async (e) => {
+    const file = e.target.files?.[0]
+    const imageUrl = await uploadForumImage(file)
+    if (imageUrl) setImagePreview(imageUrl)
+    e.target.value = ''
+  }
+
+  const handleAttachEditImage = async (e) => {
+    const file = e.target.files?.[0]
+    const imageUrl = await uploadForumImage(file)
+    if (imageUrl) setEditingPostImagePreview(imageUrl)
     e.target.value = ''
   }
 
@@ -209,19 +288,24 @@ export default function Forum({ user }) {
   )
 
   const handleStartEditPost = (post) => {
+    const editableData = extractEditablePostData(post.content || '')
     setEditingPostId(post.id)
-    setEditingPostContent(post.content || '')
+    setEditingPostContent(editableData.text)
+    setEditingPostImagePreview(editableData.imageUrl)
+    setEditingPostYoutubeUrl(editableData.youtubeUrl)
     setCommentingPostId((current) => (current === post.id ? null : current))
   }
 
   const handleCancelEditPost = () => {
     setEditingPostId(null)
     setEditingPostContent('')
+    setEditingPostImagePreview(null)
+    setEditingPostYoutubeUrl('')
   }
 
   const handleSaveEditPost = async (postId) => {
     if (!user) return alert('Please log in to edit')
-    if (!editingPostContent.trim()) {
+    if (!editingPostContent.trim() && !editingPostImagePreview && !editingPostYoutubeUrl.trim()) {
       return alert('Post content cannot be empty')
     }
     if (editingPostContent.length > 500) {
@@ -229,13 +313,18 @@ export default function Forum({ user }) {
     }
 
     setSavingPostId(postId)
+    const finalContent = buildForumPostContent({
+      text: editingPostContent,
+      imageUrl: editingPostImagePreview,
+      youtubeUrl: editingPostYoutubeUrl,
+    })
     const res = await fetch(apiUrl(`/api/forum/${postId}`), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ content: editingPostContent }),
+      body: JSON.stringify({ content: finalContent }),
     })
     setSavingPostId(null)
 
@@ -279,6 +368,13 @@ export default function Forum({ user }) {
         }
         .forum-post-action-icon {
           display: none;
+        }
+        .forum-edit-preview-card {
+          margin-top: 0.75rem;
+          padding: 0.75rem;
+          border: 1px solid var(--theme-border);
+          border-radius: 0.75rem;
+          background: var(--theme-surface-alt);
         }
         @media (max-width: 640px) {
           .forum-post-header {
@@ -346,64 +442,81 @@ export default function Forum({ user }) {
       {showCreate && (
         <div style={{ border: '1px solid var(--theme-border)', padding: '1rem', borderRadius: '0.75rem', marginBottom: '1rem', background: 'var(--theme-surface)', boxShadow: 'var(--theme-card-shadow)' }}>
           <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.1rem', color: 'var(--theme-heading)' }}>What's on your mind?</h3>
-          <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
+          <div style={{ marginBottom: '0.75rem' }}>
             <textarea
               value={newContent}
               onChange={(e) => setNewContent(e.target.value)}
               placeholder="Share your thoughts, paste links, or attach media..."
               maxLength={500}
-              rows={5}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                borderRadius: '0.375rem',
-                border: '1px solid var(--theme-border)',
-                background: 'var(--theme-surface-alt)',
-                color: 'var(--theme-text)',
-                outline: 'none',
-                fontSize: '1rem',
-                fontFamily: 'inherit',
-                resize: 'vertical',
-                boxSizing: 'border-box'
-              }}
+              rows={6}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', boxSizing: 'border-box', fontSize: '1rem', fontFamily: 'inherit', resize: 'vertical' }}
             />
             <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'right', marginTop: '0.25rem' }}>
               {newContent.length}/500 characters
             </div>
-          </div>
-          {imagePreview && (
-            <div style={{ marginBottom: '0.75rem', position: 'relative', display: 'inline-block' }}>
-              <img src={imagePreview} alt="Preview" style={{ maxWidth: '300px', width: '100%', height: 'auto', borderRadius: '0.5rem', border: '1px solid var(--theme-border)' }} />
-              <button 
-                onClick={() => setImagePreview(null)}
-                style={{ 
-                  position: 'absolute', 
-                  top: '0.5rem', 
-                  right: '0.5rem', 
-                  background: 'var(--theme-danger)', 
-                  color: 'var(--theme-danger-contrast)', 
-                  border: '1px solid var(--theme-danger)', 
-                  borderRadius: '50%', 
-                  width: '24px', 
-                  height: '24px', 
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold'
-                }}
-              >
-                ×
-              </button>
+            <div style={{ marginTop: '0.75rem' }}>
+              <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.35rem', color: 'var(--theme-heading)' }}>YouTube Link</label>
+              <input
+                type="url"
+                value={newYoutubeUrl}
+                onChange={(e) => setNewYoutubeUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=..."
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', boxSizing: 'border-box', fontSize: '1rem' }}
+              />
             </div>
-          )}
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <label className="nav-btn theme-secondary-btn" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0 }}>
-              📎 Attach Image
-              <input type="file" accept="image/*" onChange={handleAttachImage} style={{ display: 'none' }} />
-            </label>
+            {getYouTubeVideoId(newYoutubeUrl) && (
+              <div className="forum-edit-preview-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                  <strong style={{ color: 'var(--theme-heading)' }}>YouTube Preview</strong>
+                  <button
+                    className="nav-btn theme-secondary-btn"
+                    onClick={() => setNewYoutubeUrl('')}
+                    type="button"
+                    style={{ padding: '0.45rem 0.9rem' }}
+                  >
+                    Remove Video
+                  </button>
+                </div>
+                <iframe
+                  width="100%"
+                  height="315"
+                  style={{ maxWidth: '560px', borderRadius: '0.5rem', border: 'none' }}
+                  src={`https://www.youtube.com/embed/${getYouTubeVideoId(newYoutubeUrl)}`}
+                  title="YouTube preview"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            )}
+            <div className="forum-edit-preview-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <strong style={{ color: 'var(--theme-heading)' }}>Image</strong>
+                <label className="nav-btn theme-secondary-btn" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0 }}>
+                  📎 Attach Image
+                  <input type="file" accept="image/*" onChange={handleAttachImage} style={{ display: 'none' }} />
+                </label>
+              </div>
+              {imagePreview ? (
+                <div style={{ marginTop: '0.75rem', position: 'relative', display: 'inline-block', maxWidth: '320px' }}>
+                  <img src={imagePreview} alt="Preview" style={{ maxWidth: '320px', width: '100%', height: 'auto', borderRadius: '0.5rem', border: '1px solid var(--theme-border)' }} />
+                  <button
+                    type="button"
+                    onClick={() => setImagePreview(null)}
+                    aria-label="Remove image"
+                    title="Remove image"
+                    style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: '1px solid var(--theme-danger)', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <div style={{ marginTop: '0.75rem', color: 'var(--theme-text-muted)', fontSize: '0.9rem' }}>No image attached.</div>
+              )}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="nav-btn theme-primary-btn" onClick={handleCreate} style={{ padding: '0.5rem 1rem' }}>Post</button>
-            <button className="nav-btn theme-secondary-btn" onClick={() => { setShowCreate(false); setNewContent(''); setImagePreview(null) }} style={{ padding: '0.5rem 1rem' }}>Cancel</button>
+            <button className="nav-btn theme-secondary-btn" onClick={() => { setShowCreate(false); setNewContent(''); setNewYoutubeUrl(''); setImagePreview(null) }} style={{ padding: '0.5rem 1rem' }}>Cancel</button>
           </div>
         </div>
       )}
@@ -467,12 +580,72 @@ export default function Forum({ user }) {
                 <textarea
                   value={editingPostContent}
                   onChange={(e) => setEditingPostContent(e.target.value)}
+                  placeholder="Edit your post text..."
                   maxLength={500}
                   rows={6}
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', boxSizing: 'border-box', fontSize: '1rem', fontFamily: 'inherit', resize: 'vertical' }}
                 />
                 <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'right', marginTop: '0.25rem' }}>
                   {editingPostContent.length}/500 characters
+                </div>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '0.35rem', color: 'var(--theme-heading)' }}>YouTube Link</label>
+                  <input
+                    type="url"
+                    value={editingPostYoutubeUrl}
+                    onChange={(e) => setEditingPostYoutubeUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', boxSizing: 'border-box', fontSize: '1rem' }}
+                  />
+                </div>
+                {getYouTubeVideoId(editingPostYoutubeUrl) && (
+                  <div className="forum-edit-preview-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                      <strong style={{ color: 'var(--theme-heading)' }}>YouTube Preview</strong>
+                      <button
+                        className="nav-btn theme-secondary-btn"
+                        onClick={() => setEditingPostYoutubeUrl('')}
+                        type="button"
+                        style={{ padding: '0.45rem 0.9rem' }}
+                      >
+                        Remove Video
+                      </button>
+                    </div>
+                    <iframe
+                      width="100%"
+                      height="315"
+                      style={{ maxWidth: '560px', borderRadius: '0.5rem', border: 'none' }}
+                      src={`https://www.youtube.com/embed/${getYouTubeVideoId(editingPostYoutubeUrl)}`}
+                      title="YouTube preview"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                )}
+                <div className="forum-edit-preview-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <strong style={{ color: 'var(--theme-heading)' }}>Image</strong>
+                    <label className="nav-btn theme-secondary-btn" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', margin: 0 }}>
+                      📎 Attach Image
+                      <input type="file" accept="image/*" onChange={handleAttachEditImage} style={{ display: 'none' }} />
+                    </label>
+                  </div>
+                  {editingPostImagePreview ? (
+                    <div style={{ marginTop: '0.75rem', position: 'relative', display: 'inline-block', maxWidth: '320px' }}>
+                      <img src={editingPostImagePreview} alt="Post preview" style={{ maxWidth: '320px', width: '100%', height: 'auto', borderRadius: '0.5rem', border: '1px solid var(--theme-border)' }} />
+                      <button
+                        type="button"
+                        onClick={() => setEditingPostImagePreview(null)}
+                        aria-label="Remove image"
+                        title="Remove image"
+                        style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: '1px solid var(--theme-danger)', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '0.75rem', color: 'var(--theme-text-muted)', fontSize: '0.9rem' }}>No image attached.</div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
                   <button className="nav-btn theme-primary-btn" onClick={() => handleSaveEditPost(post.id)} disabled={savingPostId === post.id} style={{ padding: '0.5rem 1rem' }}>

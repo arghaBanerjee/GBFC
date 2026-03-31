@@ -5,6 +5,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 from typing import List, Optional
+import html
+import re
 import sqlite3
 import hashlib
 import uuid
@@ -3878,8 +3880,9 @@ def get_forum_posts():
 
 @app.post("/api/forum", response_model=ForumPostOut)
 def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_current_user)):
-    # Validate content length (max 500 characters for security)
-    if len(post.content) > 500:
+    # Validate visible text length instead of generated HTML length so embedded media markup does not fail valid posts
+    plain_text_content = re.sub(r"<[^>]+>", "", post.content or "")
+    if len(html.unescape(plain_text_content).strip()) > 500:
         raise HTTPException(status_code=400, detail="Post content must be 500 characters or less")
     
     with get_connection() as conn:
