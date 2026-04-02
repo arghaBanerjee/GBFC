@@ -613,45 +613,53 @@ def test_id_based_payment_confirmation_isolated_from_same_date_sessions():
         assert paid_by_session[other_session_id] in (False, 0)
 
 
-def test_id_based_session_payments_endpoint_isolated_from_same_date_sessions():
+def test_payment_request_notification_audience_isolated_by_session_id():
     reset_test_state()
-    session_date = (date.today() - timedelta(days=6)).strftime('%Y-%m-%d')
+    session_date = (date.today() - timedelta(days=7)).strftime('%Y-%m-%d')
 
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, session_cost, paid_by, maximum_capacity, payment_requested, payment_requested_at) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)",
-            (session_date, '18:00', 'Pitch A', 'practice', 'Read Payment Session A', 20.0, ADMIN_EMAIL, 18, 1),
+            (session_date, '18:00', 'Pitch A', 'practice', 'Notify Session A', 20.0, ADMIN_EMAIL, 18, 1),
         )
         cur.execute(
             f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, session_cost, paid_by, maximum_capacity, payment_requested, payment_requested_at) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)",
-            (session_date, '20:00', 'Pitch B', 'practice', 'Read Payment Session B', 30.0, ADMIN_EMAIL, 18, 1),
+            (session_date, '20:00', 'Pitch B', 'practice', 'Notify Session B', 30.0, ADMIN_EMAIL, 18, 1),
         )
         cur.execute(
             f"SELECT id, event_title FROM practice_sessions WHERE date = {PLACEHOLDER} ORDER BY time ASC",
             (session_date,),
         )
         rows = [dict(row) for row in cur.fetchall()]
-        target_session_id = next(row['id'] for row in rows if row['event_title'] == 'Read Payment Session A')
-        other_session_id = next(row['id'] for row in rows if row['event_title'] == 'Read Payment Session B')
+        target_session_id = next(row['id'] for row in rows if row['event_title'] == 'Notify Session A')
+        other_session_id = next(row['id'] for row in rows if row['event_title'] == 'Notify Session B')
         cur.execute(
-            f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (target_session_id, session_date, MEMBER_EMAIL, 1),
+            f"INSERT INTO practice_availability (practice_session_id, date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (target_session_id, session_date, MEMBER_EMAIL, 'Member Session', 'available'),
         )
         cur.execute(
-            f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (other_session_id, session_date, ADMIN_EMAIL, 0),
+            f"INSERT INTO practice_availability (practice_session_id, date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (other_session_id, session_date, ADMIN_EMAIL, 'Admin Session', 'available'),
         )
         conn.commit()
 
-    headers = auth_headers(MEMBER_EMAIL, MEMBER_PASSWORD)
-    response = client.get(
-        f'/api/practice/sessions/id/{target_session_id}/payments',
-        headers=headers,
-    )
-    assert response.status_code == 200, response.text
-    payload = response.json()
-    assert payload == {MEMBER_EMAIL: 1} or payload == {MEMBER_EMAIL: True}
+    from api import resolve_notification_recipients
+    with get_connection() as conn:
+        cur = conn.cursor()
+        from api import NOTIFICATION_TYPE_DEFAULTS
+        setting = NOTIFICATION_TYPE_DEFAULTS.get("payment_request", {})
+        recipients = resolve_notification_recipients(
+            target_audience=setting["target_audience"], 
+            payload={
+                "session_id": target_session_id,
+                "date": session_date,
+            },
+            notif_type="payment_request"
+        )
+        emails = {r["email"] for r in recipients}
+        assert MEMBER_EMAIL in emails
+        assert ADMIN_EMAIL not in emails
 
 
 def test_id_based_request_payment_route_sets_payment_requested():
@@ -768,6 +776,7 @@ if __name__ == '__main__':
     test_id_based_payment_route_dual_writes_payment_record()
     test_id_based_payment_confirmation_isolated_from_same_date_sessions()
     test_id_based_session_payments_endpoint_isolated_from_same_date_sessions()
+    test_payment_request_notification_audience_isolated_by_session_id()
     test_id_based_request_payment_route_sets_payment_requested()
     test_id_based_request_payment_route_isolated_from_same_date_sessions()
     test_delete_practice_by_id_removes_session()

@@ -1620,19 +1620,32 @@ def resolve_notification_recipients(target_audience: str, payload: dict, notif_t
                 ("admin",),
             )
         elif target_audience == "available_players":
-            if not payload.get("date"):
+            if notif_type == "payment_request":
+                cur.execute(
+                    f"""
+                    SELECT DISTINCT u.email, u.full_name
+                    FROM practice_availability pa
+                    JOIN users u ON pa.user_email = u.email
+                    WHERE pa.practice_session_id = {PLACEHOLDER}
+                      AND pa.status = {PLACEHOLDER}
+                      AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+                    """,
+                    (payload["session_id"], "available"),
+                )
+            elif not payload.get("date"):
                 return []
-            cur.execute(
-                f"""
-                SELECT u.email, u.full_name
-                FROM practice_availability pa
-                JOIN users u ON pa.user_email = u.email
-                WHERE pa.date = {PLACEHOLDER}
-                  AND pa.status = {PLACEHOLDER}
-                  AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-                """,
-                (payload["date"], "available"),
-            )
+            else:
+                cur.execute(
+                    f"""
+                    SELECT u.email, u.full_name
+                    FROM practice_availability pa
+                    JOIN users u ON pa.user_email = u.email
+                    WHERE pa.date = {PLACEHOLDER}
+                      AND pa.status = {PLACEHOLDER}
+                      AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+                    """,
+                    (payload["date"], "available"),
+                )
         elif notif_type == "pending_payment_reminder":
             cur.execute(
                 f"""
