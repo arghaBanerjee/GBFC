@@ -878,138 +878,6 @@ export default function Practice({ user }) {
           )}
           {selectedSession && (
             <>
-              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
-                <strong>Your Selection</strong>
-                <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
-                  <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
-                  <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Tentative</button>
-                  <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
-                </div>
-                {!user && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)' }}>Log in to vote your availability.</p>}
-                {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after event time has passed.</p>}
-                {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after payment requested.</p>}
-                {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
-                  <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>
-                    Maximum capacity reached. Available is temporarily disabled until a slot opens up.
-                  </p>
-                )}
-                {availabilityError && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)', fontSize: '0.875rem' }}>{availabilityError}</p>}
-              </div>
-
-              {optionSectionEnabled && (
-                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
-                  <strong>Event Options</strong>
-                  <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.75rem' }}>
-                    <button
-                      onClick={() => handleOptionSelection('A')}
-                      disabled={!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating}
-                      style={{
-                        padding: '0.85rem 0.75rem',
-                        borderRadius: '0.5rem',
-                        minWidth: 0,
-                        minHeight: '48px',
-                        width: '100%',
-                        border: selectedOptionChoice === 'A' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
-                        background: selectedOptionChoice === 'A' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
-                        color: 'var(--theme-text)',
-                        fontWeight: selectedOptionChoice === 'A' ? 700 : 500,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        textAlign: 'center',
-                        boxSizing: 'border-box',
-                        cursor: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating) ? 'not-allowed' : 'pointer',
-                        opacity: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested) ? 0.6 : 1,
-                      }}
-                    >
-                      {selectedSession.option_a_text}
-                    </button>
-                    <button
-                      onClick={() => handleOptionSelection('B')}
-                      disabled={!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating}
-                      style={{
-                        padding: '0.85rem 0.75rem',
-                        borderRadius: '0.5rem',
-                        minWidth: 0,
-                        minHeight: '48px',
-                        width: '100%',
-                        border: selectedOptionChoice === 'B' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
-                        background: selectedOptionChoice === 'B' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
-                        color: 'var(--theme-text)',
-                        fontWeight: selectedOptionChoice === 'B' ? 700 : 500,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        textAlign: 'center',
-                        boxSizing: 'border-box',
-                        cursor: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating) ? 'not-allowed' : 'pointer',
-                        opacity: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested) ? 0.6 : 1,
-                      }}
-                    >
-                      {selectedSession.option_b_text}
-                    </button>
-                  </div>
-                  {selectedStatus !== 'available' && (
-                    <p style={{ marginTop: '0.5rem', color: 'var(--theme-text-muted)', fontSize: '0.875rem' }}>Set your availability to Available to choose an option.</p>
-                  )}
-                  {(voteSummary?.option_a?.length || voteSummary?.option_b?.length) > 0 && (
-                    <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.75rem' }}>
-                      <div>
-                        <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.35rem' }}>{selectedSession.option_a_text}</div>
-                        <div style={{ color: 'var(--theme-text)' }}>{(voteSummary?.option_a || []).length > 0 ? formatDisplayNames(voteSummary.option_a || []) : 'No selections yet'}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.35rem' }}>{selectedSession.option_b_text}</div>
-                        <div style={{ color: 'var(--theme-text)' }}>{(voteSummary?.option_b || []).length > 0 ? formatDisplayNames(voteSummary.option_b || []) : 'No selections yet'}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {selectedSession?.payment_requested && user && isUserAvailable && voteSummary?.available?.length > 0 && (
-                <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)' }}>
-                  <strong style={{ color: 'var(--theme-warning-strong)' }}>Payment Request</strong>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-warning-strong)' }}>
-                    Total Cost £ {selectedSession.session_cost != null ? Number(selectedSession.session_cost).toFixed(2) : '0.00'}
-                  </p>
-                  {hasPaidByBankDetails && (
-                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 26%, white)' }}>
-                      <div style={{ fontWeight: '600', fontSize: '0.875rem', color: 'var(--theme-heading)', marginBottom: '0.5rem' }}>Bank Details</div>
-                      <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.875rem', color: 'var(--theme-text)' }}>
-                        <div><strong>Account Holder:</strong> {paidByBankDetails.full_name || 'Unknown User'}</div>
-                        <div><strong>Bank Name:</strong> {paidByBankDetails.bank_name}</div>
-                        <div><strong>Sort Code:</strong> {paidByBankDetails.sort_code}</div>
-                        <div><strong>Account Number:</strong> {paidByBankDetails.account_number}</div>
-                      </div>
-                    </div>
-                  )}
-                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 26%, white)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <input
-                        type="checkbox"
-                        id="payment-checkbox"
-                        checked={payments[user.email] || false}
-                        onChange={(e) => handlePaymentConfirmation(e.target.checked)}
-                        disabled={paymentUpdatePending}
-                        style={{ width: '18px', height: '18px', cursor: paymentUpdatePending ? 'wait' : 'pointer' }}
-                      />
-                      <label htmlFor="payment-checkbox" style={{ fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>
-                        {selectedSession.session_cost != null && availablePlayersForPayment > 0 ? (
-                          <>Paid £{(selectedSession.session_cost / availablePlayersForPayment).toFixed(2)} to {selectedSession.paid_by_name || selectedSession.paid_by || 'Unknown User'}</>
-                        ) : (
-                          'Confirm payment made'
-                        )}
-                      </label>
-                    </div>
-                    {paymentUpdatePending && (
-                      <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                        Updating payment status...
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {isAdmin && (
                 <div ref={adminControlsRef} style={{ marginTop: '1rem', background: 'color-mix(in srgb, var(--theme-danger) 8%, var(--theme-surface))', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-danger) 24%, white)', overflow: 'hidden', boxShadow: adminControlsOpen ? 'var(--theme-card-shadow)' : 'none', transition: 'all 0.25s ease' }}>
@@ -1151,6 +1019,139 @@ export default function Practice({ user }) {
                         </p>
                       </div>
                     </div>
+                  </div>
+                </div>
+              )}
+              
+              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
+                <strong>Your Selection</strong>
+                <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
+                  <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
+                  <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Tentative</button>
+                  <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
+                </div>
+                {!user && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)' }}>Log in to vote your availability.</p>}
+                {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after event time has passed.</p>}
+                {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after payment requested.</p>}
+                {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
+                  <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>
+                    Maximum capacity reached. Available is temporarily disabled until a slot opens up.
+                  </p>
+                )}
+                {availabilityError && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)', fontSize: '0.875rem' }}>{availabilityError}</p>}
+              </div>
+
+              {optionSectionEnabled && (
+                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
+                  <strong>Event Options</strong>
+                  <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.75rem' }}>
+                    <button
+                      onClick={() => handleOptionSelection('A')}
+                      disabled={!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating}
+                      style={{
+                        padding: '0.85rem 0.75rem',
+                        borderRadius: '0.5rem',
+                        minWidth: 0,
+                        minHeight: '48px',
+                        width: '100%',
+                        border: selectedOptionChoice === 'A' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                        background: selectedOptionChoice === 'A' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
+                        color: 'var(--theme-text)',
+                        fontWeight: selectedOptionChoice === 'A' ? 700 : 500,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        boxSizing: 'border-box',
+                        cursor: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating) ? 'not-allowed' : 'pointer',
+                        opacity: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested) ? 0.6 : 1,
+                      }}
+                    >
+                      {selectedSession.option_a_text}
+                    </button>
+                    <button
+                      onClick={() => handleOptionSelection('B')}
+                      disabled={!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating}
+                      style={{
+                        padding: '0.85rem 0.75rem',
+                        borderRadius: '0.5rem',
+                        minWidth: 0,
+                        minHeight: '48px',
+                        width: '100%',
+                        border: selectedOptionChoice === 'B' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                        background: selectedOptionChoice === 'B' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
+                        color: 'var(--theme-text)',
+                        fontWeight: selectedOptionChoice === 'B' ? 700 : 500,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        boxSizing: 'border-box',
+                        cursor: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating) ? 'not-allowed' : 'pointer',
+                        opacity: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested) ? 0.6 : 1,
+                      }}
+                    >
+                      {selectedSession.option_b_text}
+                    </button>
+                  </div>
+                  {selectedStatus !== 'available' && (
+                    <p style={{ marginTop: '0.5rem', color: 'var(--theme-text-muted)', fontSize: '0.875rem' }}>Set your availability to Available to choose an option.</p>
+                  )}
+                  {(voteSummary?.option_a?.length || voteSummary?.option_b?.length) > 0 && (
+                    <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.75rem' }}>
+                      <div>
+                        <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.35rem' }}>{selectedSession.option_a_text}</div>
+                        <div style={{ color: 'var(--theme-text)' }}>{(voteSummary?.option_a || []).length > 0 ? formatDisplayNames(voteSummary.option_a || []) : 'No selections yet'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.35rem' }}>{selectedSession.option_b_text}</div>
+                        <div style={{ color: 'var(--theme-text)' }}>{(voteSummary?.option_b || []).length > 0 ? formatDisplayNames(voteSummary.option_b || []) : 'No selections yet'}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedSession?.payment_requested && user && isUserAvailable && voteSummary?.available?.length > 0 && (
+                <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)' }}>
+                  <strong style={{ color: 'var(--theme-warning-strong)' }}>Payment Request</strong>
+                  <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-warning-strong)' }}>
+                    Total Cost £ {selectedSession.session_cost != null ? Number(selectedSession.session_cost).toFixed(2) : '0.00'}
+                  </p>
+                  {hasPaidByBankDetails && (
+                    <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 26%, white)' }}>
+                      <div style={{ fontWeight: '600', fontSize: '0.875rem', color: 'var(--theme-heading)', marginBottom: '0.5rem' }}>Bank Details</div>
+                      <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.875rem', color: 'var(--theme-text)' }}>
+                        <div><strong>Account Holder:</strong> {paidByBankDetails.full_name || 'Unknown User'}</div>
+                        <div><strong>Bank Name:</strong> {paidByBankDetails.bank_name}</div>
+                        <div><strong>Sort Code:</strong> {paidByBankDetails.sort_code}</div>
+                        <div><strong>Account Number:</strong> {paidByBankDetails.account_number}</div>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 26%, white)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        id="payment-checkbox"
+                        checked={payments[user.email] || false}
+                        onChange={(e) => handlePaymentConfirmation(e.target.checked)}
+                        disabled={paymentUpdatePending}
+                        style={{ width: '18px', height: '18px', cursor: paymentUpdatePending ? 'wait' : 'pointer' }}
+                      />
+                      <label htmlFor="payment-checkbox" style={{ fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>
+                        {selectedSession.session_cost != null && availablePlayersForPayment > 0 ? (
+                          <>Paid £{(selectedSession.session_cost / availablePlayersForPayment).toFixed(2)} to {selectedSession.paid_by_name || selectedSession.paid_by || 'Unknown User'}</>
+                        ) : (
+                          'Confirm payment made'
+                        )}
+                      </label>
+                    </div>
+                    {paymentUpdatePending && (
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                        Updating payment status...
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
