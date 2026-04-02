@@ -1170,12 +1170,11 @@ export default function Practice({ user }) {
                         const userEmail = voteSummary?.user_emails?.[n] || n
                         const hasPaid = payments[userEmail] || false
                         return (
-                          <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                          <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
                               {selectedSession?.payment_requested && hasPaid && <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>}
                             </div>
-                            {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(userEmail)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                           </div>
                         )
                       })}
@@ -1186,9 +1185,8 @@ export default function Practice({ user }) {
                     {(voteSummary?.tentative || []).length > 0 && <div style={{ fontSize: '0.875rem', color: 'var(--theme-warning-strong)', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.tentative || []).length})</div>}
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.tentative || []).map((n, idx) => (
-                        <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                        <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
                           <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
-                          {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                         </div>
                       ))}
                     </div>
@@ -1198,9 +1196,8 @@ export default function Practice({ user }) {
                     {(voteSummary?.not_available || []).length > 0 && <div style={{ fontSize: '0.875rem', color: 'var(--theme-danger-strong)', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.not_available || []).length})</div>}
                     <div style={{ marginTop: '0.5rem' }}>
                       {(voteSummary?.not_available || []).map((n, idx) => (
-                        <div key={`${n}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                        <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
                           <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
-                          {isAdmin && !selectedSession?.payment_requested && <button onClick={() => handleAdminDeleteAvailability(voteSummary?.user_emails?.[n] || n)} style={{ padding: '0.125rem 0.375rem', fontSize: '0.75rem', background: 'var(--theme-danger)', color: 'var(--theme-danger-contrast)', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }} title="Remove">×</button>}
                         </div>
                       ))}
                     </div>
