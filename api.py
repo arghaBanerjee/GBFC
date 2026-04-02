@@ -660,6 +660,22 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not add related_date to notifications: {e}")
                 conn.rollback()
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='notifications' AND column_name='practice_session_id'
+                        ) THEN
+                            ALTER TABLE notifications ADD COLUMN practice_session_id BIGINT;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add practice_session_id to notifications: {e}")
+                conn.rollback()
             cur.execute("""
             CREATE TABLE IF NOT EXISTS events (
                 id SERIAL PRIMARY KEY,
@@ -715,17 +731,19 @@ def init_db():
             cur.execute("""
             CREATE TABLE IF NOT EXISTS practice_availability (
                 id SERIAL PRIMARY KEY,
+                practice_session_id BIGINT,
                 date VARCHAR(50) NOT NULL,
                 user_email VARCHAR(255),
                 user_full_name VARCHAR(255),
                 status VARCHAR(50) NOT NULL CHECK(status IN ('available', 'tentative', 'not_available')),
                 option_choice VARCHAR(50),
-                UNIQUE(date, user_email)
+                UNIQUE(practice_session_id, user_email)
             )
             """)
             cur.execute("""
             CREATE TABLE IF NOT EXISTS practice_sessions (
-                date VARCHAR(50) PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
+                date VARCHAR(50) NOT NULL,
                 time VARCHAR(50),
                 location TEXT,
                 event_type VARCHAR(50) DEFAULT 'practice',
@@ -820,10 +838,6 @@ def init_db():
                         END IF;
                     END $$;
                 """)
-                try:
-                    cur.execute("ALTER TABLE events ADD CONSTRAINT events_practice_session_date_key UNIQUE (practice_session_date)")
-                except Exception:
-                    conn.rollback()
                 conn.commit()
             except Exception as e:
                 print(f"Warning: Could not add extended practice session columns: {e}")
@@ -831,11 +845,12 @@ def init_db():
             cur.execute("""
             CREATE TABLE IF NOT EXISTS practice_payments (
                 id SERIAL PRIMARY KEY,
+                practice_session_id BIGINT,
                 date VARCHAR(50) NOT NULL,
                 user_email VARCHAR(255) NOT NULL,
                 paid BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(date, user_email)
+                UNIQUE(practice_session_id, user_email)
             )
             """)
             cur.execute("""
@@ -887,6 +902,7 @@ def init_db():
                 message TEXT NOT NULL,
                 read BOOLEAN DEFAULT FALSE,
                 related_date DATE,
+                practice_session_id BIGINT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
@@ -1171,7 +1187,7 @@ def init_db():
                 description TEXT,
                 image_url TEXT,
                 youtube_url TEXT,
-                practice_session_date TEXT UNIQUE,
+                practice_session_date TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS event_media (
@@ -1197,15 +1213,17 @@ def init_db():
             );
             CREATE TABLE IF NOT EXISTS practice_availability (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                practice_session_id INTEGER,
                 date TEXT NOT NULL,
                 user_email TEXT,
                 user_full_name TEXT,
                 status TEXT NOT NULL CHECK(status IN ('available', 'tentative', 'not_available')),
                 option_choice TEXT,
-                UNIQUE(date, user_email)
+                UNIQUE(practice_session_id, user_email)
             );
             CREATE TABLE IF NOT EXISTS practice_sessions (
-                date TEXT PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
                 time TEXT,
                 location TEXT,
                 event_type TEXT DEFAULT 'practice',
@@ -1223,11 +1241,12 @@ def init_db():
             );
             CREATE TABLE IF NOT EXISTS practice_payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                practice_session_id INTEGER,
                 date TEXT NOT NULL,
                 user_email TEXT NOT NULL,
                 paid INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(date, user_email)
+                UNIQUE(practice_session_id, user_email)
             );
             CREATE TABLE IF NOT EXISTS expenses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1336,6 +1355,11 @@ def init_db():
                 cur.execute("ALTER TABLE notifications ADD COLUMN related_date DATE")
             except sqlite3.OperationalError:
                 pass
+            try:
+                cur.execute("ALTER TABLE notifications ADD COLUMN practice_session_id INTEGER")
+            except sqlite3.OperationalError:
+                pass
+            ensure_practice_session_ids(cur, conn)
             conn.commit()
 
 def hash_password(password: str) -> str:
@@ -1399,6 +1423,7 @@ def build_notification_context(payload: dict) -> dict:
     date_value = payload.get("date") or ""
     time_value = payload.get("time") or ""
     location_value = payload.get("location") or ""
+    session_id_value = payload.get("session_id") or payload.get("practice_session_id") or ""
     content_value = (payload.get("content") or "").strip()
     content_preview = content_value[:180] + ("..." if len(content_value) > 180 else "")
     event_type_value = normalize_event_type(payload.get("event_type")) if payload.get("event_type") else "practice"
@@ -1410,6 +1435,7 @@ def build_notification_context(payload: dict) -> dict:
         "date": date_value,
         "time": time_value,
         "location": location_value,
+        "session_id": session_id_value,
         "maximum_capacity": payload.get("maximum_capacity") if payload.get("maximum_capacity") is not None else "",
         "available_count": payload.get("available_count") if payload.get("available_count") is not None else "",
         "remaining_slots": payload.get("remaining_slots") if payload.get("remaining_slots") is not None else "",
@@ -1733,12 +1759,13 @@ def deliver_notification(notif_type: str, payload: dict, related_date: str = Non
 
     with get_connection() as conn:
         cur = conn.cursor()
+        practice_session_id = payload.get("session_id") or payload.get("practice_session_id")
 
         if setting["app_enabled"]:
             if should_send_app_notification(cur, notif_type):
                 app_message = render_notification_template(setting["app_template"], context)
                 for recipient in recipients:
-                    create_notification(recipient["email"], notif_type, app_message, related_date)
+                    create_notification(recipient["email"], notif_type, app_message, related_date, practice_session_id)
                 record_notification_channel_sent(cur, notif_type, "app")
 
         if setting["email_enabled"]:
@@ -1807,6 +1834,384 @@ def backfill_practice_times(cur, conn):
             )
     conn.commit()
 
+def ensure_postgres_practice_session_ids(cur, conn):
+    try:
+        cur.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='practice_sessions' AND column_name='id'
+                ) THEN
+                    ALTER TABLE practice_sessions ADD COLUMN id BIGINT;
+                END IF;
+            END $$;
+            """
+        )
+        cur.execute("CREATE SEQUENCE IF NOT EXISTS practice_sessions_id_seq")
+        cur.execute("ALTER SEQUENCE practice_sessions_id_seq OWNED BY practice_sessions.id")
+        cur.execute("SELECT setval('practice_sessions_id_seq', COALESCE((SELECT MAX(id) FROM practice_sessions), 0) + 1, false)")
+        cur.execute("UPDATE practice_sessions SET id = nextval('practice_sessions_id_seq') WHERE id IS NULL")
+        cur.execute("ALTER TABLE practice_sessions ALTER COLUMN id SET DEFAULT nextval('practice_sessions_id_seq')")
+        cur.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'practice_sessions_id_key'
+                ) THEN
+                    ALTER TABLE practice_sessions ADD CONSTRAINT practice_sessions_id_key UNIQUE (id);
+                END IF;
+            END $$;
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_practice_sessions_id ON practice_sessions(id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_practice_sessions_date ON practice_sessions(date)")
+        try:
+            cur.execute("ALTER TABLE practice_sessions DROP CONSTRAINT IF EXISTS practice_sessions_date_key")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        cur.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='practice_availability' AND column_name='practice_session_id'
+                ) THEN
+                    ALTER TABLE practice_availability ADD COLUMN practice_session_id BIGINT;
+                END IF;
+            END $$;
+            """
+        )
+        cur.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='practice_payments' AND column_name='practice_session_id'
+                ) THEN
+                    ALTER TABLE practice_payments ADD COLUMN practice_session_id BIGINT;
+                END IF;
+            END $$;
+            """
+        )
+        cur.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='events' AND column_name='practice_session_id'
+                ) THEN
+                    ALTER TABLE events ADD COLUMN practice_session_id BIGINT;
+                END IF;
+            END $$;
+            """
+        )
+        cur.execute(
+            f"""
+            UPDATE practice_availability pa
+            SET practice_session_id = ps.id
+            FROM practice_sessions ps
+            WHERE pa.practice_session_id IS NULL
+              AND pa.date = ps.date
+            """
+        )
+        cur.execute(
+            f"""
+            UPDATE practice_payments pp
+            SET practice_session_id = ps.id
+            FROM practice_sessions ps
+            WHERE pp.practice_session_id IS NULL
+              AND pp.date = ps.date
+            """
+        )
+        cur.execute(
+            f"""
+            UPDATE events e
+            SET practice_session_id = ps.id
+            FROM practice_sessions ps
+            WHERE e.practice_session_id IS NULL
+              AND e.practice_session_date = ps.date
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_practice_availability_session_id ON practice_availability(practice_session_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_practice_payments_session_id ON practice_payments(practice_session_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_events_practice_session_id_unique ON events(practice_session_id) WHERE practice_session_id IS NOT NULL")
+        try:
+            cur.execute("ALTER TABLE practice_payments DROP CONSTRAINT IF EXISTS practice_payments_date_user_email_key")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        cur.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'practice_payments_session_user_key'
+                ) THEN
+                    ALTER TABLE practice_payments ADD CONSTRAINT practice_payments_session_user_key UNIQUE (practice_session_id, user_email);
+                END IF;
+            END $$;
+            """
+        )
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_practice_payments_session_user_unique ON practice_payments(practice_session_id, user_email) WHERE practice_session_id IS NOT NULL AND user_email IS NOT NULL")
+        try:
+            cur.execute("ALTER TABLE practice_availability DROP CONSTRAINT IF EXISTS practice_availability_date_user_email_key")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        cur.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'practice_availability_session_user_key'
+                ) THEN
+                    ALTER TABLE practice_availability ADD CONSTRAINT practice_availability_session_user_key UNIQUE (practice_session_id, user_email);
+                END IF;
+            END $$;
+            """
+        )
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_practice_availability_session_user_unique ON practice_availability(practice_session_id, user_email) WHERE practice_session_id IS NOT NULL AND user_email IS NOT NULL")
+        try:
+            cur.execute("ALTER TABLE events DROP CONSTRAINT IF EXISTS events_practice_session_date_key")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        conn.commit()
+    except Exception as e:
+        print(f"Warning: Could not migrate practice session IDs for PostgreSQL: {e}")
+        conn.rollback()
+
+def ensure_sqlite_practice_session_ids(cur, conn):
+    try:
+        cur.execute("PRAGMA table_info(practice_availability)")
+        availability_columns = [row[1] if not isinstance(row, sqlite3.Row) else row["name"] for row in cur.fetchall()]
+        cur.execute("PRAGMA index_list(practice_availability)")
+        availability_indexes = cur.fetchall()
+        has_unique_availability_date_index = False
+        for index_row in availability_indexes:
+            if isinstance(index_row, sqlite3.Row):
+                if index_row[2]:
+                    cur.execute(f"PRAGMA index_info({index_row['name']})")
+                    indexed_columns = [info[2] if not isinstance(info, sqlite3.Row) else info["name"] for info in cur.fetchall()]
+                    if indexed_columns == ["date", "user_email"]:
+                        has_unique_availability_date_index = True
+                        break
+            elif index_row[2]:
+                cur.execute(f"PRAGMA index_info({index_row[1]})")
+                indexed_columns = [info[2] if not isinstance(info, sqlite3.Row) else info["name"] for info in cur.fetchall()]
+                if indexed_columns == ["date", "user_email"]:
+                    has_unique_availability_date_index = True
+                    break
+        if has_unique_availability_date_index:
+            cur.executescript("""
+            CREATE TABLE IF NOT EXISTS practice_availability_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                practice_session_id INTEGER,
+                date TEXT NOT NULL,
+                user_email TEXT,
+                user_full_name TEXT,
+                status TEXT NOT NULL CHECK(status IN ('available', 'tentative', 'not_available')),
+                option_choice TEXT,
+                UNIQUE(practice_session_id, user_email)
+            );
+            INSERT OR IGNORE INTO practice_availability_new (id, date, user_email, user_full_name, status, option_choice, practice_session_id)
+            SELECT id, date, user_email, user_full_name, status, option_choice, practice_session_id
+            FROM practice_availability;
+            DROP TABLE practice_availability;
+            ALTER TABLE practice_availability_new RENAME TO practice_availability;
+            """)
+            conn.commit()
+            cur.execute("PRAGMA table_info(practice_availability)")
+            availability_columns = [row[1] if not isinstance(row, sqlite3.Row) else row["name"] for row in cur.fetchall()]
+
+        cur.execute("PRAGMA table_info(practice_payments)")
+        payment_columns = [row[1] if not isinstance(row, sqlite3.Row) else row["name"] for row in cur.fetchall()]
+        cur.execute("PRAGMA index_list(practice_payments)")
+        payment_indexes = cur.fetchall()
+        has_unique_payment_date_index = False
+        for index_row in payment_indexes:
+            if isinstance(index_row, sqlite3.Row):
+                if index_row[2]:
+                    cur.execute(f"PRAGMA index_info({index_row['name']})")
+                    indexed_columns = [info[2] if not isinstance(info, sqlite3.Row) else info["name"] for info in cur.fetchall()]
+                    if indexed_columns == ["date", "user_email"]:
+                        has_unique_payment_date_index = True
+                        break
+            elif index_row[2]:
+                cur.execute(f"PRAGMA index_info({index_row[1]})")
+                indexed_columns = [info[2] if not isinstance(info, sqlite3.Row) else info["name"] for info in cur.fetchall()]
+                if indexed_columns == ["date", "user_email"]:
+                    has_unique_payment_date_index = True
+                    break
+        if "practice_session_id" not in payment_columns or has_unique_payment_date_index:
+            cur.executescript("""
+            CREATE TABLE IF NOT EXISTS practice_payments_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                practice_session_id INTEGER,
+                date TEXT NOT NULL,
+                user_email TEXT NOT NULL,
+                paid INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(practice_session_id, user_email)
+            );
+            INSERT OR REPLACE INTO practice_payments_new (id, practice_session_id, date, user_email, paid, created_at)
+            SELECT id, practice_session_id, date, user_email, paid, created_at
+            FROM practice_payments;
+            DROP TABLE practice_payments;
+            ALTER TABLE practice_payments_new RENAME TO practice_payments;
+            """)
+            conn.commit()
+
+        cur.execute("PRAGMA table_info(practice_sessions)")
+        practice_session_columns = [row[1] if not isinstance(row, sqlite3.Row) else row["name"] for row in cur.fetchall()]
+        cur.execute("PRAGMA index_list(practice_sessions)")
+        practice_session_indexes = cur.fetchall()
+        has_unique_date_index = False
+        for index_row in practice_session_indexes:
+            if isinstance(index_row, sqlite3.Row):
+                if index_row[2]:
+                    cur.execute(f"PRAGMA index_info({index_row['name']})")
+                    indexed_columns = [info[2] if not isinstance(info, sqlite3.Row) else info["name"] for info in cur.fetchall()]
+                    if indexed_columns == ["date"]:
+                        has_unique_date_index = True
+                        break
+            elif index_row[2]:
+                cur.execute(f"PRAGMA index_info({index_row[1]})")
+                indexed_columns = [info[2] if not isinstance(info, sqlite3.Row) else info["name"] for info in cur.fetchall()]
+                if indexed_columns == ["date"]:
+                    has_unique_date_index = True
+                    break
+        if "id" not in practice_session_columns or has_unique_date_index:
+            cur.executescript("""
+            CREATE TABLE IF NOT EXISTS practice_sessions_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                time TEXT,
+                location TEXT,
+                event_type TEXT DEFAULT 'practice',
+                event_title TEXT,
+                description TEXT,
+                image_url TEXT,
+                youtube_url TEXT,
+                option_a_text TEXT,
+                option_b_text TEXT,
+                session_cost REAL,
+                paid_by TEXT,
+                payment_requested INTEGER DEFAULT 0,
+                payment_requested_at TIMESTAMP,
+                maximum_capacity INTEGER DEFAULT 100
+            );
+            INSERT INTO practice_sessions_new (
+                date, time, location, event_type, event_title, description, image_url, youtube_url,
+                option_a_text, option_b_text, session_cost, paid_by, payment_requested,
+                payment_requested_at, maximum_capacity
+            )
+            SELECT
+                date, time, location, event_type, event_title, description, image_url, youtube_url,
+                option_a_text, option_b_text, session_cost, paid_by, payment_requested,
+                payment_requested_at, maximum_capacity
+            FROM practice_sessions
+            ORDER BY date, COALESCE(time, ''), rowid;
+            DROP TABLE practice_sessions;
+            ALTER TABLE practice_sessions_new RENAME TO practice_sessions;
+            CREATE INDEX IF NOT EXISTS idx_practice_sessions_date ON practice_sessions(date);
+            """)
+            conn.commit()
+        else:
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_practice_sessions_date ON practice_sessions(date)")
+            conn.commit()
+
+        if "practice_session_id" not in availability_columns:
+            cur.execute("ALTER TABLE practice_availability ADD COLUMN practice_session_id INTEGER")
+        if "practice_session_id" not in payment_columns:
+            cur.execute("ALTER TABLE practice_payments ADD COLUMN practice_session_id INTEGER")
+        cur.execute("PRAGMA table_info(events)")
+        event_columns = [row[1] if not isinstance(row, sqlite3.Row) else row["name"] for row in cur.fetchall()]
+        if "practice_session_id" not in event_columns:
+            cur.execute("ALTER TABLE events ADD COLUMN practice_session_id INTEGER")
+
+        cur.execute("PRAGMA index_list(events)")
+        event_indexes = cur.fetchall()
+        has_unique_practice_session_date_index = False
+        for index_row in event_indexes:
+            if isinstance(index_row, sqlite3.Row):
+                if index_row[2]:
+                    cur.execute(f"PRAGMA index_info({index_row['name']})")
+                    indexed_columns = [info[2] if not isinstance(info, sqlite3.Row) else info["name"] for info in cur.fetchall()]
+                    if indexed_columns == ["practice_session_date"]:
+                        has_unique_practice_session_date_index = True
+                        break
+            elif index_row[2]:
+                cur.execute(f"PRAGMA index_info({index_row[1]})")
+                indexed_columns = [info[2] if not isinstance(info, sqlite3.Row) else info["name"] for info in cur.fetchall()]
+                if indexed_columns == ["practice_session_date"]:
+                    has_unique_practice_session_date_index = True
+                    break
+        if has_unique_practice_session_date_index:
+            cur.executescript("""
+            CREATE TABLE IF NOT EXISTS events_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                date TEXT NOT NULL,
+                time TEXT,
+                location TEXT,
+                description TEXT,
+                image_url TEXT,
+                youtube_url TEXT,
+                practice_session_date TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                practice_session_id INTEGER
+            );
+            INSERT INTO events_new (id, name, date, time, location, description, image_url, youtube_url, practice_session_date, created_at, practice_session_id)
+            SELECT id, name, date, time, location, description, image_url, youtube_url, practice_session_date, created_at, practice_session_id
+            FROM events;
+            DROP TABLE events;
+            ALTER TABLE events_new RENAME TO events;
+            """)
+            conn.commit()
+
+        cur.execute("SELECT id, date FROM practice_sessions ORDER BY id ASC")
+        for row in cur.fetchall():
+            row_dict = dict(row)
+            cur.execute(
+                "UPDATE practice_availability SET practice_session_id = ? WHERE practice_session_id IS NULL AND date = ?",
+                (row_dict["id"], row_dict["date"]),
+            )
+            cur.execute(
+                "UPDATE practice_payments SET practice_session_id = ? WHERE practice_session_id IS NULL AND date = ?",
+                (row_dict["id"], row_dict["date"]),
+            )
+            cur.execute(
+                "UPDATE events SET practice_session_id = ? WHERE practice_session_id IS NULL AND practice_session_date = ?",
+                (row_dict["id"], row_dict["date"]),
+            )
+
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_practice_availability_session_id ON practice_availability(practice_session_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_practice_availability_session_user_unique ON practice_availability(practice_session_id, user_email)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_practice_payments_session_id ON practice_payments(practice_session_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_practice_payments_session_user_unique ON practice_payments(practice_session_id, user_email)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_events_practice_session_id_unique ON events(practice_session_id) WHERE practice_session_id IS NOT NULL")
+        conn.commit()
+    except Exception as e:
+        print(f"Warning: Could not migrate practice session IDs for SQLite: {e}")
+        conn.rollback()
+
+def ensure_practice_session_ids(cur, conn):
+    if USE_POSTGRES:
+        ensure_postgres_practice_session_ids(cur, conn)
+    else:
+        ensure_sqlite_practice_session_ids(cur, conn)
+
 def get_practice_effective_time(time_value: Optional[str]) -> str:
     if not time_value:
         return "21:00"
@@ -1828,9 +2233,35 @@ def is_practice_datetime_in_past(date_value: str, time_value: Optional[str]) -> 
     return practice_datetime < datetime.now()
 
 def get_practice_session_basic(cur, date_str: str) -> Optional[dict]:
+    session_id = get_practice_session_id_by_date(cur, date_str)
+    if session_id is None:
+        return None
+    return get_practice_session_basic_by_id(cur, session_id)
+
+def get_practice_session_id_by_date(cur, date_str: str) -> Optional[int]:
     cur.execute(
-        f"SELECT date, time, location, event_type, event_title, description, image_url, youtube_url, option_a_text, option_b_text, payment_requested, payment_requested_at, COALESCE(maximum_capacity, 100) as maximum_capacity FROM practice_sessions WHERE date = {PLACEHOLDER}",
+        f"SELECT id FROM practice_sessions WHERE date = {PLACEHOLDER} ORDER BY id ASC LIMIT 1",
         (date_str,),
+    )
+    row = cur.fetchone()
+    return dict(row).get("id") if row else None
+
+def get_available_count_for_session(cur, date_str: str) -> int:
+    session_id = get_practice_session_id_by_date(cur, date_str)
+    if session_id is None:
+        return 0
+    return get_available_count_for_session_id(cur, session_id)
+
+def get_practice_session_with_capacity(cur, date_str: str) -> Optional[dict]:
+    session_id = get_practice_session_id_by_date(cur, date_str)
+    if session_id is None:
+        return None
+    return get_practice_session_with_capacity_by_id(cur, session_id)
+
+def get_practice_session_basic_by_id(cur, session_id: int) -> Optional[dict]:
+    cur.execute(
+        f"SELECT id, date, time, location, event_type, event_title, description, image_url, youtube_url, option_a_text, option_b_text, payment_requested, payment_requested_at, COALESCE(maximum_capacity, 100) as maximum_capacity FROM practice_sessions WHERE id = {PLACEHOLDER}",
+        (session_id,),
     )
     row = cur.fetchone()
     if not row:
@@ -1843,21 +2274,11 @@ def get_practice_session_basic(cur, date_str: str) -> Optional[dict]:
     session["option_b_text"] = (session.get("option_b_text") or "").strip() or None
     return session
 
-def get_available_count_for_session(cur, date_str: str) -> int:
-    cur.execute(
-        f"SELECT COUNT(*) as count FROM practice_availability WHERE date = {PLACEHOLDER} AND status = {PLACEHOLDER}",
-        (date_str, "available"),
-    )
-    row = cur.fetchone()
-    if not row:
-        return 0
-    row_dict = dict(row)
-    return int(row_dict.get("count", 0))
-
-def get_practice_session_with_capacity(cur, date_str: str) -> Optional[dict]:
+def get_practice_session_with_capacity_by_id(cur, session_id: int) -> Optional[dict]:
     cur.execute(
         f"""
         SELECT 
+            ps.id,
             ps.date,
             ps.time,
             ps.location,
@@ -1879,9 +2300,9 @@ def get_practice_session_with_capacity(cur, date_str: str) -> Optional[dict]:
             u.account_number as paid_by_account_number
         FROM practice_sessions ps
         LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-        WHERE ps.date = {PLACEHOLDER}
+        WHERE ps.id = {PLACEHOLDER}
         """,
-        (date_str,),
+        (session_id,),
     )
     row = cur.fetchone()
     if not row:
@@ -1898,13 +2319,33 @@ def get_practice_session_with_capacity(cur, date_str: str) -> Optional[dict]:
     session["event_title"] = normalize_event_title(session.get("event_title"), session["event_type"])
     session["option_a_text"] = (session.get("option_a_text") or "").strip() or None
     session["option_b_text"] = (session.get("option_b_text") or "").strip() or None
-    available_count = get_available_count_for_session(cur, date_str)
+    available_count = get_available_count_for_session_id(cur, session_id)
     maximum_capacity = normalize_maximum_capacity(session.get("maximum_capacity"))
     session["maximum_capacity"] = maximum_capacity
     session["available_count"] = available_count
     session["remaining_slots"] = max(maximum_capacity - available_count, 0)
     session["capacity_reached"] = available_count >= maximum_capacity
     return session
+
+def get_available_count_for_session_id(cur, session_id: int) -> int:
+    cur.execute(
+        f"SELECT COUNT(*) as count FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND status = {PLACEHOLDER}",
+        (session_id, "available"),
+    )
+    row = cur.fetchone()
+    if not row:
+        return 0
+    return dict(row).get("count", 0) if USE_POSTGRES else row[0]
+
+def get_practice_session_date_by_id(cur, session_id: int) -> Optional[str]:
+    cur.execute(
+        f"SELECT date FROM practice_sessions WHERE id = {PLACEHOLDER}",
+        (session_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    return dict(row).get("date")
 
 def normalize_option_pair(option_a_text: Optional[str], option_b_text: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     normalized_a = (option_a_text or "").strip() or None
@@ -1915,20 +2356,38 @@ def normalize_option_pair(option_a_text: Optional[str], option_b_text: Optional[
 
 def sync_match_session_to_events(cur, session: dict):
     practice_date = session["date"]
+    practice_session_id = session.get("id")
     event_type = normalize_event_type(session.get("event_type")) if session.get("event_type") else "practice"
     if event_type != "match":
-        cur.execute(f"DELETE FROM event_likes WHERE event_id IN (SELECT id FROM events WHERE practice_session_date = {PLACEHOLDER})", (practice_date,))
-        cur.execute(f"DELETE FROM event_comments WHERE event_id IN (SELECT id FROM events WHERE practice_session_date = {PLACEHOLDER})", (practice_date,))
-        cur.execute(f"DELETE FROM events WHERE practice_session_date = {PLACEHOLDER}", (practice_date,))
+        if practice_session_id is not None:
+            cur.execute(f"DELETE FROM event_likes WHERE event_id IN (SELECT id FROM events WHERE practice_session_id = {PLACEHOLDER})", (practice_session_id,))
+            cur.execute(f"DELETE FROM event_comments WHERE event_id IN (SELECT id FROM events WHERE practice_session_id = {PLACEHOLDER})", (practice_session_id,))
+            cur.execute(f"DELETE FROM events WHERE practice_session_id = {PLACEHOLDER}", (practice_session_id,))
+        else:
+            cur.execute(f"DELETE FROM event_likes WHERE event_id IN (SELECT id FROM events WHERE practice_session_date = {PLACEHOLDER})", (practice_date,))
+            cur.execute(f"DELETE FROM event_comments WHERE event_id IN (SELECT id FROM events WHERE practice_session_date = {PLACEHOLDER})", (practice_date,))
+            cur.execute(f"DELETE FROM events WHERE practice_session_date = {PLACEHOLDER}", (practice_date,))
         return
 
     match_name = normalize_event_title(session.get("event_title"), "match")
+    if practice_session_id is not None:
+        cur.execute(
+            f"SELECT id FROM events WHERE practice_session_date = {PLACEHOLDER} AND (practice_session_id IS NULL OR practice_session_id <> {PLACEHOLDER})",
+            (practice_date, practice_session_id),
+        )
+        legacy_event_ids = [dict(row)["id"] for row in cur.fetchall()]
+        if legacy_event_ids:
+            for legacy_event_id in legacy_event_ids:
+                cur.execute(f"DELETE FROM event_likes WHERE event_id = {PLACEHOLDER}", (legacy_event_id,))
+                cur.execute(f"DELETE FROM event_comments WHERE event_id = {PLACEHOLDER}", (legacy_event_id,))
+                cur.execute(f"DELETE FROM event_media WHERE event_id = {PLACEHOLDER}", (legacy_event_id,))
+                cur.execute(f"DELETE FROM events WHERE id = {PLACEHOLDER}", (legacy_event_id,))
     if USE_POSTGRES:
         cur.execute(
             f"""
-            INSERT INTO events (name, date, time, location, description, image_url, youtube_url, practice_session_date)
-            VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
-            ON CONFLICT (practice_session_date)
+            INSERT INTO events (name, date, time, location, description, image_url, youtube_url, practice_session_date, practice_session_id)
+            VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
+            ON CONFLICT (practice_session_id)
             DO UPDATE SET
                 name = EXCLUDED.name,
                 date = EXCLUDED.date,
@@ -1936,26 +2395,182 @@ def sync_match_session_to_events(cur, session: dict):
                 location = EXCLUDED.location,
                 description = EXCLUDED.description,
                 image_url = EXCLUDED.image_url,
-                youtube_url = EXCLUDED.youtube_url
+                youtube_url = EXCLUDED.youtube_url,
+                practice_session_id = EXCLUDED.practice_session_id
             """,
-            (match_name, practice_date, session.get("time"), session.get("location"), session.get("description"), session.get("image_url"), session.get("youtube_url"), practice_date),
+            (match_name, practice_date, session.get("time"), session.get("location"), session.get("description"), session.get("image_url"), session.get("youtube_url"), practice_date, practice_session_id),
         )
     else:
         cur.execute(
-            f"SELECT id FROM events WHERE practice_session_date = {PLACEHOLDER}",
-            (practice_date,),
+            f"SELECT id FROM events WHERE practice_session_id = {PLACEHOLDER}",
+            (practice_session_id,),
         )
         existing_event = cur.fetchone()
         if existing_event:
             cur.execute(
-                f"UPDATE events SET name = {PLACEHOLDER}, date = {PLACEHOLDER}, time = {PLACEHOLDER}, location = {PLACEHOLDER}, description = {PLACEHOLDER}, image_url = {PLACEHOLDER}, youtube_url = {PLACEHOLDER} WHERE practice_session_date = {PLACEHOLDER}",
-                (match_name, practice_date, session.get("time"), session.get("location"), session.get("description"), session.get("image_url"), session.get("youtube_url"), practice_date),
+                f"UPDATE events SET name = {PLACEHOLDER}, date = {PLACEHOLDER}, time = {PLACEHOLDER}, location = {PLACEHOLDER}, description = {PLACEHOLDER}, image_url = {PLACEHOLDER}, youtube_url = {PLACEHOLDER}, practice_session_date = {PLACEHOLDER}, practice_session_id = {PLACEHOLDER} WHERE practice_session_id = {PLACEHOLDER}",
+                (match_name, practice_date, session.get("time"), session.get("location"), session.get("description"), session.get("image_url"), session.get("youtube_url"), practice_date, practice_session_id, practice_session_id),
             )
         else:
             cur.execute(
-                f"INSERT INTO events (name, date, time, location, description, image_url, youtube_url, practice_session_date) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (match_name, practice_date, session.get("time"), session.get("location"), session.get("description"), session.get("image_url"), session.get("youtube_url"), practice_date),
+                f"INSERT INTO events (name, date, time, location, description, image_url, youtube_url, practice_session_date, practice_session_id) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (match_name, practice_date, session.get("time"), session.get("location"), session.get("description"), session.get("image_url"), session.get("youtube_url"), practice_date, practice_session_id),
             )
+
+def set_practice_availability_for_session_id(cur, conn, session_id: int, user_email: str, user_full_name: str, status_value: str, option_choice_value: Optional[str]):
+    session = get_practice_session_with_capacity_by_id(cur, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Practice session not found")
+
+    if is_practice_datetime_in_past(session["date"], session.get("time")):
+        raise HTTPException(status_code=403, detail="Cannot modify availability after the practice session date and time has passed.")
+
+    if session["payment_requested"]:
+        raise HTTPException(status_code=403, detail="Cannot modify availability after payment request has been enabled.")
+
+    cur.execute(
+        f"SELECT status FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+        (session_id, user_email),
+    )
+    existing_row = cur.fetchone()
+    previous_status = dict(existing_row).get("status") if existing_row else None
+
+    option_choice = (option_choice_value or "").strip().upper() or None
+    option_a_text, option_b_text = normalize_option_pair(session.get("option_a_text"), session.get("option_b_text"))
+    if option_choice and status_value != "available":
+        raise HTTPException(status_code=400, detail="Option selection is only allowed when availability is Available")
+    if option_choice and option_choice not in {"A", "B"}:
+        raise HTTPException(status_code=400, detail="Invalid option choice")
+    if option_choice and not (option_a_text and option_b_text):
+        raise HTTPException(status_code=400, detail="This event does not have member options enabled")
+
+    is_new_available_vote = status_value == "available" and previous_status != "available"
+    if is_new_available_vote and session["capacity_reached"]:
+        raise HTTPException(status_code=403, detail="Maximum capacity has been reached for this session. No more Available selections are allowed right now.")
+
+    if status_value == "none":
+        cur.execute(
+            f"DELETE FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (session_id, user_email),
+        )
+        conn.commit()
+        return {"message": "Availability removed"}
+
+    if USE_POSTGRES:
+        cur.execute(
+            f"INSERT INTO practice_availability (practice_session_id, date, user_email, user_full_name, status, option_choice) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (practice_session_id, user_email) DO UPDATE SET date = EXCLUDED.date, status = EXCLUDED.status, user_full_name = EXCLUDED.user_full_name, option_choice = EXCLUDED.option_choice",
+            (session_id, session["date"], user_email, user_full_name, status_value, option_choice if status_value == "available" else None),
+        )
+    else:
+        cur.execute(
+            f"INSERT OR REPLACE INTO practice_availability (id, practice_session_id, date, user_email, user_full_name, status, option_choice) VALUES ((SELECT id FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}), {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (session_id, user_email, session_id, session["date"], user_email, user_full_name, status_value, option_choice if status_value == "available" else None),
+        )
+    conn.commit()
+
+    updated_session = get_practice_session_with_capacity_by_id(cur, session_id)
+    if is_new_available_vote and updated_session and updated_session["capacity_reached"]:
+        deliver_notification(
+            "session_capacity_reached",
+            {
+                "session_id": updated_session["id"],
+                "date": updated_session["date"],
+                "time": updated_session.get("time"),
+                "location": updated_session.get("location"),
+                "event_type": updated_session.get("event_type"),
+                "event_title": updated_session.get("event_title"),
+                "maximum_capacity": updated_session["maximum_capacity"],
+                "available_count": updated_session["available_count"],
+                "remaining_slots": updated_session["remaining_slots"],
+            },
+            related_date=session["date"],
+        )
+    return {"message": "Availability set"}
+
+def admin_set_practice_availability_for_session_id(cur, conn, session_id: int, user_email: str, user_full_name: str, status_value: str, option_choice_value: Optional[str]):
+    session = get_practice_session_with_capacity_by_id(cur, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Practice session not found")
+
+    option_choice = (option_choice_value or "").strip().upper() or None
+    option_a_text, option_b_text = normalize_option_pair(session.get("option_a_text"), session.get("option_b_text"))
+    if option_choice and status_value != "available":
+        raise HTTPException(status_code=400, detail="Option selection is only allowed when availability is Available")
+    if option_choice and option_choice not in {"A", "B"}:
+        raise HTTPException(status_code=400, detail="Invalid option choice")
+    if option_choice and not (option_a_text and option_b_text):
+        raise HTTPException(status_code=400, detail="This event does not have member options enabled")
+
+    if status_value == "delete":
+        cur.execute(
+            f"DELETE FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (session_id, user_email),
+        )
+        conn.commit()
+        return {"message": "Availability removed"}
+
+    if USE_POSTGRES:
+        cur.execute(
+            f"INSERT INTO practice_availability (practice_session_id, date, user_email, user_full_name, status, option_choice) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (practice_session_id, user_email) DO UPDATE SET date = EXCLUDED.date, status = EXCLUDED.status, user_full_name = EXCLUDED.user_full_name, option_choice = EXCLUDED.option_choice",
+            (session_id, session["date"], user_email, user_full_name, status_value, option_choice if status_value == "available" else None),
+        )
+    else:
+        cur.execute(
+            f"INSERT OR REPLACE INTO practice_availability (id, practice_session_id, date, user_email, user_full_name, status, option_choice) VALUES ((SELECT id FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}), {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (session_id, user_email, session_id, session["date"], user_email, user_full_name, status_value, option_choice if status_value == "available" else None),
+        )
+    conn.commit()
+    return {"message": "Availability set"}
+
+def get_practice_availability_summary_by_session(cur, session: dict):
+    cur.execute(
+        f"SELECT user_email, user_full_name, status, option_choice FROM practice_availability WHERE practice_session_id = {PLACEHOLDER}",
+        (session["id"],),
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+
+    available = []
+    tentative = []
+    not_available = []
+    option_a = []
+    option_b = []
+    option_a_text = session.get("option_a_text")
+    option_b_text = session.get("option_b_text")
+
+    for r in rows:
+        name = r.get("user_full_name")
+        if not name:
+            name = "[OldData]"
+
+        if r["status"] == "available":
+            available.append(name)
+            if option_a_text and option_b_text and r.get("option_choice") == "A":
+                option_a.append(name)
+            elif option_a_text and option_b_text and r.get("option_choice") == "B":
+                option_b.append(name)
+        elif r["status"] == "tentative":
+            tentative.append(name)
+        elif r["status"] == "not_available":
+            not_available.append(name)
+
+    maximum_capacity = session["maximum_capacity"] if session else 100
+    available_count = len(available)
+    remaining_slots = max(maximum_capacity - available_count, 0)
+
+    return {
+        "available": available,
+        "tentative": tentative,
+        "not_available": not_available,
+        "option_a": option_a,
+        "option_b": option_b,
+        "option_a_text": option_a_text,
+        "option_b_text": option_b_text,
+        "user_emails": {r["user_full_name"] or r["user_email"]: r["user_email"] for r in rows},
+        "maximum_capacity": maximum_capacity,
+        "available_count": available_count,
+        "remaining_slots": remaining_slots,
+        "capacity_reached": available_count >= maximum_capacity,
+    }
 
 def notify_practice_slots_available():
     now = datetime.now()
@@ -1982,9 +2597,12 @@ def notify_practice_slots_available():
         deliver_notification(
             "practice_slot_available",
             {
+                "session_id": session["id"],
                 "date": session["date"],
                 "time": session.get("time"),
                 "location": session.get("location"),
+                "event_type": session.get("event_type"),
+                "event_title": session.get("event_title"),
                 "maximum_capacity": session["maximum_capacity"],
                 "available_count": session["available_count"],
                 "remaining_slots": session["remaining_slots"],
@@ -1993,17 +2611,20 @@ def notify_practice_slots_available():
         )
 
 def get_pending_payment_count_for_session(cur, date_str: str) -> int:
+    session_id = get_practice_session_id_by_date(cur, date_str)
+    if session_id is None:
+        return 0
     cur.execute(
         f"""
         SELECT COUNT(*) as count
         FROM practice_availability pa
         LEFT JOIN practice_payments pp
-            ON pa.date = pp.date AND pa.user_email = pp.user_email
-        WHERE pa.date = {PLACEHOLDER}
+            ON pa.practice_session_id = pp.practice_session_id AND pa.user_email = pp.user_email
+        WHERE pa.practice_session_id = {PLACEHOLDER}
           AND pa.status = {PLACEHOLDER}
           AND (pp.paid IS NULL OR pp.paid = {PLACEHOLDER})
         """,
-        (date_str, "available", False if USE_POSTGRES else 0),
+        (session_id, "available", False if USE_POSTGRES else 0),
     )
     row = cur.fetchone()
     if not row:
@@ -2059,6 +2680,7 @@ def notify_pending_payment_reminders():
         deliver_notification(
             "pending_payment_reminder",
             {
+                "session_id": reminder_session["id"],
                 "date": reminder_session["date"],
                 "time": reminder_session.get("time"),
                 "location": reminder_session.get("location"),
@@ -2248,6 +2870,7 @@ class PracticeSessionCreate(BaseModel):
     maximum_capacity: int = 100
 
 class PracticeSessionOut(BaseModel):
+    id: int
     date: str
     time: Optional[str] = None
     location: Optional[str] = None
@@ -3090,7 +3713,7 @@ def get_events():
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"SELECT date, time, location, event_type, event_title, description, image_url, youtube_url FROM practice_sessions WHERE event_type = {PLACEHOLDER}",
+            f"SELECT id, date, time, location, event_type, event_title, description, image_url, youtube_url FROM practice_sessions WHERE event_type = {PLACEHOLDER}",
             ("match",),
         )
         for session_row in cur.fetchall():
@@ -3264,14 +3887,23 @@ def get_uploaded_file(filename: str):
 def list_practice_sessions():
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT date FROM practice_sessions ORDER BY date ASC")
+        cur.execute(f"SELECT id FROM practice_sessions ORDER BY date ASC, COALESCE(time, ''), id ASC")
         sessions = []
         for row in cur.fetchall():
             row_dict = dict(row)
-            session = get_practice_session_with_capacity(cur, row_dict["date"])
+            session = get_practice_session_with_capacity_by_id(cur, row_dict["id"])
             if session:
                 sessions.append(PracticeSessionOut(**session))
         return sessions
+
+@app.get("/api/practice/sessions/id/{session_id}", response_model=PracticeSessionOut)
+def get_practice_session_by_id(session_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        session = get_practice_session_with_capacity_by_id(cur, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+        return PracticeSessionOut(**session)
 
 @app.post("/api/practice/sessions", response_model=PracticeSessionOut)
 def create_practice_session(session: PracticeSessionCreate, current_user: dict = Depends(get_current_user)):
@@ -3285,23 +3917,19 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}",
-            (session.date,),
+            f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, description, image_url, youtube_url, option_a_text, option_b_text, session_cost, paid_by, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.paid_by, maximum_capacity),
         )
-        existing_session = cur.fetchone()
-        if existing_session and existing_session["payment_requested"]:
-            raise HTTPException(status_code=400, detail="Practice session cannot be edited after payment has been requested")
+        created_session_id = cur.lastrowid if not USE_POSTGRES else None
         if USE_POSTGRES:
             cur.execute(
-                f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, description, image_url, youtube_url, option_a_text, option_b_text, session_cost, paid_by, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date) DO UPDATE SET time = EXCLUDED.time, location = EXCLUDED.location, event_type = EXCLUDED.event_type, event_title = EXCLUDED.event_title, description = EXCLUDED.description, image_url = EXCLUDED.image_url, youtube_url = EXCLUDED.youtube_url, option_a_text = EXCLUDED.option_a_text, option_b_text = EXCLUDED.option_b_text, session_cost = EXCLUDED.session_cost, paid_by = EXCLUDED.paid_by, maximum_capacity = EXCLUDED.maximum_capacity",
-                (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.paid_by, maximum_capacity),
+                f"SELECT id FROM practice_sessions WHERE date = {PLACEHOLDER} AND COALESCE(time, '') = {PLACEHOLDER} AND COALESCE(location, '') = COALESCE({PLACEHOLDER}, '') ORDER BY id DESC LIMIT 1",
+                (session.date, normalized_time or '', session.location),
             )
-        else:
-            cur.execute(
-                f"INSERT OR REPLACE INTO practice_sessions (date, time, location, event_type, event_title, description, image_url, youtube_url, option_a_text, option_b_text, session_cost, paid_by, payment_requested, payment_requested_at, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, COALESCE((SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}), 0), (SELECT payment_requested_at FROM practice_sessions WHERE date = {PLACEHOLDER}), {PLACEHOLDER})",
-                (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.paid_by, session.date, session.date, maximum_capacity),
-            )
+            created_row = cur.fetchone()
+            created_session_id = created_row["id"] if created_row else None
         sync_match_session_to_events(cur, {
+            "id": created_session_id,
             "date": session.date,
             "time": normalized_time,
             "location": session.location,
@@ -3316,6 +3944,7 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
         deliver_notification(
             "practice",
             {
+                "session_id": created_session_id,
                 "date": session.date,
                 "time": normalized_time,
                 "location": session.location,
@@ -3327,8 +3956,43 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
             related_date=session.date
         )
 
-        created_session = get_practice_session_with_capacity(cur, session.date)
+        created_session = get_practice_session_with_capacity_by_id(cur, created_session_id)
         return PracticeSessionOut(**created_session)
+
+@app.put("/api/practice/sessions/id/{session_id}", response_model=PracticeSessionOut)
+def update_practice_session_by_id(session_id: int, session: PracticeSessionCreate, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    maximum_capacity = normalize_maximum_capacity(session.maximum_capacity)
+    normalized_time = normalize_practice_time(session.time)
+    normalized_event_type = normalize_event_type(session.event_type)
+    normalized_event_title = normalize_event_title(session.event_title, normalized_event_type)
+    normalized_option_a, normalized_option_b = normalize_option_pair(session.option_a_text, session.option_b_text)
+    with get_connection() as conn:
+        cur = conn.cursor()
+        existing_session = get_practice_session_basic_by_id(cur, session_id)
+        if not existing_session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+        if existing_session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Practice session cannot be edited after payment has been requested")
+        cur.execute(
+            f"UPDATE practice_sessions SET date = {PLACEHOLDER}, time = {PLACEHOLDER}, location = {PLACEHOLDER}, event_type = {PLACEHOLDER}, event_title = {PLACEHOLDER}, description = {PLACEHOLDER}, image_url = {PLACEHOLDER}, youtube_url = {PLACEHOLDER}, option_a_text = {PLACEHOLDER}, option_b_text = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER} WHERE id = {PLACEHOLDER}",
+            (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.paid_by, maximum_capacity, session_id),
+        )
+        sync_match_session_to_events(cur, {
+            "id": session_id,
+            "date": session.date,
+            "time": normalized_time,
+            "location": session.location,
+            "event_type": normalized_event_type,
+            "event_title": normalized_event_title,
+            "description": session.description,
+            "image_url": session.image_url,
+            "youtube_url": session.youtube_url,
+        })
+        conn.commit()
+        updated_session = get_practice_session_with_capacity_by_id(cur, session_id)
+        return PracticeSessionOut(**updated_session)
 
 @app.put("/api/practice/sessions/{date_str}", response_model=PracticeSessionOut)
 def update_practice_session(date_str: str, session: PracticeSessionCreate, current_user: dict = Depends(get_current_user)):
@@ -3355,7 +4019,9 @@ def update_practice_session(date_str: str, session: PracticeSessionCreate, curre
             (normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.paid_by, maximum_capacity, date_str),
         )
         updated_rows = cur.rowcount
+        updated_session_id = get_practice_session_id_by_date(cur, date_str)
         sync_match_session_to_events(cur, {
+            "id": updated_session_id,
             "date": date_str,
             "time": normalized_time,
             "location": session.location,
@@ -3371,6 +4037,51 @@ def update_practice_session(date_str: str, session: PracticeSessionCreate, curre
         updated_session = get_practice_session_with_capacity(cur, date_str)
         return PracticeSessionOut(**updated_session)
 
+@app.post("/api/practice/sessions/id/{session_id}/request-payment")
+def request_payment_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
+    """Admin endpoint to enable payment request for a specific practice session"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        session = get_practice_session_with_capacity_by_id(cur, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+
+        if not is_practice_datetime_in_past(session["date"], session["time"]):
+            raise HTTPException(status_code=400, detail="Payment request can only be enabled after the practice session date and time has passed")
+
+        if session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Payment request has already been enabled for this session")
+
+        cur.execute(
+            f"UPDATE practice_sessions SET payment_requested = {PLACEHOLDER}, payment_requested_at = CURRENT_TIMESTAMP WHERE id = {PLACEHOLDER}",
+            (True if USE_POSTGRES else 1, session_id),
+        )
+        conn.commit()
+
+        cur.execute(
+            f"SELECT user_email FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND status = {PLACEHOLDER}",
+            (session_id, "available"),
+        )
+        available_users = cur.fetchall()
+
+        deliver_notification(
+            "payment_request",
+            {
+                "session_id": session["id"],
+                "date": session["date"],
+                "time": session["time"],
+                "location": session["location"],
+                "event_type": session["event_type"],
+                "event_title": session["event_title"],
+            },
+            related_date=session["date"]
+        )
+
+        return {"message": "Payment requested successfully"}
+
 @app.post("/api/practice/sessions/{date_str}/request-payment")
 def request_payment(date_str: str, current_user: dict = Depends(get_current_user)):
     """Admin endpoint to enable payment request for a practice session"""
@@ -3384,53 +4095,31 @@ def request_payment(date_str: str, current_user: dict = Depends(get_current_user
     
     with get_connection() as conn:
         cur = conn.cursor()
-        
-        # Check if session exists and get session details
         cur.execute(
-            f"SELECT payment_requested, time, location, event_type, event_title FROM practice_sessions WHERE date = {PLACEHOLDER}", 
-            (date_str,)
+            f"SELECT id FROM practice_sessions WHERE date = {PLACEHOLDER} ORDER BY id ASC LIMIT 1",
+            (date_str,),
         )
         session = cur.fetchone()
+    if not session:
+        raise HTTPException(status_code=404, detail="Practice session not found")
+    return request_payment_by_id(session["id"], current_user)
+
+@app.get("/api/practice/sessions/id/{session_id}/payments")
+def get_session_payments_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        session = get_practice_session_with_capacity_by_id(cur, session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
-
-        if not is_practice_datetime_in_past(date_str, session["time"]):
-            raise HTTPException(status_code=400, detail="Payment request can only be enabled after the practice session date and time has passed")
-        
-        # Check if payment already requested
-        if session["payment_requested"]:
-            raise HTTPException(status_code=400, detail="Payment request has already been enabled for this session")
-        
-        session_time = session["time"] or "TBD"
-        session_location = session["location"] or "TBD"
-        
-        # Enable payment request
         cur.execute(
-            f"UPDATE practice_sessions SET payment_requested = {PLACEHOLDER}, payment_requested_at = CURRENT_TIMESTAMP WHERE date = {PLACEHOLDER}",
-            (True if USE_POSTGRES else 1, date_str),
+            f"SELECT user_email, paid FROM practice_payments WHERE practice_session_id = {PLACEHOLDER}",
+            (session_id,),
         )
-        conn.commit()
-        
-        # Get all available users for this session
-        cur.execute(
-            f"SELECT user_email FROM practice_availability WHERE date = {PLACEHOLDER} AND status = {PLACEHOLDER}",
-            (date_str, "available")
-        )
-        available_users = cur.fetchall()
-        
-        deliver_notification(
-            "payment_request",
-            {
-                "date": date_str,
-                "time": session["time"],
-                "location": session["location"],
-                "event_type": session["event_type"],
-                "event_title": session["event_title"],
-            },
-            related_date=date_str
-        )
-        
-        return {"message": "Payment requested successfully"}
+        payments = {}
+        for row in cur.fetchall():
+            row_dict = dict(row)
+            payments[row_dict["user_email"]] = row_dict["paid"]
+        return payments
 
 @app.get("/api/practice/sessions/{date_str}/payments")
 def get_session_payments(date_str: str, current_user: dict = Depends(get_current_user)):
@@ -3447,6 +4136,65 @@ def get_session_payments(date_str: str, current_user: dict = Depends(get_current
             payments[row_dict["user_email"]] = row_dict["paid"]
         return payments
 
+@app.post("/api/practice/sessions/id/{session_id}/payment")
+def confirm_payment_by_id(session_id: int, data: dict, current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        session = get_practice_session_with_capacity_by_id(cur, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+
+        paid = data.get("paid", False)
+
+        cur.execute(
+            f"SELECT id, date, payment_requested, time, location, event_type, event_title FROM practice_sessions WHERE id = {PLACEHOLDER}",
+            (session_id,)
+        )
+        session = cur.fetchone()
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+
+        if not session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Payment has not been requested for this session")
+
+        cur.execute(
+            f"SELECT status FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (session_id, current_user["email"]),
+        )
+        availability = cur.fetchone()
+        if not availability or availability["status"] != "available":
+            raise HTTPException(status_code=400, detail="You must be marked as available for this session to confirm payment")
+
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (practice_session_id, user_email) DO UPDATE SET date = EXCLUDED.date, paid = EXCLUDED.paid",
+                (session_id, session["date"], current_user["email"], paid),
+            )
+        else:
+            cur.execute(
+                f"INSERT OR REPLACE INTO practice_payments (id, practice_session_id, date, user_email, paid) VALUES ((SELECT id FROM practice_payments WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}), {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (session_id, current_user["email"], session_id, session["date"], current_user["email"], 1 if paid else 0),
+            )
+
+        conn.commit()
+
+        if paid:
+            deliver_notification(
+                "payment_confirmed",
+                {
+                    "session_id": session["id"],
+                    "date": session["date"],
+                    "time": session["time"],
+                    "location": session["location"],
+                    "event_type": session["event_type"],
+                    "event_title": session["event_title"],
+                    "member_name": current_user.get("full_name", current_user["email"]),
+                    "full_name": current_user.get("full_name", current_user["email"]),
+                },
+                related_date=session["date"],
+            )
+        return {"message": "Payment confirmation updated", "paid": paid}
+
 @app.post("/api/practice/{date}/payment")
 def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(get_current_user)):
     """User endpoint to confirm or unconfirm payment for a practice session (used by User Actions page)"""
@@ -3454,10 +4202,13 @@ def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(
     
     with get_connection() as conn:
         cur = conn.cursor()
+        session_id = get_practice_session_id_by_date(cur, date)
+        if session_id is None:
+            raise HTTPException(status_code=404, detail="Practice session not found")
         
         # Check if payment is requested for this session and get session details
         cur.execute(
-            f"SELECT payment_requested, time, location, event_type, event_title FROM practice_sessions WHERE date = {PLACEHOLDER}",
+            f"SELECT id, payment_requested, time, location, event_type, event_title FROM practice_sessions WHERE date = {PLACEHOLDER}",
             (date,)
         )
         session = cur.fetchone()
@@ -3482,13 +4233,13 @@ def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(
         # Insert or update payment confirmation
         if USE_POSTGRES:
             cur.execute(
-                f"INSERT INTO practice_payments (date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET paid = EXCLUDED.paid",
-                (date, current_user["email"], paid),
+                f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET practice_session_id = EXCLUDED.practice_session_id, paid = EXCLUDED.paid",
+                (session_id, date, current_user["email"], paid),
             )
         else:
             cur.execute(
-                f"INSERT OR REPLACE INTO practice_payments (date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (date, current_user["email"], 1 if paid else 0),
+                f"INSERT OR REPLACE INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (session_id, date, current_user["email"], 1 if paid else 0),
             )
         
         conn.commit()
@@ -3497,6 +4248,7 @@ def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(
             deliver_notification(
                 "payment_confirmed",
                 {
+                    "session_id": session["id"],
                     "date": date,
                     "time": session["time"],
                     "location": session["location"],
@@ -3507,64 +4259,75 @@ def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(
                 },
                 related_date=date,
             )
-        return {"message": "Payment confirmation updated"}
+        return {"message": "Payment confirmation updated", "paid": paid}
 
 @app.post("/api/practice/sessions/{date_str}/payment")
 def confirm_payment(date_str: str, data: dict, current_user: dict = Depends(get_current_user)):
-    """User endpoint to confirm or unconfirm payment for a practice session"""
-    paid = data.get("paid", False)
-    
+    return confirm_payment_by_date(date_str, data, current_user)
+
+@app.post("/api/practice/sessions/id/{session_id}/availability")
+def set_practice_availability_by_session_id(session_id: int, status: dict, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
-        
-        # Check if payment is requested for this session and get session details
-        cur.execute(
-            f"SELECT payment_requested, time, location, event_type, event_title FROM practice_sessions WHERE date = {PLACEHOLDER}", 
-            (date_str,)
-        )
-        session = cur.fetchone()
+        return set_practice_availability_for_session_id(cur, conn, session_id, current_user["email"], current_user["full_name"], status.get("status", ""), status.get("option_choice"))
+
+@app.post("/api/admin/practice/sessions/id/{session_id}/availability")
+def admin_set_practice_availability_by_session_id(session_id: int, payload: dict, current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        session = get_practice_session_with_capacity_by_id(cur, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Practice session not found")
+    avail = AdminPracticeAvailability(
+        date=session["date"],
+        user_email=payload.get("user_email", ""),
+        status=payload.get("status", ""),
+        option_choice=payload.get("option_choice"),
+    )
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if not is_admin(current_user):
+            raise HTTPException(status_code=403, detail="Admins only")
+        cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (avail.user_email,))
+        user_row = cur.fetchone()
+        if not user_row:
+            raise HTTPException(status_code=404, detail="User not found")
+        return admin_set_practice_availability_for_session_id(cur, conn, session_id, avail.user_email, user_row["full_name"], avail.status, avail.option_choice)
+
+@app.get("/api/practice/sessions/id/{session_id}/availability")
+def get_practice_availability_summary_by_session_id(session_id: int):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        session = get_practice_session_with_capacity_by_id(cur, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Practice session not found")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        session = get_practice_session_with_capacity_by_id(cur, session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
-        
-        if not session["payment_requested"]:
-            raise HTTPException(status_code=400, detail="Payment request has not been enabled for this session")
-        
-        session_time = session["time"] or "TBD"
-        session_location = session["location"] or "TBD"
-        
-        # Check if user is available for this session
-        cur.execute(
-            f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-            (date_str, current_user["email"]),
-        )
-        availability = cur.fetchone()
-        if not availability or availability["status"] != "available":
-            raise HTTPException(status_code=400, detail="You must be marked as available for this session to confirm payment")
-        
-        # Insert or update payment status
-        cur.execute(
-            f"INSERT INTO practice_payments (date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET paid = EXCLUDED.paid",
-            (date_str, current_user["email"], paid if USE_POSTGRES else (1 if paid else 0)),
-        )
+        return get_practice_availability_summary_by_session(cur, session)
+
+@app.delete("/api/practice/sessions/id/{session_id}")
+def delete_practice_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        session = get_practice_session_basic_by_id(cur, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+        if not is_admin(current_user):
+            raise HTTPException(status_code=403, detail="Admins only")
+        if session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Practice session cannot be deleted after payment has been requested")
+        cur.execute(f"DELETE FROM event_media WHERE event_id IN (SELECT id FROM events WHERE practice_session_id = {PLACEHOLDER})", (session_id,))
+        cur.execute(f"DELETE FROM event_likes WHERE event_id IN (SELECT id FROM events WHERE practice_session_id = {PLACEHOLDER})", (session_id,))
+        cur.execute(f"DELETE FROM event_comments WHERE event_id IN (SELECT id FROM events WHERE practice_session_id = {PLACEHOLDER})", (session_id,))
+        cur.execute(f"DELETE FROM events WHERE practice_session_id = {PLACEHOLDER}", (session_id,))
+        cur.execute(f"DELETE FROM practice_payments WHERE practice_session_id = {PLACEHOLDER}", (session_id,))
+        cur.execute(f"DELETE FROM practice_availability WHERE practice_session_id = {PLACEHOLDER}", (session_id,))
+        cur.execute(f"DELETE FROM practice_sessions WHERE id = {PLACEHOLDER}", (session_id,))
         conn.commit()
-        
-        # If user confirmed payment (checked the box), notify all admins
-        if paid:
-            deliver_notification(
-                "payment_confirmed",
-                {
-                    "date": date_str,
-                    "time": session_time,
-                    "location": session_location,
-                    "event_type": session["event_type"],
-                    "event_title": session["event_title"],
-                    "member_name": current_user.get("full_name", current_user["email"]),
-                    "full_name": current_user.get("full_name", current_user["email"]),
-                },
-                related_date=date_str,
-            )
-        
-        return {"message": "Payment status updated successfully", "paid": paid}
+        return {"message": "Practice session deleted"}
 
 # --- Likes/Comments for Events ---
 @app.post("/api/events/{event_id}/like")
@@ -4086,7 +4849,7 @@ def get_my_practice_availability(current_user: dict = Depends(get_current_user))
         # Only return availability records for current user
         # This prevents reactivated users from seeing old user's selections
         cur.execute(
-            f"SELECT date, status, user_full_name FROM practice_availability WHERE user_email = {PLACEHOLDER}",
+            f"SELECT practice_session_id, date, status, user_full_name FROM practice_availability WHERE user_email = {PLACEHOLDER}",
             (current_user["email"],),
         )
         result = {}
@@ -4097,93 +4860,18 @@ def get_my_practice_availability(current_user: dict = Depends(get_current_user))
             stored_name = row_dict.get("user_full_name")
             # IMPORTANT: Only show if stored name exactly matches current user's name
             # Do NOT show if stored_name is None (old records before migration)
-            if stored_name and stored_name == current_user["full_name"]:
-                result[row_dict["date"]] = row_dict["status"]
+            if stored_name and stored_name == current_user["full_name"] and row_dict.get("practice_session_id") is not None:
+                result[str(row_dict["practice_session_id"])] = row_dict["status"]
         return result
 
 @app.post("/api/practice/{date}/availability")
 def set_practice_availability_by_date(date: str, status: dict, current_user: dict = Depends(get_current_user)):
-    """Set availability for a specific date (used by User Actions page)"""
-    try:
-        datetime.strptime(date, '%Y-%m-%d')
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-
-    with get_connection() as conn:
-        cur = conn.cursor()
-        session = get_practice_session_basic(cur, date)
-        if not session:
-            raise HTTPException(status_code=404, detail="Practice session not found")
-
-        if is_practice_datetime_in_past(session["date"], session.get("time")):
-            raise HTTPException(status_code=403, detail="Cannot modify availability after the practice session date and time has passed.")
-
-        if session["payment_requested"]:
-            raise HTTPException(
-                status_code=403, 
-                detail="Cannot modify availability after payment request has been enabled."
-            )
-
-        availability_status = status.get("status")
-        option_choice = (status.get("option_choice") or "").strip().upper() or None
-        option_a_text, option_b_text = normalize_option_pair(session.get("option_a_text"), session.get("option_b_text"))
-        if option_choice and availability_status != "available":
-            raise HTTPException(status_code=400, detail="Option selection is only allowed when availability is Available")
-        if option_choice and option_choice not in {"A", "B"}:
-            raise HTTPException(status_code=400, detail="Invalid option choice")
-        if option_choice and not (option_a_text and option_b_text):
-            raise HTTPException(status_code=400, detail="This event does not have member options enabled")
-        cur.execute(
-            f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-            (date, current_user["email"]),
-        )
-        existing_row = cur.fetchone()
-        previous_status = dict(existing_row).get("status") if existing_row else None
-
-        session_details = get_practice_session_with_capacity(cur, date)
-
-        is_new_available_vote = availability_status == 'available' and previous_status != 'available'
-        if is_new_available_vote and session_details["capacity_reached"]:
-            raise HTTPException(status_code=403, detail="Maximum capacity has been reached for this session. No more Available selections are allowed right now.")
-        
-        # If status is 'none', delete the availability record (deselection)
-        if availability_status == 'none':
-            cur.execute(
-                f"DELETE FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-                (date, current_user["email"])
-            )
-            conn.commit()
-            return {"message": "Availability removed"}
-        
-        # Otherwise, insert or update the availability
-        if USE_POSTGRES:
-            cur.execute(
-                f"INSERT INTO practice_availability (date, user_email, user_full_name, status, option_choice) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET status = EXCLUDED.status, user_full_name = EXCLUDED.user_full_name, option_choice = EXCLUDED.option_choice",
-                (date, current_user["email"], current_user["full_name"], availability_status, option_choice if availability_status == "available" else None),
-            )
-        else:
-            cur.execute(
-                f"INSERT OR REPLACE INTO practice_availability (date, user_email, user_full_name, status, option_choice) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (date, current_user["email"], current_user["full_name"], availability_status, option_choice if availability_status == "available" else None),
-            )
-        conn.commit()
-        updated_session = get_practice_session_with_capacity(cur, date)
-        if is_new_available_vote and updated_session and updated_session["capacity_reached"]:
-            deliver_notification(
-                "session_capacity_reached",
-                {
-                    "date": updated_session["date"],
-                    "time": updated_session.get("time"),
-                    "location": updated_session.get("location"),
-                    "event_type": updated_session.get("event_type"),
-                    "event_title": updated_session.get("event_title"),
-                    "maximum_capacity": updated_session["maximum_capacity"],
-                    "available_count": updated_session["available_count"],
-                    "remaining_slots": updated_session["remaining_slots"],
-                },
-                related_date=date,
-            )
-        return {"message": "Availability set"}
+    avail = PracticeAvailability(
+        date=date,
+        status=status.get("status", ""),
+        option_choice=status.get("option_choice"),
+    )
+    return set_my_practice_availability(avail, current_user)
 
 @app.post("/api/practice/availability")
 def set_my_practice_availability(avail: PracticeAvailability, current_user: dict = Depends(get_current_user)):
@@ -4197,79 +4885,7 @@ def set_my_practice_availability(avail: PracticeAvailability, current_user: dict
         session = get_practice_session_basic(cur, avail.date)
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
-
-        if is_practice_datetime_in_past(session["date"], session.get("time")):
-            raise HTTPException(status_code=403, detail="Cannot modify availability after the practice session date and time has passed.")
-
-        if session["payment_requested"]:
-            raise HTTPException(
-                status_code=403, 
-                detail="Cannot modify availability after payment request has been enabled."
-            )
-
-        cur.execute(
-            f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-            (avail.date, current_user["email"]),
-        )
-        existing_row = cur.fetchone()
-        previous_status = dict(existing_row).get("status") if existing_row else None
-
-        session = get_practice_session_with_capacity(cur, avail.date)
-        if not session:
-            raise HTTPException(status_code=404, detail="Practice session not found")
-
-        option_choice = (avail.option_choice or "").strip().upper() or None
-        option_a_text, option_b_text = normalize_option_pair(session.get("option_a_text"), session.get("option_b_text"))
-        if option_choice and avail.status != "available":
-            raise HTTPException(status_code=400, detail="Option selection is only allowed when availability is Available")
-        if option_choice and option_choice not in {"A", "B"}:
-            raise HTTPException(status_code=400, detail="Invalid option choice")
-        if option_choice and not (option_a_text and option_b_text):
-            raise HTTPException(status_code=400, detail="This event does not have member options enabled")
-
-        is_new_available_vote = avail.status == 'available' and previous_status != 'available'
-        if is_new_available_vote and session["capacity_reached"]:
-            raise HTTPException(status_code=403, detail="Maximum capacity has been reached for this session. No more Available selections are allowed right now.")
-        
-        # If status is 'none', delete the availability record (deselection)
-        if avail.status == 'none':
-            cur.execute(
-                f"DELETE FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-                (avail.date, current_user["email"])
-            )
-            conn.commit()
-            return {"message": "Availability removed"}
-        
-        # Otherwise, insert or update the availability
-        if USE_POSTGRES:
-            cur.execute(
-                f"INSERT INTO practice_availability (date, user_email, user_full_name, status, option_choice) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET status = EXCLUDED.status, user_full_name = EXCLUDED.user_full_name, option_choice = EXCLUDED.option_choice",
-                (avail.date, current_user["email"], current_user["full_name"], avail.status, option_choice if avail.status == "available" else None),
-            )
-        else:
-            # SQLite doesn't support ON CONFLICT with multiple updates in the same way
-            cur.execute(
-                f"INSERT OR REPLACE INTO practice_availability (date, user_email, user_full_name, status, option_choice) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (avail.date, current_user["email"], current_user["full_name"], avail.status, option_choice if avail.status == "available" else None),
-            )
-        conn.commit()
-        updated_session = get_practice_session_with_capacity(cur, avail.date)
-        if is_new_available_vote and updated_session and updated_session["capacity_reached"]:
-            deliver_notification(
-                "session_capacity_reached",
-                {
-                    "date": updated_session["date"],
-                    "time": updated_session.get("time"),
-                    "location": updated_session.get("location"),
-                    "event_type": updated_session.get("event_type"),
-                    "event_title": updated_session.get("event_title"),
-                    "maximum_capacity": updated_session["maximum_capacity"],
-                    "available_count": updated_session["available_count"],
-                    "remaining_slots": updated_session["remaining_slots"],
-                },
-                related_date=avail.date,
-            )
-        return {"message": "Availability set"}
+        return set_practice_availability_for_session_id(cur, conn, session["id"], current_user["email"], current_user["full_name"], avail.status, avail.option_choice)
 
 @app.post("/api/admin/practice/availability")
 def admin_set_practice_availability(avail: AdminPracticeAvailability, current_user: dict = Depends(get_current_user)):
@@ -4294,137 +4910,39 @@ def admin_set_practice_availability(avail: AdminPracticeAvailability, current_us
         user_row = cur.fetchone()
         if not user_row:
             raise HTTPException(status_code=404, detail="User not found")
-        
-        user_full_name = user_row["full_name"]
-
-        cur.execute(
-            f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-            (avail.date, avail.user_email),
-        )
-        existing_row = cur.fetchone()
-        previous_status = dict(existing_row).get("status") if existing_row else None
-
         session = get_practice_session_with_capacity(cur, avail.date)
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
-
-        option_choice = (avail.option_choice or "").strip().upper() or None
-        option_a_text, option_b_text = normalize_option_pair(session.get("option_a_text"), session.get("option_b_text"))
-        if option_choice and avail.status != "available":
-            raise HTTPException(status_code=400, detail="Option selection is only allowed when availability is Available")
-        if option_choice and option_choice not in {"A", "B"}:
-            raise HTTPException(status_code=400, detail="Invalid option choice")
-        if option_choice and not (option_a_text and option_b_text):
-            raise HTTPException(status_code=400, detail="This event does not have member options enabled")
-
-        is_new_available_vote = avail.status == "available" and previous_status != "available"
-        if is_new_available_vote and session["capacity_reached"]:
-            raise HTTPException(status_code=403, detail="Maximum capacity has been reached for this session. No more Available selections are allowed right now.")
-        
-        # Set or update availability
-        if USE_POSTGRES:
-            cur.execute(
-                f"INSERT INTO practice_availability (date, user_email, user_full_name, status, option_choice) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET status = EXCLUDED.status, user_full_name = EXCLUDED.user_full_name, option_choice = EXCLUDED.option_choice",
-                (avail.date, avail.user_email, user_full_name, avail.status, option_choice if avail.status == "available" else None),
-            )
-        else:
-            cur.execute(
-                f"INSERT OR REPLACE INTO practice_availability (date, user_email, user_full_name, status, option_choice) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (avail.date, avail.user_email, user_full_name, avail.status, option_choice if avail.status == "available" else None),
-            )
-        conn.commit()
-
-        updated_session = get_practice_session_with_capacity(cur, avail.date)
-        if is_new_available_vote and updated_session and updated_session["capacity_reached"]:
-            deliver_notification(
-                "session_capacity_reached",
-                {
-                    "date": updated_session["date"],
-                    "time": updated_session.get("time"),
-                    "location": updated_session.get("location"),
-                    "event_type": updated_session.get("event_type"),
-                    "event_title": updated_session.get("event_title"),
-                    "maximum_capacity": updated_session["maximum_capacity"],
-                    "available_count": updated_session["available_count"],
-                    "remaining_slots": updated_session["remaining_slots"],
-                },
-                related_date=avail.date,
-            )
-        return {"message": "Availability set by admin"}
+        return set_practice_availability_for_session_id(cur, conn, session["id"], avail.user_email, user_row["full_name"], avail.status, avail.option_choice)
 
 @app.get("/api/practice/availability/{date_str}")
 def get_practice_availability_summary(date_str: str):
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(
-            f"SELECT user_email, user_full_name, status, option_choice FROM practice_availability WHERE date = {PLACEHOLDER}",
-            (date_str,),
-        )
-        rows = [dict(r) for r in cur.fetchall()]
-
-        # Use stored user_full_name to show original username at time of booking
-        # This prevents showing reactivated user's new name on historical records
-        available = []
-        tentative = []
-        not_available = []
-        option_a = []
-        option_b = []
         session = get_practice_session_with_capacity(cur, date_str)
-        option_a_text = session.get("option_a_text") if session else None
-        option_b_text = session.get("option_b_text") if session else None
-        
-        for r in rows:
-            # Use stored user_full_name (snapshot from booking time)
-            name = r.get("user_full_name")
-            
-            # If user_full_name is not set (old records before migration)
-            # We cannot reliably identify the original user because:
-            # - Email might now belong to a reactivated user with different name
-            # - Current name in users table might be wrong for historical record
-            # Best to show a placeholder indicating historical data
-            # Note: No spaces so frontend split(' ')[0] doesn't truncate it
-            if not name:
-                name = "[OldData]"
-            
-            if r["status"] == "available":
-                available.append(name)
-                if option_a_text and option_b_text and r.get("option_choice") == "A":
-                    option_a.append(name)
-                elif option_a_text and option_b_text and r.get("option_choice") == "B":
-                    option_b.append(name)
-            elif r["status"] == "tentative":
-                tentative.append(name)
-            elif r["status"] == "not_available":
-                not_available.append(name)
-        maximum_capacity = session["maximum_capacity"] if session else 100
-        available_count = len(available)
-        remaining_slots = max(maximum_capacity - available_count, 0)
-
-        # Return with email mapping for admin delete functionality
-        return {
-            "available": available,
-            "tentative": tentative,
-            "not_available": not_available,
-            "option_a": option_a,
-            "option_b": option_b,
-            "option_a_text": option_a_text,
-            "option_b_text": option_b_text,
-            "user_emails": {r["user_full_name"] or r["user_email"]: r["user_email"] for r in rows},
-            "maximum_capacity": maximum_capacity,
-            "available_count": available_count,
-            "remaining_slots": remaining_slots,
-            "capacity_reached": available_count >= maximum_capacity,
-        }
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+        return get_practice_availability_summary_by_session(cur, session)
 
 # --- Notifications ---
-def create_notification(user_email: str, notif_type: str, message: str, related_date: str = None):
+def create_notification(user_email: str, notif_type: str, message: str, related_date: str = None, practice_session_id: int = None):
     """Helper function to create a notification for a user"""
     with get_connection() as conn:
         cur = conn.cursor()
-        if related_date:
+        if related_date and practice_session_id is not None:
+            cur.execute(
+                f"INSERT INTO notifications (user_email, type, message, related_date, practice_session_id) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (user_email, notif_type, message, related_date, practice_session_id)
+            )
+        elif related_date:
             cur.execute(
                 f"INSERT INTO notifications (user_email, type, message, related_date) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
                 (user_email, notif_type, message, related_date)
+            )
+        elif practice_session_id is not None:
+            cur.execute(
+                f"INSERT INTO notifications (user_email, type, message, practice_session_id) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (user_email, notif_type, message, practice_session_id)
             )
         else:
             cur.execute(
@@ -4433,7 +4951,7 @@ def create_notification(user_email: str, notif_type: str, message: str, related_
             )
         conn.commit()
 
-def notify_all_users(notif_type: str, message: str, exclude_email: str = None, related_date: str = None):
+def notify_all_users(notif_type: str, message: str, exclude_email: str = None, related_date: str = None, practice_session_id: int = None):
     """Create notification for all users except the one who triggered it"""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -4442,7 +4960,7 @@ def notify_all_users(notif_type: str, message: str, exclude_email: str = None, r
         for user in users:
             email = user["email"] if USE_POSTGRES else user[0]
             if email != exclude_email:
-                create_notification(email, notif_type, message, related_date)
+                create_notification(email, notif_type, message, related_date, practice_session_id)
 
 @app.get("/api/admin/notification-settings", response_model=List[NotificationSettingOut])
 def list_notification_settings(current_user: dict = Depends(get_current_user)):
@@ -4465,6 +4983,31 @@ def notification_settings_meta(current_user: dict = Depends(get_current_user)):
         "notification_types": [
             {"value": notif_type, "label": defaults["display_name"]}
             for notif_type, defaults in NOTIFICATION_TYPE_DEFAULTS.items()
+        ],
+        "template_variables": [
+            "{{event_name}}",
+            "{{event_type}}",
+            "{{event_type_label}}",
+            "{{event_title}}",
+            "{{date}}",
+            "{{time}}",
+            "{{location}}",
+            "{{session_id}}",
+            "{{maximum_capacity}}",
+            "{{available_count}}",
+            "{{remaining_slots}}",
+            "{{member_name}}",
+            "{{full_name}}",
+            "{{author_name}}",
+            "{{content}}",
+            "{{content_preview}}",
+            "{{payments_link}}",
+            "{{club_name}}",
+            "{{time_suffix}}",
+            "{{location_suffix}}",
+            "{{location_comma_suffix}}",
+            "{{time_line}}",
+            "{{location_line}}",
         ],
     }
 
@@ -4670,13 +5213,24 @@ def get_notifications(current_user: dict = Depends(get_current_user)):
                 WHERE table_name='notifications' AND column_name='related_date'
             """)
             has_related_date = cur.fetchone() is not None
+            cur.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name='notifications' AND column_name='practice_session_id'
+            """)
+            has_practice_session_id = cur.fetchone() is not None
         else:
             cur.execute("PRAGMA table_info(notifications)")
             columns = [col[1] for col in cur.fetchall()]
             has_related_date = 'related_date' in columns
+            has_practice_session_id = 'practice_session_id' in columns
         
         # Build query based on column existence
-        if has_related_date:
+        if has_related_date and has_practice_session_id:
+            cur.execute(
+                f"SELECT id, type, message, read, related_date, practice_session_id, created_at FROM notifications WHERE user_email = {PLACEHOLDER} ORDER BY created_at DESC LIMIT 50",
+                (current_user["email"],)
+            )
+        elif has_related_date:
             cur.execute(
                 f"SELECT id, type, message, read, related_date, created_at FROM notifications WHERE user_email = {PLACEHOLDER} ORDER BY created_at DESC LIMIT 50",
                 (current_user["email"],)
@@ -4702,6 +5256,14 @@ def get_notifications(current_user: dict = Depends(get_current_user)):
                     related_date = related_date.split(' ')[0] if ' ' in related_date else related_date
             else:
                 related_date = None
+
+            if has_practice_session_id:
+                if USE_POSTGRES:
+                    practice_session_id = row["practice_session_id"]
+                else:
+                    practice_session_id = row[5] if has_related_date else None
+            else:
+                practice_session_id = None
             
             if USE_POSTGRES:
                 notifications.append({
@@ -4710,6 +5272,7 @@ def get_notifications(current_user: dict = Depends(get_current_user)):
                     "message": row["message"],
                     "read": row["read"],
                     "related_date": related_date,
+                    "practice_session_id": practice_session_id,
                     "created_at": row["created_at"],
                 })
             else:
@@ -4719,7 +5282,8 @@ def get_notifications(current_user: dict = Depends(get_current_user)):
                     "message": row[2],
                     "read": bool(row[3]),
                     "related_date": related_date,
-                    "created_at": row[5] if has_related_date else row[4],
+                    "practice_session_id": practice_session_id,
+                    "created_at": row[6] if has_related_date and has_practice_session_id else (row[5] if has_related_date else row[4]),
                 })
         return notifications
 
@@ -5113,13 +5677,13 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
         cur = conn.cursor()
         cur.execute(
             f"""
-            SELECT ps.date, ps.time, ps.location, ps.event_type, ps.event_title, ps.session_cost, ps.paid_by,
+            SELECT ps.id, ps.date, ps.time, ps.location, ps.event_type, ps.event_title, ps.session_cost, ps.paid_by,
                    COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
                    pa.status as user_status
             FROM practice_sessions ps
             LEFT JOIN practice_availability pa 
-                ON ps.date = pa.date AND pa.user_email = {PLACEHOLDER}
-            ORDER BY ps.date ASC
+                ON ps.id = pa.practice_session_id AND pa.user_email = {PLACEHOLDER}
+            ORDER BY ps.date ASC, COALESCE(ps.time, '') ASC, ps.id ASC
             """,
             (current_user["email"],)
         )
@@ -5131,9 +5695,10 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
             normalized_time = get_practice_effective_time(row_dict.get("time")) if row_dict.get("time") else "21:00"
             if is_practice_datetime_in_past(row_dict["date"], normalized_time):
                 continue
-            available_count = get_available_count_for_session(cur, row_dict["date"])
+            available_count = get_available_count_for_session_id(cur, row_dict["id"])
             maximum_capacity = normalize_maximum_capacity(row_dict["maximum_capacity"])
             sessions.append({
+                "id": row_dict["id"],
                 "date": row_dict["date"],
                 "time": normalized_time,
                 "location": row_dict["location"],
@@ -5157,7 +5722,7 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
         cur = conn.cursor()
         cur.execute(
             f"""
-            SELECT ps.date, ps.time, ps.location, ps.event_type, ps.event_title, ps.session_cost, ps.paid_by,
+            SELECT ps.id, ps.date, ps.time, ps.location, ps.event_type, ps.event_title, ps.session_cost, ps.paid_by,
                    u.full_name as paid_by_name,
                    u.bank_name as paid_by_bank_name,
                    u.sort_code as paid_by_sort_code,
@@ -5166,14 +5731,14 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                    COALESCE(pp.paid, {PLACEHOLDER}) as paid
             FROM practice_sessions ps
             INNER JOIN practice_availability pa 
-                ON ps.date = pa.date AND pa.user_email = {PLACEHOLDER}
+                ON ps.id = pa.practice_session_id AND pa.user_email = {PLACEHOLDER}
             LEFT JOIN practice_payments pp 
-                ON ps.date = pp.date AND pp.user_email = {PLACEHOLDER}
+                ON ps.id = pp.practice_session_id AND pp.user_email = {PLACEHOLDER}
             LEFT JOIN users u ON ps.paid_by = u.email
             WHERE pa.status = 'available' 
               AND ps.payment_requested = {PLACEHOLDER}
               AND (pp.paid IS NULL OR pp.paid = {PLACEHOLDER})
-            ORDER BY ps.date DESC
+            ORDER BY ps.date DESC, COALESCE(ps.time, '') DESC, ps.id DESC
             """,
             (
                 False if USE_POSTGRES else 0,
@@ -5190,18 +5755,12 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
             if USE_POSTGRES:
                 if not is_practice_datetime_in_past(row["date"], row.get("time")):
                     continue
-                # Calculate individual amount
-                # Get count of available users for this session
-                cur.execute(
-                    "SELECT COUNT(*) FROM practice_availability WHERE date = %s AND status = 'available'",
-                    (row["date"],)
-                )
-                count_row = cur.fetchone()
-                available_count = count_row["count"] if count_row and "count" in count_row else 0
+                available_count = get_available_count_for_session_id(cur, row["id"])
                 session_cost = float(row["session_cost"]) if row["session_cost"] is not None else 0
                 individual_amount = session_cost / available_count if available_count > 0 and session_cost > 0 else 0
                 
                 payments.append({
+                    "id": row["id"],
                     "date": row["date"],
                     "time": row["time"],
                     "location": row["location"],
@@ -5217,31 +5776,27 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                     "paid": row["paid"]
                 })
             else:
-                if not is_practice_datetime_in_past(row[0], row[1]):
+                if not is_practice_datetime_in_past(row[1], row[2]):
                     continue
-                # Calculate individual amount
-                cur.execute(
-                    "SELECT COUNT(*) FROM practice_availability WHERE date = ? AND status = 'available'",
-                    (row[0],)
-                )
-                available_count = cur.fetchone()[0]
-                session_cost = float(row[5]) if row[5] is not None else 0
+                available_count = get_available_count_for_session_id(cur, row[0])
+                session_cost = float(row[6]) if row[6] is not None else 0
                 individual_amount = session_cost / available_count if available_count > 0 and session_cost > 0 else 0
                 
                 payments.append({
-                    "date": row[0],
-                    "time": row[1],
-                    "location": row[2],
-                    "event_type": normalize_event_type(row[3]) if row[3] else "practice",
-                    "event_title": normalize_event_title(row[4], normalize_event_type(row[3]) if row[3] else "practice"),
+                    "id": row[0],
+                    "date": row[1],
+                    "time": row[2],
+                    "location": row[3],
+                    "event_type": normalize_event_type(row[4]) if row[4] else "practice",
+                    "event_title": normalize_event_title(row[5], normalize_event_type(row[4]) if row[4] else "practice"),
                     "session_cost": session_cost,
                     "individual_amount": round(individual_amount, 2),
-                    "paid_by": row[6],
-                    "paid_by_name": row[7],
-                    "paid_by_bank_name": row[8],
-                    "paid_by_sort_code": row[9],
-                    "paid_by_account_number": row[10],
-                    "paid": row[12]
+                    "paid_by": row[7],
+                    "paid_by_name": row[8],
+                    "paid_by_bank_name": row[9],
+                    "paid_by_sort_code": row[10],
+                    "paid_by_account_number": row[11],
+                    "paid": row[13],
                 })
         
         return {"payments": payments}

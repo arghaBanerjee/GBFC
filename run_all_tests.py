@@ -224,6 +224,7 @@ def main():
     # List of test files to run (in tests/ directory)
     test_files = [
         'test_database_compatibility.py',
+        'test_practice_session_id_foundation.py',
         'test_payment_request_comprehensive.py',
         'test_payment_notifications.py',
         'test_forum_crud.py',

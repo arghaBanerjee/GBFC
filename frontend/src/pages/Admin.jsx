@@ -42,7 +42,7 @@ export default function Admin({ user, loading }) {
 
   // Practice sessions
   const [practiceSessions, setPracticeSessions] = useState([])
-  const [editingPracticeDate, setEditingPracticeDate] = useState(null)
+  const [editingPracticeId, setEditingPracticeId] = useState(null)
   const [practiceDate, setPracticeDate] = useState('')
   const [practiceTime, setPracticeTime] = useState('21:00')
   const [practiceLocation, setPracticeLocation] = useState('Toryglen')
@@ -92,6 +92,7 @@ export default function Admin({ user, loading }) {
 
   const notificationPreviewSamples = {
     practice: {
+      session_id: '123',
       date: '2026-03-20',
       time: '7:30 PM',
       location: 'Glasgow Green',
@@ -123,6 +124,7 @@ export default function Admin({ user, loading }) {
       location_line: '',
     },
     payment_request: {
+      session_id: '123',
       date: '2026-04-02',
       time: '8:00 PM',
       location: 'Scotstoun Sports Campus',
@@ -140,6 +142,7 @@ export default function Admin({ user, loading }) {
       location_line: '📍 Scotstoun Sports Campus\n',
     },
     payment_confirmed: {
+      session_id: '123',
       date: '2026-04-02',
       time: '8:00 PM',
       location: 'Scotstoun Sports Campus',
@@ -156,6 +159,7 @@ export default function Admin({ user, loading }) {
       location_line: '📍 Scotstoun Sports Campus\n',
     },
     pending_payment_reminder: {
+      session_id: '123',
       date: '2026-04-02',
       time: '8:00 PM',
       location: 'Scotstoun Sports Campus',
@@ -171,6 +175,7 @@ export default function Admin({ user, loading }) {
       location_line: '📍 Scotstoun Sports Campus\n',
     },
     session_capacity_reached: {
+      session_id: '123',
       date: '2026-04-10',
       time: '7:00 PM',
       location: 'Glasgow Green',
@@ -188,6 +193,7 @@ export default function Admin({ user, loading }) {
       location_line: '📍 Glasgow Green\n',
     },
     practice_slot_available: {
+      session_id: '123',
       date: '2026-04-12',
       time: '8:30 PM',
       location: 'Scotstoun Sports Campus',
@@ -211,13 +217,13 @@ export default function Admin({ user, loading }) {
   }
 
   const notificationVariableMap = {
-    practice: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    practice: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     forum_post: ['{{author_name}}', '{{content}}', '{{content_preview}}'],
-    payment_request: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    payment_confirmed: ['{{member_name}}', '{{full_name}}', '{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    pending_payment_reminder: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{payments_link}}', '{{date}}', '{{time}}', '{{location}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    session_capacity_reached: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    practice_slot_available: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    payment_request: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    payment_confirmed: ['{{member_name}}', '{{full_name}}', '{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    pending_payment_reminder: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{payments_link}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    session_capacity_reached: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    practice_slot_available: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     welcome_signup: ['{{full_name}}', '{{club_name}}'],
   }
 
@@ -483,7 +489,7 @@ export default function Admin({ user, loading }) {
   }
 
   const resetPracticeForm = () => {
-    setEditingPracticeDate(null)
+    setEditingPracticeId(null)
     setPracticeDate('')
     setPracticeTime('21:00')
     setPracticeLocation('Toryglen')
@@ -591,7 +597,7 @@ export default function Admin({ user, loading }) {
 
   const handleSubmitPractice = async (e) => {
     e.preventDefault()
-    const isEditingPractice = Boolean(editingPracticeDate)
+    const isEditingPractice = Boolean(editingPracticeId)
     const trimmedOptionA = practiceOptionAText.trim()
     const trimmedOptionB = practiceOptionBText.trim()
 
@@ -622,28 +628,8 @@ export default function Admin({ user, loading }) {
     }
 
     let res
-    // If admin changes the date while editing, treat it as delete old + create new
-    if (editingPracticeDate && editingPracticeDate !== practiceDate) {
-      const del = await fetch(apiUrl(`/api/practice/${editingPracticeDate}`), {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!del.ok) {
-        const delData = await del.json().catch(() => ({}))
-        setMessage(delData?.detail || 'Failed to update event (delete old)')
-        setPracticeInlineStatus('')
-        return
-      }
-      res = await fetch(apiUrl('/api/practice/sessions'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      })
-    } else if (editingPracticeDate) {
-      res = await fetch(apiUrl(`/api/practice/sessions/${editingPracticeDate}`), {
+    if (editingPracticeId) {
+      res = await fetch(apiUrl(`/api/practice/sessions/id/${editingPracticeId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -699,7 +685,7 @@ export default function Admin({ user, loading }) {
     if (s.payment_requested) return
     setActiveTab('events')
     setPracticeInlineStatus('')
-    setEditingPracticeDate(s.date)
+    setEditingPracticeId(s.id)
     setPracticeDate(s.date || '')
     setPracticeTime(s.time || '')
     setPracticeLocation(s.location || '')
@@ -716,9 +702,9 @@ export default function Admin({ user, loading }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleDeletePractice = async (dateStr) => {
+  const handleDeletePractice = async (sessionId) => {
     if (!confirm('Delete this event?')) return
-    const res = await fetch(apiUrl(`/api/practice/${dateStr}`), {
+    const res = await fetch(apiUrl(`/api/practice/sessions/id/${sessionId}`), {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -728,6 +714,7 @@ export default function Admin({ user, loading }) {
       return
     }
     setMessage('Event deleted.')
+    if (editingPracticeId === sessionId) resetPracticeForm()
     refreshTabData('events')
   }
 
@@ -915,11 +902,23 @@ export default function Admin({ user, loading }) {
 
   const upcomingPracticeSessions = practiceSessions
     .filter((s) => new Date(`${s.date}T00:00:00`) >= todayAtMidnight)
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .sort((a, b) => {
+      const dateCompare = new Date(`${a.date}T00:00:00`) - new Date(`${b.date}T00:00:00`)
+      if (dateCompare !== 0) return dateCompare
+      const timeCompare = (a.time || '').localeCompare(b.time || '')
+      if (timeCompare !== 0) return timeCompare
+      return (a.id || 0) - (b.id || 0)
+    })
 
   const pastPracticeSessions = practiceSessions
     .filter((s) => new Date(`${s.date}T00:00:00`) < todayAtMidnight)
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .sort((a, b) => {
+      const dateCompare = new Date(`${b.date}T00:00:00`) - new Date(`${a.date}T00:00:00`)
+      if (dateCompare !== 0) return dateCompare
+      const timeCompare = (b.time || '').localeCompare(a.time || '')
+      if (timeCompare !== 0) return timeCompare
+      return (b.id || 0) - (a.id || 0)
+    })
 
   const sortedExpenses = [...expenses].sort((a, b) => {
     const dateCompare = new Date(`${b.expense_date}T00:00:00`) - new Date(`${a.expense_date}T00:00:00`)
@@ -1153,8 +1152,8 @@ export default function Admin({ user, loading }) {
               </select>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="nav-btn" type="submit" disabled={isSubmittingPractice} style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600', opacity: isSubmittingPractice ? 0.7 : 1, cursor: isSubmittingPractice ? 'not-allowed' : 'pointer' }}>{isSubmittingPractice ? (editingPracticeDate ? 'Updating Event...' : 'Adding Event...') : (editingPracticeDate ? 'Update Event' : 'Add Event')}</button>
-              {(editingPracticeDate || practiceDate || practiceTime !== '21:00' || practiceLocation || practiceEventType !== 'practice' || practiceEventTitle !== 'Session' || practiceDescription || practiceImageUrl || practiceYoutubeUrl || practiceOptionAText || practiceOptionBText || practiceSessionCost || practicePaidBy || practiceMaximumCapacity !== '18') && (
+              <button className="nav-btn" type="submit" disabled={isSubmittingPractice} style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600', opacity: isSubmittingPractice ? 0.7 : 1, cursor: isSubmittingPractice ? 'not-allowed' : 'pointer' }}>{isSubmittingPractice ? (editingPracticeId ? 'Updating Event...' : 'Adding Event...') : (editingPracticeId ? 'Update Event' : 'Add Event')}</button>
+              {(editingPracticeId || practiceDate || practiceTime !== '21:00' || practiceLocation || practiceEventType !== 'practice' || practiceEventTitle !== 'Session' || practiceDescription || practiceImageUrl || practiceYoutubeUrl || practiceOptionAText || practiceOptionBText || practiceSessionCost || practicePaidBy || practiceMaximumCapacity !== '18') && (
                 <button className="nav-btn" type="button" onClick={resetPracticeForm} disabled={isSubmittingPractice} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600', opacity: isSubmittingPractice ? 0.7 : 1, cursor: isSubmittingPractice ? 'not-allowed' : 'pointer' }}>
                   Clear
                 </button>
@@ -1197,8 +1196,15 @@ export default function Admin({ user, loading }) {
             <div style={{ display: 'grid', gap: '1rem' }}>
               {(practiceListTab === 'upcoming' ? upcomingPracticeSessions : pastPracticeSessions).map((s) => (
                 <div
-                  key={s.date}
-                  onClick={() => navigate(`/calendar?date=${encodeURIComponent(s.date)}`)}
+                  key={s.id}
+                  onClick={() => {
+                    const params = new URLSearchParams()
+                    params.set('date', s.date)
+                    if (s.id != null) {
+                      params.set('sessionId', String(s.id))
+                    }
+                    navigate(`/calendar?${params.toString()}`)
+                  }}
                   style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa', cursor: 'pointer' }}
                 >
                   {(() => {
@@ -1221,7 +1227,7 @@ export default function Admin({ user, loading }) {
                       </button>
                       <button
                         className="nav-btn admin-mobile-action-btn"
-                        onClick={(e) => { e.stopPropagation(); handleDeletePractice(s.date) }}
+                        onClick={(e) => { e.stopPropagation(); handleDeletePractice(s.id) }}
                         disabled={actionsLocked}
                         aria-label="Delete event"
                         title="Delete event"

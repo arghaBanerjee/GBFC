@@ -85,6 +85,7 @@ def setup_test_database():
             message TEXT NOT NULL,
             read BOOLEAN DEFAULT FALSE,
             related_date DATE,
+            practice_session_id INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)

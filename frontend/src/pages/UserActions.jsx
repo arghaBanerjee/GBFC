@@ -122,21 +122,22 @@ function UserActions({ user, loading }) {
     }
   }
 
-  const handleAvailabilityChange = async (date, status) => {
-    if (updatingAvailabilityDates[date]) return
+  const handleAvailabilityChange = async (sessionId, status) => {
+    if (updatingAvailabilityDates[sessionId]) return
 
     let previousSessions = upcomingSessions
 
     try {
       const token = localStorage.getItem('token')
-      const currentStatus = upcomingSessions.find((session) => session.date === date)?.user_status
+      const currentSession = upcomingSessions.find((session) => session.id === sessionId)
+      const currentStatus = currentSession?.user_status
       const newStatus = currentStatus === status ? 'none' : status
       previousSessions = upcomingSessions
       setError('')
-      setUpdatingAvailabilityDates(prev => ({ ...prev, [date]: true }))
+      setUpdatingAvailabilityDates(prev => ({ ...prev, [sessionId]: true }))
 
       setUpcomingSessions(prev => prev.map(session => {
-        if (session.date !== date) return session
+        if (session.id !== sessionId) return session
 
         const previousWasAvailable = session.user_status === 'available'
         const nextIsAvailable = newStatus === 'available'
@@ -152,7 +153,7 @@ function UserActions({ user, loading }) {
         }
       }))
 
-      const response = await fetch(`${API_URL}/api/practice/${date}/availability`, {
+      const response = await fetch(`${API_URL}/api/practice/sessions/id/${sessionId}/availability`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,14 +174,14 @@ function UserActions({ user, loading }) {
       setError('Failed to update availability')
       console.error(err)
     } finally {
-      setUpdatingAvailabilityDates(prev => ({ ...prev, [date]: false }))
+      setUpdatingAvailabilityDates(prev => ({ ...prev, [sessionId]: false }))
     }
   }
 
-  const handlePaymentConfirmation = async (date, paid) => {
+  const handlePaymentConfirmation = async (sessionId, paid) => {
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch(`${API_URL}/api/practice/${date}/payment`, {
+      const response = await fetch(`${API_URL}/api/practice/sessions/id/${sessionId}/payment`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -214,8 +215,13 @@ function UserActions({ user, loading }) {
     return title || getEventTypeLabel(item?.event_type)
   }
 
-  const navigateToPracticeDate = (date) => {
-    navigate(`/calendar?date=${date}`)
+  const navigateToPracticeDate = (date, sessionId) => {
+    const params = new URLSearchParams()
+    params.set('date', date)
+    if (sessionId != null) {
+      params.set('sessionId', String(sessionId))
+    }
+    navigate(`/calendar?${params.toString()}`)
   }
 
   if (loading || !user) {
@@ -270,11 +276,11 @@ function UserActions({ user, loading }) {
               <p className="empty-message">No upcoming events</p>
             ) : (
               upcomingSessions.map(session => (
-                <div key={session.date} className="session-card">
+                <div key={session.id} className="session-card">
                   <button
                     type="button"
                     className="card-header clickable-card-header"
-                    onClick={() => navigateToPracticeDate(session.date)}
+                    onClick={() => navigateToPracticeDate(session.date, session.id)}
                   >
                     <div className="card-header-main">
                       <h3>{getEventTypeLabel(session.event_type)}&nbsp;</h3>
@@ -305,24 +311,24 @@ function UserActions({ user, loading }) {
                       <div className="availability-buttons">
                         <button
                           className={`availability-btn available ${session.user_status === 'available' ? 'selected' : ''}`}
-                          onClick={() => handleAvailabilityChange(session.date, 'available')}
-                          disabled={updatingAvailabilityDates[session.date] || (session.capacity_reached && session.user_status !== 'available')}
+                          onClick={() => handleAvailabilityChange(session.id, 'available')}
+                          disabled={updatingAvailabilityDates[session.id] || (session.capacity_reached && session.user_status !== 'available')}
                         >
-                          {updatingAvailabilityDates[session.date] && session.user_status === 'available' ? 'Updating...' : 'Available'}
+                          {updatingAvailabilityDates[session.id] && session.user_status === 'available' ? 'Updating...' : 'Available'}
                         </button>
                         <button
                           className={`availability-btn tentative ${session.user_status === 'tentative' ? 'selected' : ''}`}
-                          onClick={() => handleAvailabilityChange(session.date, 'tentative')}
-                          disabled={updatingAvailabilityDates[session.date]}
+                          onClick={() => handleAvailabilityChange(session.id, 'tentative')}
+                          disabled={updatingAvailabilityDates[session.id]}
                         >
-                          {updatingAvailabilityDates[session.date] && session.user_status === 'tentative' ? 'Updating...' : 'Tentative'}
+                          {updatingAvailabilityDates[session.id] && session.user_status === 'tentative' ? 'Updating...' : 'Tentative'}
                         </button>
                         <button
                           className={`availability-btn not-available ${session.user_status === 'not_available' ? 'selected' : ''}`}
-                          onClick={() => handleAvailabilityChange(session.date, 'not_available')}
-                          disabled={updatingAvailabilityDates[session.date]}
+                          onClick={() => handleAvailabilityChange(session.id, 'not_available')}
+                          disabled={updatingAvailabilityDates[session.id]}
                         >
-                          {updatingAvailabilityDates[session.date] && session.user_status === 'not_available' ? 'Updating...' : 'Unavailable'}
+                          {updatingAvailabilityDates[session.id] && session.user_status === 'not_available' ? 'Updating...' : 'Unavailable'}
                         </button>
                       </div>
                       {session.capacity_reached && session.user_status !== 'available' && (
@@ -342,11 +348,11 @@ function UserActions({ user, loading }) {
               <p className="empty-message">No pending payments</p>
             ) : (
               pendingPayments.map(payment => (
-                <div key={payment.date} className="payment-card">
+                <div key={payment.id} className="payment-card">
                   <button
                     type="button"
                     className="card-header clickable-card-header"
-                    onClick={() => navigateToPracticeDate(payment.date)}
+                    onClick={() => navigateToPracticeDate(payment.date, payment.id)}
                   >
                     <div className="card-header-main">
                       <h3>{getEventTypeLabel(payment.event_type)}&nbsp;</h3>
@@ -389,7 +395,7 @@ function UserActions({ user, loading }) {
                         <input
                           type="checkbox"
                           checked={payment.paid}
-                          onChange={(e) => handlePaymentConfirmation(payment.date, e.target.checked)}
+                          onChange={(e) => handlePaymentConfirmation(payment.id, e.target.checked)}
                         />
                         <span>Paid £{payment.individual_amount} to {payment.paid_by_name || payment.paid_by}</span>
                       </label>

@@ -163,11 +163,11 @@ function App() {
     }
   }, [])
 
-  // Poll notifications every 5 seconds
+  // Poll notifications every 30 seconds
   useEffect(() => {
     if (!user) return
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 10000)
+    const interval = setInterval(fetchNotifications, 30000)
     return () => clearInterval(interval)
   }, [user])
 
@@ -426,7 +426,12 @@ function App() {
                               notif.type === 'practice_slot_available'
                             ) {
                               if (notif.related_date) {
-                                navigate(`/calendar?date=${notif.related_date}`)
+                                const params = new URLSearchParams()
+                                params.set('date', notif.related_date)
+                                if (notif.practice_session_id != null) {
+                                  params.set('sessionId', String(notif.practice_session_id))
+                                }
+                                navigate(`/calendar?${params.toString()}`)
                               } else {
                                 navigate('/calendar')
                               }
