@@ -1166,7 +1166,7 @@ export default function Practice({ user }) {
                         {selectedSession?.payment_requested ? `(Paid ${paidAvailablePlayersCount}/${(voteSummary?.available || []).length})` : `(${(voteSummary?.available || []).length})`}
                       </div>
                     )}
-                    <div style={{ marginTop: '0.5rem' }}>
+                    <div style={{ marginTop: '0.5rem', paddingTop: '1rem' }}>
                       {(voteSummary?.available || []).map((n, idx) => {
                         const userEmail = voteSummary?.user_emails?.[n] || n
                         const hasPaid = payments[userEmail] || false
@@ -1184,7 +1184,7 @@ export default function Practice({ user }) {
                   <div style={{ border: '1px solid color-mix(in srgb, var(--theme-warning) 28%, white)', borderRadius: '0.75rem', padding: '0.75rem', background: 'var(--theme-warning-soft)' }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--theme-warning-strong)' }}>Tentative</div>
                     {(voteSummary?.tentative || []).length > 0 && <div style={{ fontSize: '0.875rem', color: 'var(--theme-warning-strong)', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.tentative || []).length})</div>}
-                    <div style={{ marginTop: '0.5rem' }}>
+                    <div style={{ marginTop: '0.5rem', paddingTop: '1rem' }}>
                       {(voteSummary?.tentative || []).map((n, idx) => (
                         <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
                           <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
@@ -1195,7 +1195,7 @@ export default function Practice({ user }) {
                   <div style={{ border: '1px solid color-mix(in srgb, var(--theme-danger) 28%, white)', borderRadius: '0.75rem', padding: '0.75rem', background: 'var(--theme-danger-soft)' }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--theme-danger-strong)' }}>Unavailable</div>
                     {(voteSummary?.not_available || []).length > 0 && <div style={{ fontSize: '0.875rem', color: 'var(--theme-danger-strong)', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.not_available || []).length})</div>}
-                    <div style={{ marginTop: '0.5rem' }}>
+                    <div style={{ marginTop: '0.5rem', paddingTop: '1rem' }}>
                       {(voteSummary?.not_available || []).map((n, idx) => (
                         <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
                           <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
