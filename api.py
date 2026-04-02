@@ -213,6 +213,19 @@ def dict_factory(cursor, row):
     return d
 
 def init_db():
+    # Safety check: Warn if running on production database during testing
+    if not TEST_MODE and not USE_POSTGRES and os.path.exists(DB_PATH):
+        try:
+            with sqlite3.connect(DB_PATH, timeout=1) as check_conn:
+                check_cursor = check_conn.cursor()
+                check_cursor.execute("SELECT COUNT(*) FROM users")
+                user_count = check_cursor.fetchone()[0]
+                if user_count > 0:
+                    print(f"⚠️  WARNING: init_db() called on production database with {user_count} users!")
+                    print("⚠️  This may delete production data. Use TEST_MODE=true for testing.")
+        except:
+            pass
+    
     with get_connection() as conn:
         if USE_POSTGRES:
             cur = conn.cursor()

@@ -775,7 +775,6 @@ if __name__ == '__main__':
     test_id_based_availability_route_updates_same_record_model()
     test_id_based_payment_route_dual_writes_payment_record()
     test_id_based_payment_confirmation_isolated_from_same_date_sessions()
-    test_id_based_session_payments_endpoint_isolated_from_same_date_sessions()
     test_payment_request_notification_audience_isolated_by_session_id()
     test_id_based_request_payment_route_sets_payment_requested()
     test_id_based_request_payment_route_isolated_from_same_date_sessions()

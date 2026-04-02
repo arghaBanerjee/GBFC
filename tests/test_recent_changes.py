@@ -6,6 +6,11 @@ Tests:
 3. Session management (frontend only - no DB test needed)
 """
 
+import os
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
+
 import requests
 import json
 

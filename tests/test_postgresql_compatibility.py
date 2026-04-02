@@ -3,6 +3,11 @@ PostgreSQL Compatibility Test for Forgot Password Feature
 Verifies that the new forgot password endpoint uses proper PostgreSQL syntax
 """
 
+import os
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
+
 def test_placeholder_usage():
     """Test that PLACEHOLDER variable is used correctly"""
     print("\n=== Testing PLACEHOLDER Usage ===")

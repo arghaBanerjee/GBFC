@@ -3,8 +3,12 @@ Regression Test for Forgot Password Feature
 Tests that the new forgot password feature doesn't break existing login functionality
 """
 
-import sqlite3
 import os
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
+
+import sqlite3
 
 # Test database path
 TEST_DB = "test_regression.db"

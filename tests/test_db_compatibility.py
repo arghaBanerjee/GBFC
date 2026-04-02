@@ -3,6 +3,10 @@
 Test script to verify database compatibility for both SQLite and PostgreSQL
 """
 import os
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
+
 import sys
 
 def test_sqlite():

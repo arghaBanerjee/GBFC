@@ -1,7 +1,13 @@
+#!/usr/bin/env python3
 """
 Test script to verify birthday field compatibility with both SQLite and PostgreSQL.
 This tests the recent changes made to add birthday field to the users table.
 """
+
+import os
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
 
 import sqlite3
 import sys
