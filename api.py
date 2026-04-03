@@ -989,6 +989,9 @@ def init_db():
                 print(f"Warning: Could not add auth session expiry column: {e}")
                 conn.rollback()
             conn.commit()
+
+            ensure_practice_session_ids(cur, conn)
+
         else:
             # SQLite version (for local development)
             cur = conn.cursor()
