@@ -5655,7 +5655,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
             FROM practice_sessions ps
             LEFT JOIN practice_availability pa ON ps.id = pa.practice_session_id
             LEFT JOIN users u ON pa.user_email = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-            LEFT JOIN users payer ON ps.paid_by = payer.email AND (payer.is_deleted = FALSE OR u.is_deleted IS NULL)
+            LEFT JOIN users payer ON ps.paid_by = payer.email AND (payer.is_deleted = FALSE OR payer.is_deleted IS NULL)
             LEFT JOIN practice_payments pp ON ps.id = pp.practice_session_id AND pa.user_email = pp.user_email
             WHERE ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
                 AND pa.status IS NOT NULL
