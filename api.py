@@ -1904,11 +1904,64 @@ def ensure_postgres_practice_session_ids(cur, conn):
         cur.execute("ALTER SEQUENCE practice_sessions_id_seq OWNED BY practice_sessions.id")
         cur.execute("SELECT setval('practice_sessions_id_seq', COALESCE((SELECT MAX(id) FROM practice_sessions), 0) + 1, false)")
         cur.execute("UPDATE practice_sessions SET id = nextval('practice_sessions_id_seq') WHERE id IS NULL")
+        cur.execute("ALTER TABLE practice_sessions ALTER COLUMN id SET NOT NULL")
         cur.execute("ALTER TABLE practice_sessions ALTER COLUMN id SET DEFAULT nextval('practice_sessions_id_seq')")
         cur.execute(
             """
             DO $$
             BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_constraint c
+                    JOIN pg_class t ON t.oid = c.conrelid
+                    WHERE t.relname = 'practice_sessions'
+                      AND c.contype = 'p'
+                      AND c.conname <> 'practice_sessions_pkey'
+                ) THEN
+                    EXECUTE (
+                        SELECT 'ALTER TABLE practice_sessions DROP CONSTRAINT ' || quote_ident(c.conname)
+                        FROM pg_constraint c
+                        JOIN pg_class t ON t.oid = c.conrelid
+                        WHERE t.relname = 'practice_sessions'
+                          AND c.contype = 'p'
+                          AND c.conname <> 'practice_sessions_pkey'
+                        LIMIT 1
+                    );
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_constraint c
+                    JOIN pg_class t ON t.oid = c.conrelid
+                    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
+                    WHERE t.relname = 'practice_sessions'
+                      AND c.contype = 'p'
+                      AND a.attname <> 'id'
+                ) THEN
+                    EXECUTE (
+                        SELECT 'ALTER TABLE practice_sessions DROP CONSTRAINT ' || quote_ident(c.conname)
+                        FROM pg_constraint c
+                        JOIN pg_class t ON t.oid = c.conrelid
+                        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
+                        WHERE t.relname = 'practice_sessions'
+                          AND c.contype = 'p'
+                          AND a.attname <> 'id'
+                        LIMIT 1
+                    );
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint c
+                    JOIN pg_class t ON t.oid = c.conrelid
+                    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
+                    WHERE t.relname = 'practice_sessions'
+                      AND c.contype = 'p'
+                      AND a.attname = 'id'
+                ) THEN
+                    ALTER TABLE practice_sessions ADD CONSTRAINT practice_sessions_pkey PRIMARY KEY (id);
+                END IF;
+
                 IF NOT EXISTS (
                     SELECT 1 FROM pg_constraint
                     WHERE conname = 'practice_sessions_id_key'
