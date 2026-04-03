@@ -3,8 +3,12 @@ PostgreSQL and SQLite Compatibility Test for Profile Features
 Tests all profile-related endpoints and queries for database compatibility
 """
 
-import sqlite3
 import os
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
+
+import sqlite3
 
 TEST_DB = "test_profile_compat.db"
 

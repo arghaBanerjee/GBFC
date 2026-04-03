@@ -9,6 +9,7 @@ export default function Practice({ user }) {
   const selectedSessionRef = useRef(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(null)
+  const [selectedSessionId, setSelectedSessionId] = useState(null)
   const [availability, setAvailability] = useState({})
   const [adminSessions, setAdminSessions] = useState([])
   const [voteSummary, setVoteSummary] = useState(null)
@@ -98,21 +99,33 @@ export default function Practice({ user }) {
     return title || getEventTypeLabel(session.event_type)
   }
 
+  const getSessionAvailabilityStatus = (sessionSummary, currentUser) => {
+    if (!sessionSummary || !currentUser?.email) return null
+    const matchesUser = (name) => sessionSummary.user_emails?.[name] === currentUser.email
+    if ((sessionSummary.available || []).some(matchesUser)) return 'available'
+    if ((sessionSummary.tentative || []).some(matchesUser)) return 'tentative'
+    if ((sessionSummary.not_available || []).some(matchesUser)) return 'not_available'
+    return null
+  }
+
   const mergeUpdatedSession = (updatedSession) => {
-    if (!updatedSession?.date) return
+    if (!updatedSession?.id) return
     setAdminSessions((prev) => {
-      const existingIndex = prev.findIndex((session) => session.date === updatedSession.date)
+      const existingIndex = prev.findIndex((session) => session.id === updatedSession.id)
       if (existingIndex === -1) {
-        return [...prev, updatedSession]
+        return [...prev, updatedSession].sort((a, b) => {
+          if (a.date !== b.date) return a.date.localeCompare(b.date)
+          return (a.time || '').localeCompare(b.time || '') || a.id - b.id
+        })
       }
       return prev.map((session) =>
-        session.date === updatedSession.date ? { ...session, ...updatedSession } : session
+        session.id === updatedSession.id ? { ...session, ...updatedSession } : session
       )
     })
   }
 
-  const updateSessionCapacityState = (dateStr, updater) => {
-    if (!dateStr) return
+  const updateSessionCapacityState = (sessionId, updater) => {
+    if (!sessionId) return
     setVoteSummary((prev) => {
       if (!prev) return prev
       const next = updater(prev)
@@ -125,7 +138,7 @@ export default function Practice({ user }) {
       }
     })
     setAdminSessions((prev) => prev.map((session) => {
-      if (session.date !== dateStr) return session
+      if (session.id !== sessionId) return session
       const availableCount = voteSummary?.available_count ?? session.available_count ?? 0
       const maximumCapacityValue = voteSummary?.maximum_capacity ?? session.maximum_capacity ?? 100
       const nextSummary = updater({
@@ -142,14 +155,15 @@ export default function Practice({ user }) {
     }))
   }
 
-  const refreshSelectedDateData = (dateStr, { refreshAvailabilityMap = false, refreshPayments = false } = {}) => {
+  const refreshSelectedDateData = (session, { refreshAvailabilityMap = false, refreshPayments = false } = {}) => {
+    if (!session?.id) return Promise.resolve()
     const requests = [
-      fetch(apiUrl(`/api/practice/availability/${dateStr}`))
+      fetch(apiUrl(`/api/practice/sessions/id/${session.id}/availability`))
         .then(r => r.json())
         .then((data) => {
           setVoteSummary(data)
           mergeUpdatedSession({
-            date: dateStr,
+            id: session.id,
             maximum_capacity: data.maximum_capacity,
             available_count: data.available_count,
             remaining_slots: data.remaining_slots,
@@ -172,7 +186,7 @@ export default function Practice({ user }) {
 
     if (refreshPayments && token) {
       requests.push(
-        fetch(apiUrl(`/api/practice/sessions/${dateStr}/payments`), {
+        fetch(apiUrl(`/api/practice/sessions/id/${session.id}/payments`), {
           headers: { Authorization: `Bearer ${token}` },
         })
           .then(r => r.json())
@@ -188,18 +202,23 @@ export default function Practice({ user }) {
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const dateStr = params.get('date')
+    const sessionIdParam = params.get('sessionId')
     const dt = parseDateStr(dateStr)
     if (!dt) {
       setSelectedDate(null)
+      setSelectedSessionId(null)
       setCurrentDate(new Date())
       return
     }
 
-    const currentSelected = selectedDate ? formatDateStr(selectedDate) : null
-    if (currentSelected === dateStr) return
+    const parsedSessionId = sessionIdParam != null ? Number(sessionIdParam) : null
+    setSelectedSessionId(Number.isInteger(parsedSessionId) ? parsedSessionId : null)
 
-    setSelectedDate(dt)
-    setCurrentDate(new Date(dt.getFullYear(), dt.getMonth(), 1))
+    const currentSelected = selectedDate ? formatDateStr(selectedDate) : null
+    if (currentSelected !== dateStr) {
+      setSelectedDate(dt)
+      setCurrentDate(new Date(dt.getFullYear(), dt.getMonth(), 1))
+    }
   }, [location.search])
 
   useEffect(() => {
@@ -248,7 +267,9 @@ export default function Practice({ user }) {
 
   useEffect(() => {
     if (!selectedDate) return
-    const target = selectedSessionRef.current
+    const target = selectedSessionId
+      ? document.getElementById('selected-session-details')
+      : document.getElementById('selected-date-details')
     if (!target) return
     window.requestAnimationFrame(() => {
       const header = document.querySelector('.top-nav')
@@ -260,7 +281,7 @@ export default function Practice({ user }) {
         behavior: 'smooth',
       })
     })
-  }, [selectedDate])
+  }, [selectedDate, selectedSessionId])
 
   const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
@@ -271,20 +292,24 @@ export default function Practice({ user }) {
   const handlePrevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))
     setSelectedDate(null)
+    setSelectedSessionId(null)
   }
 
   const handleNextMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))
     setSelectedDate(null)
+    setSelectedSessionId(null)
   }
 
   const handleDateClick = (day) => {
     const clicked = new Date(currentDate.getFullYear(), currentDate.getMonth(), day, 12, 0, 0, 0)
     setSelectedDate(clicked)
+    setSelectedSessionId(null)
 
     const dateStr = formatDateStr(clicked)
     const params = new URLSearchParams(location.search)
     params.set('date', dateStr)
+    params.delete('sessionId')
     navigate({ pathname: location.pathname, search: params.toString() }, { replace: false })
   }
 
@@ -295,13 +320,15 @@ export default function Practice({ user }) {
 
   const handleAvailability = (status) => {
     if (!user || availabilityUpdating) return
+    if (!selectedSession) return
     
-    const dateStr = formatDateStr(selectedDate)
+    const dateStr = selectedSession.date
+    const sessionAvailabilityKey = String(selectedSession.id)
     if (isSessionPast(dateStr, selectedSession?.time)) {
       setAvailabilityError('Cannot change availability after session time has passed.')
       return
     }
-    const currentStatus = availability[dateStr]
+    const currentStatus = selectedStatus
     const previousAvailability = availability
     const previousVoteSummary = voteSummary
     
@@ -314,15 +341,15 @@ export default function Practice({ user }) {
     if (isDeselecting) {
       setAvailability(prev => {
         const updated = { ...prev }
-        delete updated[dateStr]
+        delete updated[sessionAvailabilityKey]
         return updated
       })
     } else {
-      setAvailability(prev => ({ ...prev, [dateStr]: newStatus }))
+      setAvailability(prev => ({ ...prev, [sessionAvailabilityKey]: newStatus }))
     }
 
     if (currentStatus === 'available' || newStatus === 'available') {
-      updateSessionCapacityState(dateStr, (prev) => {
+      updateSessionCapacityState(selectedSession.id, (prev) => {
         const available = [...(prev.available || [])]
         const currentName = user.full_name || user.email
         const filteredAvailable = available.filter((name) => {
@@ -343,13 +370,13 @@ export default function Practice({ user }) {
       })
     }
     
-    fetch(apiUrl(`/api/practice/availability`), {
+    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ date: dateStr, status: newStatus }),
+      body: JSON.stringify({ status: newStatus }),
     })
       .then(r => {
         if (!r.ok) {
@@ -360,7 +387,7 @@ export default function Practice({ user }) {
         return r.json()
       })
       .then(() => {
-        return refreshSelectedDateData(dateStr)
+        return refreshSelectedDateData(selectedSession)
       })
       .catch(err => {
         setAvailability(previousAvailability)
@@ -374,7 +401,6 @@ export default function Practice({ user }) {
   const handleOptionSelection = (optionChoice) => {
     if (!user || !selectedSession || selectedStatus !== 'available' || optionSelectionUpdating) return
 
-    const dateStr = formatDateStr(selectedDate)
     const currentChoice = selectedOptionChoice
     const nextChoice = currentChoice === optionChoice ? null : optionChoice
     const previousVoteSummary = voteSummary
@@ -395,14 +421,13 @@ export default function Practice({ user }) {
       }
     })
 
-    fetch(apiUrl('/api/practice/availability'), {
+    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        date: dateStr,
         status: 'available',
         option_choice: nextChoice,
       }),
@@ -415,7 +440,7 @@ export default function Practice({ user }) {
         }
         return r.json()
       })
-      .then(() => refreshSelectedDateData(dateStr))
+      .then(() => refreshSelectedDateData(selectedSession))
       .catch(err => {
         setVoteSummary(previousVoteSummary)
         setAvailabilityError(err.message || 'Failed to update option selection')
@@ -427,14 +452,14 @@ export default function Practice({ user }) {
   const handleSavePaymentInfo = () => {
     if (!selectedSession) return
     
-    fetch(apiUrl(`/api/practice/sessions/${selectedDateStr}`), {
+    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}`), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        date: selectedDateStr,
+        date: selectedSession.date,
         time: selectedSession.time,
         location: selectedSession.location,
         event_type: selectedSession.event_type,
@@ -485,7 +510,7 @@ export default function Practice({ user }) {
       return
     }
     
-    fetch(apiUrl(`/api/practice/sessions/${selectedDateStr}/request-payment`), {
+    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/request-payment`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -519,7 +544,7 @@ export default function Practice({ user }) {
       [user.email]: paid,
     }))
     
-    fetch(apiUrl(`/api/practice/sessions/${selectedDateStr}/payment`), {
+    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/payment`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -537,7 +562,7 @@ export default function Practice({ user }) {
       })
       .then(() => {
         // Refresh payment data
-        return fetch(apiUrl(`/api/practice/sessions/${selectedDateStr}/payments`), {
+        return fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/payments`), {
           headers: { Authorization: `Bearer ${token}` }
         })
           .then(r => r.json())
@@ -554,21 +579,19 @@ export default function Practice({ user }) {
   }
 
   const handleAdminSetAvailability = () => {
-    if (!selectedUserEmail || adminAvailabilityUpdating) {
+    if (!selectedUserEmail || adminAvailabilityUpdating || !selectedSession) {
       return
     }
-    const selectedDateValue = formatDateStr(selectedDate)
     setAdminAvailabilityError('')
     setAdminAvailabilityUpdating(true)
     
-    fetch(apiUrl('/api/admin/practice/availability'), {
+    fetch(apiUrl(`/api/admin/practice/sessions/id/${selectedSession.id}/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        date: selectedDateValue,
         user_email: selectedUserEmail,
         status: adminSelectedStatus,
       }),
@@ -582,7 +605,7 @@ export default function Practice({ user }) {
         return r.json()
       })
       .then(() => {
-        return refreshSelectedDateData(selectedDateValue, { refreshAvailabilityMap: selectedUserEmail === user?.email })
+        return refreshSelectedDateData(selectedSession, { refreshAvailabilityMap: selectedUserEmail === user?.email })
       })
       .then(() => {
         setSelectedUserEmail('')
@@ -595,21 +618,20 @@ export default function Practice({ user }) {
   }
 
   const handleAdminDeleteAvailability = (userEmail) => {
+    if (!selectedSession) return
     if (!confirm('Are you sure you want to remove this user\'s availability?')) {
       return
     }
-    const selectedDateValue = formatDateStr(selectedDate)
     setAdminAvailabilityError('')
     setAdminAvailabilityUpdating(true)
     
-    fetch(apiUrl('/api/admin/practice/availability'), {
+    fetch(apiUrl(`/api/admin/practice/sessions/id/${selectedSession.id}/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        date: selectedDateValue,
         user_email: userEmail,
         status: 'delete',
       }),
@@ -623,7 +645,7 @@ export default function Practice({ user }) {
         return r.json()
       })
       .then(() => {
-        return refreshSelectedDateData(selectedDateValue, { refreshAvailabilityMap: userEmail === user?.email })
+        return refreshSelectedDateData(selectedSession, { refreshAvailabilityMap: userEmail === user?.email })
       })
       .catch(err => {
         setAdminAvailabilityError(err.message || 'Failed to delete availability')
@@ -677,11 +699,22 @@ export default function Practice({ user }) {
 
     return calendar.map((day, index) => {
       const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      const sessionForDate = adminSessions.find(s => s.date === dateStr)
+      const sessionsForDate = adminSessions.filter(s => s.date === dateStr)
       const isSelected = Boolean(day) && formatDateStr(selectedDate) === dateStr
+      const uniqueEventTypes = [...new Set(sessionsForDate.map((session) => session.event_type || 'practice'))]
 
-      let backgroundColor = '#ffffff'
-      if (sessionForDate) backgroundColor = eventTypeColorMap[sessionForDate.event_type] || eventTypeColorMap.practice
+      let background = '#ffffff'
+      if (uniqueEventTypes.length === 1) {
+        background = eventTypeColorMap[uniqueEventTypes[0]] || eventTypeColorMap.practice
+      } else if (uniqueEventTypes.length > 1) {
+        const segmentSize = 100 / uniqueEventTypes.length
+        background = `linear-gradient(135deg, ${uniqueEventTypes.map((eventType, idx) => {
+          const color = eventTypeColorMap[eventType] || eventTypeColorMap.practice
+          const start = Math.round(idx * segmentSize)
+          const end = Math.round((idx + 1) * segmentSize)
+          return `${color} ${start}%, ${color} ${end}%`
+        }).join(', ')})`
+      }
 
       return (
         <div
@@ -692,7 +725,7 @@ export default function Practice({ user }) {
             padding: '0.5rem',
             margin: '2px',
             minHeight: '40px',
-            backgroundColor,
+            background,
             cursor: day ? 'pointer' : 'default',
             borderRadius: '6px',
             boxShadow: isSelected ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 0 3px color-mix(in srgb, var(--theme-accent) 24%, transparent), 0 8px 20px rgba(0, 0, 0, 0.14)' : 'none',
@@ -701,15 +734,30 @@ export default function Practice({ user }) {
             fontWeight: isSelected ? '700' : '400',
           }}
         >
-          {day}
+          <div>{day}</div>
+          {sessionsForDate.length > 1 && (
+            <div style={{ marginTop: '0.25rem', fontSize: '0.625rem', fontWeight: '700', color: 'var(--theme-heading)' }}>
+              {sessionsForDate.length} events
+            </div>
+          )}
         </div>
       )
     })
   }
 
   const selectedDateStr = selectedDate ? formatDateStr(selectedDate) : null
-  const selectedSession = adminSessions.find(s => s.date === selectedDateStr)
-  const selectedStatus = selectedDateStr ? availability[selectedDateStr] : null
+  const urlParams = new URLSearchParams(location.search)
+  const requestedSessionIdParam = urlParams.get('sessionId')
+  const requestedSessionId = requestedSessionIdParam != null ? Number(requestedSessionIdParam) : null
+  const hasRequestedSessionId = Number.isInteger(requestedSessionId)
+  const sessionsForSelectedDate = selectedDateStr
+    ? adminSessions.filter((session) => session.date === selectedDateStr)
+    : []
+  const hasMultipleSessionsForSelectedDate = sessionsForSelectedDate.length > 1
+  const selectedSession = selectedSessionId == null
+    ? (hasMultipleSessionsForSelectedDate ? null : sessionsForSelectedDate[0] || null)
+    : sessionsForSelectedDate.find((session) => session.id === selectedSessionId) || null
+  const selectedStatus = getSessionAvailabilityStatus(voteSummary, user)
   const selectedPaidByUser = allUsers.find((u) => u.email === paidBy)
   const selectedEventTypeLabel = getEventTypeLabel(selectedSession?.event_type)
   const selectedEventTitle = getEventDisplayTitle(selectedSession)
@@ -740,26 +788,53 @@ export default function Practice({ user }) {
     : false
 
   useEffect(() => {
-    if (!selectedDateStr) {
+    if (!selectedDateStr || !selectedSession) {
       setVoteSummary(null)
       setPayments({})
       return
     }
-    fetch(apiUrl(`/api/practice/availability/${selectedDateStr}`))
+    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/availability`))
       .then(r => r.json())
       .then(setVoteSummary)
       .catch(() => setVoteSummary(null))
     
     // Fetch payment data for this session
     if (token) {
-      fetch(apiUrl(`/api/practice/sessions/${selectedDateStr}/payments`), {
+      fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/payments`), {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(r => r.json())
         .then(data => setPayments(data || {}))
         .catch(() => setPayments({}))
     }
-  }, [selectedDateStr, token])
+  }, [selectedDateStr, selectedSession?.id, token])
+
+  useEffect(() => {
+    if (!selectedDateStr) {
+      setSelectedSessionId(null)
+      return
+    }
+    if (!sessionsForSelectedDate.length) {
+      return
+    }
+    if (hasRequestedSessionId) {
+      if (sessionsForSelectedDate.some((session) => session.id === requestedSessionId)) {
+        if (selectedSessionId !== requestedSessionId) {
+          setSelectedSessionId(requestedSessionId)
+        }
+        return
+      }
+    }
+    if (sessionsForSelectedDate.length === 1) {
+      if (selectedSessionId !== sessionsForSelectedDate[0].id) {
+        setSelectedSessionId(sessionsForSelectedDate[0].id)
+      }
+      return
+    }
+    if (selectedSessionId != null && !sessionsForSelectedDate.some((session) => session.id === selectedSessionId)) {
+      setSelectedSessionId(null)
+    }
+  }, [selectedDateStr, selectedSessionId, sessionsForSelectedDate, hasRequestedSessionId, requestedSessionId])
   
   // Update session cost and paid_by when selected session data changes
   useEffect(() => {
@@ -842,10 +917,55 @@ export default function Practice({ user }) {
 
       {/* Selected Date Details */}
       {selectedDate && (
-        <div ref={selectedSessionRef} style={{ background: 'var(--theme-surface)', borderRadius: 12, padding: '1.5rem', minHeight: 220, boxShadow: 'var(--theme-card-shadow)', border: '1px solid var(--theme-border)' }}>
-          <h3 style={{ marginBottom: '1rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Select a date'}</h3>
+        <div id="selected-date-details" ref={selectedSessionRef} style={{ background: 'var(--theme-surface)', borderRadius: 12, padding: '1.5rem', minHeight: 220, boxShadow: 'var(--theme-card-shadow)', border: '1px solid var(--theme-border)' }}>
+          {hasMultipleSessionsForSelectedDate && (
+            <div style={{ marginBottom: '1rem', padding: '0.875rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem', border: '1px solid var(--theme-border)' }}>
+              <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.625rem' }}>Events on {selectedDate.toDateString()}</div>
+              <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', marginBottom: '0.75rem' }}>
+                Select an event to view details and set availability.
+              </div>
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                {sessionsForSelectedDate.map((session) => {
+                  const isActive = selectedSession?.id === session.id
+                  const eventLabel = getEventTypeLabel(session.event_type)
+                  const eventTitle = getEventDisplayTitle(session)
+                  return (
+                    <button
+                      key={session.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSessionId(session.id)
+                        const params = new URLSearchParams(location.search)
+                        params.set('date', session.date)
+                        params.set('sessionId', String(session.id))
+                        navigate({ pathname: location.pathname, search: params.toString() }, { replace: false })
+                      }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '0.75rem 0.875rem',
+                        borderRadius: '0.625rem',
+                        border: isActive ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                        background: isActive ? 'color-mix(in srgb, var(--theme-accent) 10%, white)' : 'var(--theme-surface)',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                        <strong style={{ color: eventTypeAccentMap[session.event_type] || 'var(--theme-heading)' }}>{eventLabel}</strong>
+                        <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{session.time || 'TBD'}</span>
+                      </div>
+                      <div style={{ color: 'var(--theme-heading)', fontWeight: '500', marginBottom: '0.2rem' }}>{eventTitle}</div>
+                      <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{session.location || 'Location TBD'}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           {selectedSession ? (
-            <div>
+            <div id="selected-session-details" style={{ marginBottom: '1rem', padding: '0.875rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem', border: '1px solid var(--theme-border)' }}>
+              <h3 style={{ marginBottom: '1rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Select a date'}</h3>
               <div style={{ marginBottom: '0.5rem' }}>
                 <strong style={{ color: eventTypeAccentMap[selectedSession.event_type] || 'var(--theme-heading)', fontSize: '1.25rem' }}>{selectedEventTypeLabel}</strong>
                 <div style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: '500', color: 'var(--theme-heading)' }}>{selectedEventTitle}</div>
@@ -869,16 +989,18 @@ export default function Practice({ user }) {
                 {sessionRemainingSlots > 0 ? ` · ${sessionRemainingSlots} slot${sessionRemainingSlots === 1 ? '' : 's'} left` : ' · Full'}
               </div>
             </div>
+          ) : hasMultipleSessionsForSelectedDate ? (
+            <div></div>
           ) : (
-            <p>
-              No event is scheduled on this date. Please select a highlighted date to book your event.<br />
-              {user && selectedStatus && `Your status: ${selectedStatus}`}
-              {!user && 'Log in to set your availability'}
-            </p>
+            <div>
+              <h3 style={{ marginBottom: '1rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Select a date'}</h3>
+            <div style={{ padding: '1rem', borderRadius: '0.75rem', background: 'var(--theme-surface-alt)', border: '1px dashed var(--theme-border)', color: 'var(--theme-text-muted)' }}>
+              No event is scheduled on this date. Please select a date highlighted in colour to view the event details and save your selection.
+            </div>
+            </div>
           )}
           {selectedSession && (
             <>
-
               {isAdmin && (
                 <div ref={adminControlsRef} style={{ marginTop: '1rem', background: 'color-mix(in srgb, var(--theme-danger) 8%, var(--theme-surface))', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-danger) 24%, white)', overflow: 'hidden', boxShadow: adminControlsOpen ? 'var(--theme-card-shadow)' : 'none', transition: 'all 0.25s ease' }}>
                   <button

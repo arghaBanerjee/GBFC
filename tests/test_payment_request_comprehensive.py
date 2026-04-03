@@ -53,6 +53,10 @@ TEST_MEMBER3 = {
 
 def setup_test_database():
     """Setup test database with users and clean state"""
+    # Initialize database tables first
+    from api import init_db
+    init_db()
+    
     with get_connection() as conn:
         cur = conn.cursor()
         
@@ -273,25 +277,32 @@ class TestPaymentConfirmationByUsers:
                 f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
                 (past_date, "19:00", "Test Ground", 30.0, TEST_ADMIN["email"], True if USE_POSTGRES else 1)
             )
+            session_id = cur.lastrowid
             
             # Add user as available
             cur.execute(
-                f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (past_date, TEST_MEMBER1["email"], TEST_MEMBER1["full_name"], "available")
+                f"INSERT INTO practice_availability (practice_session_id, date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (session_id, past_date, TEST_MEMBER1["email"], TEST_MEMBER1["full_name"], "available")
             )
             conn.commit()
             
             # User confirms payment
-            cur.execute(
-                f"INSERT INTO practice_payments (date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET paid = EXCLUDED.paid",
-                (past_date, TEST_MEMBER1["email"], True if USE_POSTGRES else 1)
-            )
+            if USE_POSTGRES:
+                cur.execute(
+                    f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (practice_session_id, user_email) DO UPDATE SET paid = EXCLUDED.paid",
+                    (session_id, past_date, TEST_MEMBER1["email"], True if USE_POSTGRES else 1)
+                )
+            else:
+                cur.execute(
+                    f"INSERT OR REPLACE INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                    (session_id, past_date, TEST_MEMBER1["email"], True if USE_POSTGRES else 1)
+                )
             conn.commit()
             
             # Verify
             cur.execute(
-                f"SELECT paid FROM practice_payments WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-                (past_date, TEST_MEMBER1["email"])
+                f"SELECT paid FROM practice_payments WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+                (session_id, TEST_MEMBER1["email"])
             )
             result = cur.fetchone()
             
@@ -572,24 +583,43 @@ class TestDataIntegrity:
             
             past_date = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
             
-            # Insert first payment record
+            # Create a session first
             cur.execute(
-                f"INSERT INTO practice_payments (date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (past_date, TEST_MEMBER1["email"], True if USE_POSTGRES else 1)
+                f"INSERT INTO practice_sessions (date, time, location, session_cost, paid_by, payment_requested) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (past_date, "19:00", "Test Ground", 30.0, TEST_ADMIN["email"], True if USE_POSTGRES else 1)
             )
+            session_id = cur.lastrowid
+            
+            # Insert first payment record
+            if USE_POSTGRES:
+                cur.execute(
+                    f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                    (session_id, past_date, TEST_MEMBER1["email"], True if USE_POSTGRES else 1)
+                )
+            else:
+                cur.execute(
+                    f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                    (session_id, past_date, TEST_MEMBER1["email"], True if USE_POSTGRES else 1)
+                )
             conn.commit()
             
             # Try to insert duplicate - should update instead
-            cur.execute(
-                f"INSERT INTO practice_payments (date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET paid = EXCLUDED.paid",
-                (past_date, TEST_MEMBER1["email"], False if USE_POSTGRES else 0)
-            )
+            if USE_POSTGRES:
+                cur.execute(
+                    f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (practice_session_id, user_email) DO UPDATE SET paid = EXCLUDED.paid",
+                    (session_id, past_date, TEST_MEMBER1["email"], False if USE_POSTGRES else 0)
+                )
+            else:
+                cur.execute(
+                    f"INSERT OR REPLACE INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                    (session_id, past_date, TEST_MEMBER1["email"], False if USE_POSTGRES else 0)
+                )
             conn.commit()
             
             # Verify only one record exists
             cur.execute(
-                f"SELECT COUNT(*) FROM practice_payments WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-                (past_date, TEST_MEMBER1["email"])
+                f"SELECT COUNT(*) FROM practice_payments WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+                (session_id, TEST_MEMBER1["email"])
             )
             count = cur.fetchone()[0]
             

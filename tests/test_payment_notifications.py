@@ -50,6 +50,10 @@ TEST_MEMBER3 = {
 
 def setup_test_database():
     """Setup test database with users and practice session"""
+    # Initialize database tables first
+    from api import init_db
+    init_db()
+    
     with get_connection() as conn:
         cur = conn.cursor()
         
@@ -64,6 +68,10 @@ def setup_test_database():
 
 def setup_test_database_with_auth_users():
     """Setup test database with login-capable users"""
+    # Initialize database tables first
+    from api import init_db
+    init_db()
+    
     with get_connection() as conn:
         cur = conn.cursor()
 
@@ -404,8 +412,29 @@ def test_request_payment_endpoint_succeeds_and_creates_notifications():
         conn.commit()
 
     admin_token = login(TEST_ADMIN1["email"])
+    # Get the session ID first
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id FROM practice_sessions WHERE date = {PLACEHOLDER}",
+            (past_date,)
+        )
+        session_row = cur.fetchone()
+        session_id = session_row[0] if session_row else None
+    
+    assert session_id is not None, "Session should exist"
+    
+    # Update availability records to include practice_session_id
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE practice_availability SET practice_session_id = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
+            (session_id, past_date)
+        )
+        conn.commit()
+    
     response = client.post(
-        f"/api/practice/sessions/{past_date}/request-payment",
+        f"/api/practice/sessions/id/{session_id}/request-payment",
         headers={"Authorization": f"Bearer {admin_token}"}
     )
 

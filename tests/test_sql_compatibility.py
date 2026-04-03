@@ -3,8 +3,12 @@ Test SQL query compatibility for both SQLite and PostgreSQL
 This tests the SQL syntax without requiring a running server
 """
 
-import sqlite3
 import os
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
+
+import sqlite3
 
 # Test database path
 TEST_DB = "test_compatibility.db"

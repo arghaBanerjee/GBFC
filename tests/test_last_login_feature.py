@@ -3,8 +3,12 @@ Test Last Login Feature
 Verifies that last_login tracking works correctly for both SQLite and PostgreSQL
 """
 
-import sqlite3
 import os
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
+
+import sqlite3
 from datetime import datetime
 
 # Test database path

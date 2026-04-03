@@ -10,11 +10,15 @@ Tests cover:
 6. Likes are removed on user deletion
 """
 
+import os
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
+
 import pytest
 import sqlite3
 from datetime import date, timedelta
 import sys
-import os
 
 # Add parent directory to path to import api
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
