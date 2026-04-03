@@ -5559,6 +5559,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
         # Get all bookable events in date range with availability and payment data
         cur.execute(f"""
             SELECT 
+                ps.id,
                 ps.date,
                 ps.event_type,
                 ps.event_title,
@@ -5576,7 +5577,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
             FROM practice_sessions ps
             LEFT JOIN practice_availability pa ON ps.id = pa.practice_session_id
             LEFT JOIN users u ON pa.user_email = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-            LEFT JOIN users payer ON ps.paid_by = payer.email AND (payer.is_deleted = FALSE OR payer.is_deleted IS NULL)
+            LEFT JOIN users payer ON ps.paid_by = payer.email AND (payer.is_deleted = FALSE OR u.is_deleted IS NULL)
             LEFT JOIN practice_payments pp ON ps.id = pp.practice_session_id AND pa.user_email = pp.user_email
             WHERE ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
                 AND pa.status IS NOT NULL
@@ -5622,19 +5623,19 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 paid = row["paid"]
                 payment_date = row["payment_date"]
             else:
-                date = row[0]
-                event_type = normalize_event_type(row[1]) if row[1] else "practice"
-                event_title = normalize_event_title(row[2], event_type)
-                time = row[3] or "TBD"
-                location = row[4] or "TBD"
-                session_cost = row[5]
-                paid_by = row[10] or row[6]
-                payment_requested_at = row[7]
-                user_email = row[8]
-                full_name = row[9] or user_email
-                status = row[11]
-                paid = row[12]
-                payment_date = row[13]
+                date = row[1]  # shifted because ps.id is now row[0]
+                event_type = normalize_event_type(row[2]) if row[2] else "practice"
+                event_title = normalize_event_title(row[3], event_type)
+                time = row[4] or "TBD"
+                location = row[5] or "TBD"
+                session_cost = row[6]
+                paid_by = row[11] or row[7]
+                payment_requested_at = row[8]
+                user_email = row[9]
+                full_name = row[10] or user_email
+                status = row[12]
+                paid = row[13]
+                payment_date = row[14]
             
             ws.cell(row=row_num, column=1, value=date)
             ws.cell(row=row_num, column=2, value=default_event_type_label(event_type))
@@ -5652,12 +5653,20 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
 
             individual_amount = 0.0
             if status == "available" and session_cost:
-                # Get count of available users for this session
-                cur.execute(f"""
-                    SELECT COUNT(*) as count 
-                    FROM practice_availability 
-                    WHERE date = {PLACEHOLDER} AND status = 'available'
-                """, (date,))
+                # Get count of available users for this specific session
+                if USE_POSTGRES:
+                    cur.execute(f"""
+                        SELECT COUNT(*) as count 
+                        FROM practice_availability 
+                        WHERE practice_session_id = {PLACEHOLDER} AND status = 'available'
+                    """, (row["id"],))
+                else:
+                    cur.execute(f"""
+                        SELECT COUNT(*) as count 
+                        FROM practice_availability 
+                        WHERE practice_session_id = ? AND status = 'available'
+                    """, (row[0],))  # row[0] is the session ID in SQLite
+                
                 count_row = cur.fetchone()
                 available_count = count_row["count"] if USE_POSTGRES else count_row[0]
                 
