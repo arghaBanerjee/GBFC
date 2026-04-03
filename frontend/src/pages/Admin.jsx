@@ -796,7 +796,6 @@ export default function Admin({ user, loading }) {
         ? 'Updated user to Admin'
         : 'Updated user to Member'
     }))
-    setMessage(`User type updated to ${userType}.`)
     refreshTabData('users')
   }
 

@@ -4410,7 +4410,7 @@ def list_expenses(current_user: dict = Depends(get_current_user)):
 
         cur.execute(
             f"""
-            SELECT ps.date, ps.event_type, ps.event_title, ps.time, ps.location, ps.session_cost, ps.paid_by, ps.payment_requested_at,
+            SELECT ps.id, ps.date, ps.event_type, ps.event_title, ps.time, ps.location, ps.session_cost, ps.paid_by, ps.payment_requested_at,
                    u.full_name as paid_by_name
             FROM practice_sessions ps
             LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
@@ -4437,7 +4437,7 @@ def list_expenses(current_user: dict = Depends(get_current_user)):
             booking_rows.append(
                 serialize_expense(
                     {
-                        "id": -int(str(session_date).replace("-", "")),
+                        "id": -int(row_dict.get("id")),  # Use actual session ID as negative
                         "title": event_name,
                         "amount": row_dict.get("session_cost") or 0,
                         "paid_by": row_dict.get("paid_by"),
