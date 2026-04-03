@@ -2488,22 +2488,20 @@ def sync_match_session_to_events(cur, session: dict):
                 cur.execute(f"DELETE FROM events WHERE id = {PLACEHOLDER}", (legacy_event_id,))
     if USE_POSTGRES:
         cur.execute(
-            f"""
-            INSERT INTO events (name, date, time, location, description, image_url, youtube_url, practice_session_date, practice_session_id)
-            VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
-            ON CONFLICT (practice_session_id)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                date = EXCLUDED.date,
-                time = EXCLUDED.time,
-                location = EXCLUDED.location,
-                description = EXCLUDED.description,
-                image_url = EXCLUDED.image_url,
-                youtube_url = EXCLUDED.youtube_url,
-                practice_session_id = EXCLUDED.practice_session_id
-            """,
-            (match_name, practice_date, session.get("time"), session.get("location"), session.get("description"), session.get("image_url"), session.get("youtube_url"), practice_date, practice_session_id),
+            f"SELECT id FROM events WHERE practice_session_id = {PLACEHOLDER}",
+            (practice_session_id,),
         )
+        existing_event = cur.fetchone()
+        if existing_event:
+            cur.execute(
+                f"UPDATE events SET name = {PLACEHOLDER}, date = {PLACEHOLDER}, time = {PLACEHOLDER}, location = {PLACEHOLDER}, description = {PLACEHOLDER}, image_url = {PLACEHOLDER}, youtube_url = {PLACEHOLDER}, practice_session_date = {PLACEHOLDER}, practice_session_id = {PLACEHOLDER} WHERE practice_session_id = {PLACEHOLDER}",
+                (match_name, practice_date, session.get("time"), session.get("location"), session.get("description"), session.get("image_url"), session.get("youtube_url"), practice_date, practice_session_id, practice_session_id),
+            )
+        else:
+            cur.execute(
+                f"INSERT INTO events (name, date, time, location, description, image_url, youtube_url, practice_session_date, practice_session_id) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (match_name, practice_date, session.get("time"), session.get("location"), session.get("description"), session.get("image_url"), session.get("youtube_url"), practice_date, practice_session_id),
+            )
     else:
         cur.execute(
             f"SELECT id FROM events WHERE practice_session_id = {PLACEHOLDER}",
