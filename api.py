@@ -213,7 +213,7 @@ def dict_factory(cursor, row):
     return d
 
 def init_db():
-    # Safety check: Warn if running on production database during testing
+    # Safety check: Prevent tests from running on production database
     if not TEST_MODE and not USE_POSTGRES and os.path.exists(DB_PATH):
         try:
             with sqlite3.connect(DB_PATH, timeout=1) as check_conn:
@@ -221,8 +221,30 @@ def init_db():
                 check_cursor.execute("SELECT COUNT(*) FROM users")
                 user_count = check_cursor.fetchone()[0]
                 if user_count > 0:
-                    print(f"⚠️  WARNING: init_db() called on production database with {user_count} users!")
-                    print("⚠️  This may delete production data. Use TEST_MODE=true for testing.")
+                    # Check if this is a test run
+                    import sys
+                    is_testing = any("test" in arg.lower() for arg in sys.argv)
+                    if is_testing:
+                        print("=" * 80)
+                        print("🚨 CRITICAL WARNING: TESTS RUNNING ON PRODUCTION DATABASE! 🚨")
+                        print("=" * 80)
+                        print(f"❌ Production database detected with {user_count} users")
+                        print("❌ Tests are NOT ALLOWED to run on production database")
+                        print("❌ This may delete or corrupt production data")
+                        print("")
+                        print("✅ SOLUTION: Set TEST_MODE=true environment variable")
+                        print("✅ Example: export TEST_MODE=true")
+                        print("✅ Or run tests with: TEST_MODE=true python test_script.py")
+                        print("")
+                        print("🛑 TEST EXECUTION FAILED - DATABASE SAFETY VIOLATION")
+                        print("=" * 80)
+                        raise RuntimeError("TESTS NOT ALLOWED ON PRODUCTION DATABASE. Set TEST_MODE=true to use test database.")
+                    else:
+                        # Normal production startup - no warning needed
+                        pass
+        except RuntimeError:
+            # Re-raise the database safety violation
+            raise
         except:
             pass
     
@@ -5581,7 +5603,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
             LEFT JOIN practice_payments pp ON ps.id = pp.practice_session_id AND pa.user_email = pp.user_email
             WHERE ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
                 AND pa.status IS NOT NULL
-            ORDER BY ps.date ASC, ps.time ASC, u.full_name ASC
+            ORDER BY ps.payment_requested_at ASC
         """, (from_date, to_date))
         
         rows = cur.fetchall()
