@@ -2740,7 +2740,7 @@ def notify_pending_payment_reminders():
         cur = conn.cursor()
         cur.execute(
             f"""
-            SELECT date, time, location, event_type, event_title, payment_requested_at
+            SELECT id, date, time, location, event_type, event_title, payment_requested_at
             FROM practice_sessions
             WHERE payment_requested = {PLACEHOLDER}
               AND payment_requested_at IS NOT NULL
@@ -2770,7 +2770,7 @@ def notify_pending_payment_reminders():
         for candidate_session in sessions:
             if not is_practice_datetime_in_past(candidate_session["date"], candidate_session.get("time")):
                 continue
-            pending_count = get_pending_payment_count_for_session(cur, candidate_session["date"])
+            pending_count = get_pending_payment_count_for_session(cur, candidate_session["id"])
             if pending_count > 0:
                 has_pending_payments = True
                 reminder_session = candidate_session
