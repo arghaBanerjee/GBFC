@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import Events from './pages/Events'
@@ -60,9 +60,21 @@ function App() {
     }
   }, [])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined
+
+    const resetScrollPosition = () => {
+      window.scrollTo(0, 0)
+      document.documentElement.scrollTop = 0
+      document.body.scrollTop = 0
+    }
+
+    resetScrollPosition()
+    const frameId = window.requestAnimationFrame(resetScrollPosition)
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
   }, [location.pathname, location.search])
 
   // Shared function to fetch notifications
