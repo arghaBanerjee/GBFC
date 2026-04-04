@@ -49,6 +49,22 @@ function App() {
   const sessionTimeoutRef = useRef(null)
   const lastActivityRef = useRef(Date.now())
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.history) return undefined
+
+    const previousScrollRestoration = window.history.scrollRestoration
+    window.history.scrollRestoration = 'manual'
+
+    return () => {
+      window.history.scrollRestoration = previousScrollRestoration
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }, [location.pathname, location.search])
+
   // Shared function to fetch notifications
   const fetchNotifications = async () => {
     const token = localStorage.getItem('token')
