@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 import html
 import re
@@ -5572,7 +5572,6 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
                 item.get("created_at") or "",
                 item.get("title") or "",
             ),
-            reverse=True,
         )
 
         wb = Workbook()
@@ -5583,7 +5582,7 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
         header_font = Font(bold=True, color="FFFFFF")
         header_alignment = Alignment(horizontal="center", vertical="center")
 
-        headers = ["Expense Date", "Title", "Category", "Amount (£)", "Paid By", "Payment Method", "Description", "Created At"]
+        headers = ["Expense Date", "Title", "Category", "Amount (£)", "Paid By", "Payment Method", "Description", "Created Date"]
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_num, value=header)
             cell.fill = header_fill
@@ -5600,7 +5599,22 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
             ws.cell(row=row_num, column=6, value=row_dict.get("payment_method") or "")
             ws.cell(row=row_num, column=7, value=row_dict.get("description") or "")
             created_at = row_dict.get("created_at")
-            ws.cell(row=row_num, column=8, value=created_at.isoformat(sep=' ') if hasattr(created_at, 'isoformat') else (created_at or ""))
+            created_date_value = None
+            if isinstance(created_at, datetime):
+                created_date_value = created_at.date()
+            elif isinstance(created_at, date):
+                created_date_value = created_at
+            elif created_at:
+                try:
+                    created_date_value = datetime.fromisoformat(str(created_at).replace("Z", "+00:00")).date()
+                except ValueError:
+                    try:
+                        created_date_value = datetime.strptime(str(created_at)[:10], "%Y-%m-%d").date()
+                    except ValueError:
+                        created_date_value = None
+            created_date_cell = ws.cell(row=row_num, column=8, value=created_date_value if created_date_value else (str(created_at)[:10] if created_at else ""))
+            if created_date_value:
+                created_date_cell.number_format = "yyyy-mm-dd"
 
         ws.column_dimensions['A'].width = 18
         ws.column_dimensions['B'].width = 28
@@ -5657,7 +5671,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
             LEFT JOIN practice_payments pp ON ps.id = pp.practice_session_id AND pa.user_email = pp.user_email
             WHERE ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
                 AND pa.status IS NOT NULL
-            ORDER BY ps.payment_requested_at ASC
+            ORDER BY ps.date ASC, ps.time ASC, ps.payment_requested_at ASC, u.full_name ASC
         """, (from_date, to_date))
         
         rows = cur.fetchall()
@@ -5685,7 +5699,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
         row_num = 2
         for row in rows:
             if USE_POSTGRES:
-                date = row["date"]
+                event_date = row["date"]
                 event_type = normalize_event_type(row.get("event_type")) if row.get("event_type") else "practice"
                 event_title = normalize_event_title(row.get("event_title"), event_type)
                 time = row["time"] or "TBD"
@@ -5699,7 +5713,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 paid = row["paid"]
                 payment_date = row["payment_date"]
             else:
-                date = row[1]  # shifted because ps.id is now row[0]
+                event_date = row[1]  # shifted because ps.id is now row[0]
                 event_type = normalize_event_type(row[2]) if row[2] else "practice"
                 event_title = normalize_event_title(row[3], event_type)
                 time = row[4] or "TBD"
@@ -5713,15 +5727,30 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 paid = row[13]
                 payment_date = row[14]
             
-            ws.cell(row=row_num, column=1, value=date)
+            ws.cell(row=row_num, column=1, value=event_date)
             ws.cell(row=row_num, column=2, value=default_event_type_label(event_type))
             ws.cell(row=row_num, column=3, value=event_title)
             ws.cell(row=row_num, column=4, value=time)
             ws.cell(row=row_num, column=5, value=location)
-            ws.cell(row=row_num, column=6, value=float(session_cost) if session_cost else 0.0)
-            ws.cell(row=row_num, column=7, value=paid_by or "")
+            ws.cell(row=row_num, column=6, value=float(session_cost) if session_cost else 0)
+            ws.cell(row=row_num, column=7, value=paid_by)
             if payment_requested_at:
-                ws.cell(row=row_num, column=8, value=payment_requested_at.isoformat(sep=' ') if hasattr(payment_requested_at, 'isoformat') else str(payment_requested_at))
+                payment_requested_date_value = None
+                if isinstance(payment_requested_at, datetime):
+                    payment_requested_date_value = payment_requested_at.date()
+                elif isinstance(payment_requested_at, date):
+                    payment_requested_date_value = payment_requested_at
+                else:
+                    try:
+                        payment_requested_date_value = datetime.fromisoformat(str(payment_requested_at).replace("Z", "+00:00")).date()
+                    except ValueError:
+                        try:
+                            payment_requested_date_value = datetime.strptime(str(payment_requested_at)[:10], "%Y-%m-%d").date()
+                        except ValueError:
+                            payment_requested_date_value = None
+                payment_requested_cell = ws.cell(row=row_num, column=8, value=payment_requested_date_value if payment_requested_date_value else str(payment_requested_at)[:10])
+                if payment_requested_date_value:
+                    payment_requested_cell.number_format = "yyyy-mm-dd"
             else:
                 ws.cell(row=row_num, column=8, value="")
             ws.cell(row=row_num, column=9, value=full_name)
@@ -5750,7 +5779,22 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                     individual_amount = float(session_cost) / available_count
             ws.cell(row=row_num, column=11, value=round(individual_amount, 2))
             ws.cell(row=row_num, column=12, value="Yes" if (paid if USE_POSTGRES else bool(paid)) else "No")
-            ws.cell(row=row_num, column=13, value=payment_date.isoformat(sep=' ') if hasattr(payment_date, 'isoformat') else (payment_date or ''))
+            payment_ack_date_value = None
+            if isinstance(payment_date, datetime):
+                payment_ack_date_value = payment_date.date()
+            elif isinstance(payment_date, date):
+                payment_ack_date_value = payment_date
+            elif payment_date:
+                try:
+                    payment_ack_date_value = datetime.fromisoformat(str(payment_date).replace("Z", "+00:00")).date()
+                except ValueError:
+                    try:
+                        payment_ack_date_value = datetime.strptime(str(payment_date)[:10], "%Y-%m-%d").date()
+                    except ValueError:
+                        payment_ack_date_value = None
+            payment_ack_cell = ws.cell(row=row_num, column=13, value=payment_ack_date_value if payment_ack_date_value else ((str(payment_date)[:10]) if payment_date else ''))
+            if payment_ack_date_value:
+                payment_ack_cell.number_format = "yyyy-mm-dd"
             row_num += 1
         
         # Adjust column widths
