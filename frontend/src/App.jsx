@@ -75,7 +75,7 @@ function App() {
     return () => {
       window.cancelAnimationFrame(frameId)
     }
-  }, [location.pathname, location.search])
+  }, [location.pathname])
 
   // Shared function to fetch notifications
   const fetchNotifications = async () => {
