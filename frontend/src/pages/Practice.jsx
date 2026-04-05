@@ -7,6 +7,10 @@ export default function Practice({ user }) {
   const location = useLocation()
   const adminControlsRef = useRef(null)
   const selectedSessionRef = useRef(null)
+  const shouldUseInitialDeepLinkScrollRef = useRef((() => {
+    const initialParams = new URLSearchParams(location.search)
+    return Boolean(initialParams.get('date') && initialParams.get('sessionId'))
+  })())
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(null)
   const [selectedSessionId, setSelectedSessionId] = useState(null)
@@ -276,10 +280,14 @@ export default function Practice({ user }) {
       const headerHeight = header ? header.getBoundingClientRect().height : 0
       const extraOffset = window.innerWidth <= 768 ? 12 : 16
       const targetTop = target.getBoundingClientRect().top + window.scrollY - headerHeight - extraOffset
+      const shouldUseInstantScroll = Boolean(selectedSessionId && shouldUseInitialDeepLinkScrollRef.current)
       window.scrollTo({
         top: Math.max(targetTop, 0),
-        behavior: 'smooth',
+        behavior: shouldUseInstantScroll ? 'auto' : 'smooth',
       })
+      if (shouldUseInstantScroll) {
+        shouldUseInitialDeepLinkScrollRef.current = false
+      }
     })
   }, [selectedDate, selectedSessionId])
 
