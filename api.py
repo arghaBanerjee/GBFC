@@ -2746,8 +2746,7 @@ def notify_practice_slots_available():
             related_date=session["date"],
         )
 
-def get_pending_payment_count_for_session(cur, date_str: str) -> int:
-    session_id = get_practice_session_id_by_date(cur, date_str)
+def get_pending_payment_count_for_session(cur, session_id: int) -> int:
     if session_id is None:
         return 0
     cur.execute(
