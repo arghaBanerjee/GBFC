@@ -7,10 +7,6 @@ export default function Practice({ user }) {
   const location = useLocation()
   const adminControlsRef = useRef(null)
   const selectedSessionRef = useRef(null)
-  const availabilityCacheRef = useRef(new Map())
-  const paymentsCacheRef = useRef(new Map())
-  const availabilityInFlightRef = useRef(new Map())
-  const paymentsInFlightRef = useRef(new Map())
   const shouldUseInitialDeepLinkScrollRef = useRef((() => {
     const initialParams = new URLSearchParams(location.search)
     return Boolean(initialParams.get('date') && initialParams.get('sessionId'))
@@ -164,78 +160,11 @@ export default function Practice({ user }) {
     }))
   }
 
-  const setBoundedCacheEntry = (cacheRef, key, value, maxEntries = 8) => {
-    const nextCache = new Map(cacheRef.current)
-    nextCache.delete(key)
-    nextCache.set(key, value)
-    while (nextCache.size > maxEntries) {
-      const oldestKey = nextCache.keys().next().value
-      nextCache.delete(oldestKey)
-    }
-    cacheRef.current = nextCache
-  }
-
-  const fetchSessionAvailabilityData = (sessionId, { forceRefresh = false } = {}) => {
-    if (!sessionId) return Promise.resolve(null)
-    if (!forceRefresh && availabilityCacheRef.current.has(sessionId)) {
-      return Promise.resolve(availabilityCacheRef.current.get(sessionId))
-    }
-    if (availabilityInFlightRef.current.has(sessionId)) {
-      return availabilityInFlightRef.current.get(sessionId)
-    }
-
-    const request = fetch(apiUrl(`/api/practice/sessions/id/${sessionId}/availability`))
-      .then(r => r.json())
-      .then((data) => {
-        setBoundedCacheEntry(availabilityCacheRef, sessionId, data)
-        return data
-      })
-      .finally(() => {
-        availabilityInFlightRef.current.delete(sessionId)
-      })
-
-    availabilityInFlightRef.current.set(sessionId, request)
-    return request
-  }
-
-  const fetchSessionPaymentsData = (sessionId, { forceRefresh = false } = {}) => {
-    if (!sessionId || !token) return Promise.resolve({})
-    if (!forceRefresh && paymentsCacheRef.current.has(sessionId)) {
-      return Promise.resolve(paymentsCacheRef.current.get(sessionId))
-    }
-    if (paymentsInFlightRef.current.has(sessionId)) {
-      return paymentsInFlightRef.current.get(sessionId)
-    }
-
-    const request = fetch(apiUrl(`/api/practice/sessions/id/${sessionId}/payments`), {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then((data) => {
-        const nextPayments = data || {}
-        setBoundedCacheEntry(paymentsCacheRef, sessionId, nextPayments)
-        return nextPayments
-      })
-      .finally(() => {
-        paymentsInFlightRef.current.delete(sessionId)
-      })
-
-    paymentsInFlightRef.current.set(sessionId, request)
-    return request
-  }
-
-  const prefetchSessionDetails = (session, { includePayments = false } = {}) => {
-    if (!session?.id) return
-    fetchSessionAvailabilityData(session.id).catch(() => {})
-    if (includePayments) {
-      fetchSessionPaymentsData(session.id).catch(() => {})
-    }
-  }
-
   const refreshSelectedDateData = (session, { refreshAvailabilityMap = false, refreshPayments = false } = {}) => {
     if (!session?.id) return Promise.resolve()
     const requests = [
-      fetchSessionAvailabilityData(session.id, { forceRefresh: true })
+      fetch(apiUrl(`/api/practice/sessions/id/${session.id}/availability`))
+        .then(r => r.json())
         .then((data) => {
           setVoteSummary(data)
           mergeUpdatedSession({
@@ -262,7 +191,10 @@ export default function Practice({ user }) {
 
     if (refreshPayments && token) {
       requests.push(
-        fetchSessionPaymentsData(session.id, { forceRefresh: true })
+        fetch(apiUrl(`/api/practice/sessions/id/${session.id}/payments`), {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then(r => r.json())
           .then(data => setPayments(data || {}))
           .catch(() => setPayments({}))
       )
@@ -641,7 +573,11 @@ export default function Practice({ user }) {
         return r.json()
       })
       .then(() => {
-        return fetchSessionPaymentsData(selectedSession.id, { forceRefresh: true })
+        // Refresh payment data
+        return fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/payments`), {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+          .then(r => r.json())
           .then(data => setPayments(data || {}))
       })
       .catch(err => {
@@ -870,57 +806,21 @@ export default function Practice({ user }) {
       setPayments({})
       return
     }
-    const cachedAvailability = availabilityCacheRef.current.get(selectedSession.id)
-    if (cachedAvailability) {
-      setVoteSummary(cachedAvailability)
-    }
-
-    fetchSessionAvailabilityData(selectedSession.id)
-      .then((data) => {
-        setVoteSummary(data)
-        mergeUpdatedSession({
-          id: selectedSession.id,
-          maximum_capacity: data.maximum_capacity,
-          available_count: data.available_count,
-          remaining_slots: data.remaining_slots,
-          capacity_reached: data.capacity_reached,
-        })
-      })
+    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/availability`))
+      .then(r => r.json())
+      .then(setVoteSummary)
       .catch(() => setVoteSummary(null))
     
+    // Fetch payment data for this session
     if (token) {
-      const cachedPayments = paymentsCacheRef.current.get(selectedSession.id)
-      if (cachedPayments) {
-        setPayments(cachedPayments)
-      }
-
-      fetchSessionPaymentsData(selectedSession.id)
+      fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/payments`), {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(r => r.json())
         .then(data => setPayments(data || {}))
         .catch(() => setPayments({}))
-    } else {
-      setPayments({})
     }
   }, [selectedDateStr, selectedSession?.id, token])
-
-  useEffect(() => {
-    if (!selectedSession?.id || !adminSessions.length) return
-
-    const sortedSessions = [...adminSessions].sort((a, b) => {
-      const dateCompare = (a.date || '').localeCompare(b.date || '')
-      if (dateCompare !== 0) return dateCompare
-      return (a.time || '').localeCompare(b.time || '')
-    })
-    const selectedIndex = sortedSessions.findIndex((session) => session.id === selectedSession.id)
-    if (selectedIndex === -1) return
-
-    const nearbySessions = sortedSessions
-      .slice(Math.max(0, selectedIndex - 3), Math.min(sortedSessions.length, selectedIndex + 6))
-      .filter((session) => session.id !== selectedSession.id)
-
-    nearbySessions.forEach((session) => {
-      prefetchSessionDetails(session, { includePayments: Boolean(token) })
-    })
-  }, [adminSessions, selectedSession?.id, token])
 
   useEffect(() => {
     if (!selectedDateStr) {
