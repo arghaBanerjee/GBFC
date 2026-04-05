@@ -1472,12 +1472,27 @@ def format_notification_date(date_value: str) -> str:
     else:
         suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
 
-    return parsed_date.strftime(f"%A, {day}{suffix} %B %Y")
+    return parsed_date.strftime(f"%A, {day}{suffix} %B")
+
+def format_notification_time(time_value: str) -> str:
+    if not time_value:
+        return ""
+
+    normalized_time_value = time_value.strip()
+    for time_pattern in ("%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M%p"):
+        try:
+            parsed_time = datetime.strptime(normalized_time_value, time_pattern)
+            return parsed_time.strftime("%I:%M %p").lstrip("0")
+        except ValueError:
+            continue
+
+    return normalized_time_value
 
 def build_notification_context(payload: dict) -> dict:
     date_value = payload.get("date") or ""
     formatted_date_value = format_notification_date(date_value)
     time_value = payload.get("time") or ""
+    formatted_time_value = format_notification_time(time_value)
     location_value = payload.get("location") or ""
     session_id_value = payload.get("session_id") or payload.get("practice_session_id") or ""
     content_value = (payload.get("content") or "").strip()
@@ -1490,7 +1505,7 @@ def build_notification_context(payload: dict) -> dict:
     return {
         "date": formatted_date_value,
         "date_iso": date_value,
-        "time": time_value,
+        "time": formatted_time_value,
         "location": location_value,
         "session_id": session_id_value,
         "maximum_capacity": payload.get("maximum_capacity") if payload.get("maximum_capacity") is not None else "",
@@ -1507,10 +1522,10 @@ def build_notification_context(payload: dict) -> dict:
         "payments_link": payload.get("payments_link") or "https://glasgow-bengali-fc.vercel.app/user-actions/payments",
         "content": content_value,
         "content_preview": content_preview,
-        "time_suffix": f" at {time_value}" if time_value else "",
+        "time_suffix": f" at {formatted_time_value}" if formatted_time_value else "",
         "location_suffix": f" at {location_value}" if location_value else "",
         "location_comma_suffix": f", {location_value}" if location_value else "",
-        "time_line": f"🕐 {time_value}\n" if time_value else "",
+        "time_line": f"🕐 {formatted_time_value}\n" if formatted_time_value else "",
         "location_line": f"📍 {location_value}\n" if location_value else "",
     }
 

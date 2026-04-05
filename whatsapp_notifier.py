@@ -112,12 +112,28 @@ def _format_notification_date(date: str) -> str:
     else:
         suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
 
-    return parsed_date.strftime(f"%A, {day}{suffix} %B %Y")
+    return parsed_date.strftime(f"%A, {day}{suffix} %B")
+
+
+def _format_notification_time(time_value: Optional[str]) -> str:
+    if not time_value:
+        return ""
+
+    normalized_time_value = time_value.strip()
+    for time_pattern in ("%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M%p"):
+        try:
+            parsed_time = datetime.strptime(normalized_time_value, time_pattern)
+            return parsed_time.strftime("%I:%M %p").lstrip("0")
+        except ValueError:
+            continue
+
+    return normalized_time_value
 
 
 def format_match_message(name: str, date: str, time: Optional[str], location: Optional[str]) -> str:
     formatted_date = _format_notification_date(date)
-    time_line = f"🕐 {time}\n" if time else ""
+    formatted_time = _format_notification_time(time)
+    time_line = f"🕐 {formatted_time}\n" if formatted_time else ""
     location_line = f"📍 {location}\n" if location else ""
     return (
         f"⚽ *NEW MATCH*\n\n"
@@ -131,7 +147,8 @@ def format_match_message(name: str, date: str, time: Optional[str], location: Op
 
 def format_practice_message(date: str, time: Optional[str], location: Optional[str]) -> str:
     formatted_date = _format_notification_date(date)
-    time_line = f"🕐 {time}\n" if time else ""
+    formatted_time = _format_notification_time(time)
+    time_line = f"🕐 {formatted_time}\n" if formatted_time else ""
     location_line = f"📍 {location}\n" if location else ""
     return (
         f"🏃 *NEW PRACTICE SESSION*\n\n"
@@ -155,7 +172,8 @@ def format_forum_post_message(author_name: str, content: str) -> str:
 
 def format_payment_request_message(date: str, time: Optional[str], location: Optional[str]) -> str:
     formatted_date = _format_notification_date(date)
-    time_line = f"🕐 {time}\n" if time else ""
+    formatted_time = _format_notification_time(time)
+    time_line = f"🕐 {formatted_time}\n" if formatted_time else ""
     location_line = f"📍 {location}\n" if location else ""
     return (
         f"💷 *PRACTICE PAYMENT REQUEST*\n\n"
