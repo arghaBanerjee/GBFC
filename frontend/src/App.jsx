@@ -172,6 +172,7 @@ function App() {
   useEffect(() => {
     const token = localStorage.getItem('token')
     const cachedUser = localStorage.getItem(CACHED_USER_STORAGE_KEY)
+    const currentRoute = location.pathname + location.search
 
     if (token) {
       if (checkSessionTimeout()) {
@@ -209,7 +210,7 @@ function App() {
             localStorage.removeItem(CACHED_USER_STORAGE_KEY)
             setUser(null)
             setLoading(false)
-            navigate('/login', { replace: true, state: { from: location.pathname + location.search } })
+            navigate('/login', { replace: true, state: { from: currentRoute } })
             return
           }
 
@@ -218,7 +219,7 @@ function App() {
     } else {
       setLoading(false)
     }
-  }, [location.pathname, location.search, navigate])
+  }, [])
 
   // Poll notifications every 30 seconds
   useEffect(() => {
