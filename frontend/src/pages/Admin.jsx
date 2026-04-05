@@ -93,7 +93,8 @@ export default function Admin({ user, loading }) {
   const notificationPreviewSamples = {
     practice: {
       session_id: '123',
-      date: '2026-03-20',
+      date: 'Thursday, 20th March 2026',
+      date_iso: '2026-03-20',
       time: '7:30 PM',
       location: 'Glasgow Green',
       event_name: 'Practice - Session',
@@ -125,7 +126,8 @@ export default function Admin({ user, loading }) {
     },
     payment_request: {
       session_id: '123',
-      date: '2026-04-02',
+      date: 'Thursday, 2nd April 2026',
+      date_iso: '2026-04-02',
       time: '8:00 PM',
       location: 'Scotstoun Sports Campus',
       event_name: 'Practice - Session',
@@ -143,7 +145,8 @@ export default function Admin({ user, loading }) {
     },
     payment_confirmed: {
       session_id: '123',
-      date: '2026-04-02',
+      date: 'Thursday, 2nd April 2026',
+      date_iso: '2026-04-02',
       time: '8:00 PM',
       location: 'Scotstoun Sports Campus',
       event_name: 'Practice - Session',
@@ -160,7 +163,8 @@ export default function Admin({ user, loading }) {
     },
     pending_payment_reminder: {
       session_id: '123',
-      date: '2026-04-02',
+      date: 'Thursday, 2nd April 2026',
+      date_iso: '2026-04-02',
       time: '8:00 PM',
       location: 'Scotstoun Sports Campus',
       event_name: 'Practice - Session',
@@ -176,7 +180,8 @@ export default function Admin({ user, loading }) {
     },
     session_capacity_reached: {
       session_id: '123',
-      date: '2026-04-10',
+      date: 'Friday, 10th April 2026',
+      date_iso: '2026-04-10',
       time: '7:00 PM',
       location: 'Glasgow Green',
       event_name: 'Practice - Session',
@@ -194,7 +199,8 @@ export default function Admin({ user, loading }) {
     },
     practice_slot_available: {
       session_id: '123',
-      date: '2026-04-12',
+      date: 'Sunday, 12th April 2026',
+      date_iso: '2026-04-12',
       time: '8:30 PM',
       location: 'Scotstoun Sports Campus',
       event_name: 'Practice - Session',
@@ -217,13 +223,13 @@ export default function Admin({ user, loading }) {
   }
 
   const notificationVariableMap = {
-    practice: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    practice: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{date_iso}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     forum_post: ['{{author_name}}', '{{content}}', '{{content_preview}}'],
-    payment_request: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    payment_confirmed: ['{{member_name}}', '{{full_name}}', '{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    pending_payment_reminder: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{payments_link}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    session_capacity_reached: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
-    practice_slot_available: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{time}}', '{{location}}', '{{session_id}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    payment_request: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{date_iso}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    payment_confirmed: ['{{member_name}}', '{{full_name}}', '{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{date_iso}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    pending_payment_reminder: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{payments_link}}', '{{date}}', '{{date_iso}}', '{{time}}', '{{location}}', '{{session_id}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    session_capacity_reached: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{date_iso}}', '{{time}}', '{{location}}', '{{session_id}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
+    practice_slot_available: ['{{event_name}}', '{{event_type}}', '{{event_type_label}}', '{{event_title}}', '{{date}}', '{{date_iso}}', '{{time}}', '{{location}}', '{{session_id}}', '{{maximum_capacity}}', '{{available_count}}', '{{remaining_slots}}', '{{time_suffix}}', '{{location_suffix}}', '{{location_comma_suffix}}', '{{time_line}}', '{{location_line}}'],
     welcome_signup: ['{{full_name}}', '{{club_name}}'],
   }
 

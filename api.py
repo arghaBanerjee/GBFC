@@ -1457,8 +1457,25 @@ def render_notification_template(template: str, context: dict) -> str:
         rendered = rendered.replace(f"{{{{{key}}}}}", "" if value is None else str(value))
     return rendered
 
+def format_notification_date(date_value: str) -> str:
+    if not date_value:
+        return ""
+    try:
+        parsed_date = datetime.strptime(date_value, "%Y-%m-%d")
+    except ValueError:
+        return date_value
+
+    day = parsed_date.day
+    if 10 <= day % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+    return parsed_date.strftime(f"%A, {day}{suffix} %B %Y")
+
 def build_notification_context(payload: dict) -> dict:
     date_value = payload.get("date") or ""
+    formatted_date_value = format_notification_date(date_value)
     time_value = payload.get("time") or ""
     location_value = payload.get("location") or ""
     session_id_value = payload.get("session_id") or payload.get("practice_session_id") or ""
@@ -1470,7 +1487,8 @@ def build_notification_context(payload: dict) -> dict:
     event_type_template_value = event_type_value.upper()
     event_name_value = payload.get("event_name") or payload.get("name") or f"{event_type_label_value} - {event_title_value}"
     return {
-        "date": date_value,
+        "date": formatted_date_value,
+        "date_iso": date_value,
         "time": time_value,
         "location": location_value,
         "session_id": session_id_value,
@@ -5092,6 +5110,7 @@ def notification_settings_meta(current_user: dict = Depends(get_current_user)):
             "{{event_type_label}}",
             "{{event_title}}",
             "{{date}}",
+            "{{date_iso}}",
             "{{time}}",
             "{{location}}",
             "{{session_id}}",

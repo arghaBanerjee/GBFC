@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -97,13 +98,31 @@ def find_group_chat_id(group_name: str) -> Dict[str, Any]:
     return {"success": True, "data": matches}
 
 
+def _format_notification_date(date: str) -> str:
+    if not date:
+        return ""
+    try:
+        parsed_date = datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        return date
+
+    day = parsed_date.day
+    if 10 <= day % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+    return parsed_date.strftime(f"%A, {day}{suffix} %B %Y")
+
+
 def format_match_message(name: str, date: str, time: Optional[str], location: Optional[str]) -> str:
+    formatted_date = _format_notification_date(date)
     time_line = f"🕐 {time}\n" if time else ""
     location_line = f"📍 {location}\n" if location else ""
     return (
         f"⚽ *NEW MATCH*\n\n"
         f"{name}\n"
-        f"📅 {date}\n"
+        f"📅 {formatted_date}\n"
         f"{time_line}"
         f"{location_line}\n"
         f"Check the app for full details."
@@ -111,11 +130,12 @@ def format_match_message(name: str, date: str, time: Optional[str], location: Op
 
 
 def format_practice_message(date: str, time: Optional[str], location: Optional[str]) -> str:
+    formatted_date = _format_notification_date(date)
     time_line = f"🕐 {time}\n" if time else ""
     location_line = f"📍 {location}\n" if location else ""
     return (
         f"🏃 *NEW PRACTICE SESSION*\n\n"
-        f"📅 {date}\n"
+        f"📅 {formatted_date}\n"
         f"{time_line}"
         f"{location_line}\n"
         f"Please update your availability in the app."
@@ -134,11 +154,12 @@ def format_forum_post_message(author_name: str, content: str) -> str:
 
 
 def format_payment_request_message(date: str, time: Optional[str], location: Optional[str]) -> str:
+    formatted_date = _format_notification_date(date)
     time_line = f"🕐 {time}\n" if time else ""
     location_line = f"📍 {location}\n" if location else ""
     return (
         f"💷 *PRACTICE PAYMENT REQUEST*\n\n"
-        f"📅 {date}\n"
+        f"📅 {formatted_date}\n"
         f"{time_line}"
         f"{location_line}\n"
         f"Available players should confirm payment in the app."
