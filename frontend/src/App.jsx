@@ -18,6 +18,7 @@ import clubLogo from './assets/club-logo.jpeg'
 import './index.css'
 
 const THEME_COOKIE_NAME = 'theme_preference'
+const CACHED_USER_STORAGE_KEY = 'cachedUser'
 
 function readThemeCookie() {
   if (typeof document === 'undefined') return null
@@ -116,6 +117,7 @@ function App() {
   const logout = (isSessionExpired = false) => {
     localStorage.removeItem('token')
     localStorage.removeItem('lastActivity')
+    localStorage.removeItem(CACHED_USER_STORAGE_KEY)
     setUser(null)
     if (sessionTimeoutRef.current) {
       clearInterval(sessionTimeoutRef.current)
@@ -128,6 +130,14 @@ function App() {
   }
 
   // Track user activity to reset timeout
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(CACHED_USER_STORAGE_KEY, JSON.stringify(user))
+    } else {
+      localStorage.removeItem(CACHED_USER_STORAGE_KEY)
+    }
+  }, [user])
+
   useEffect(() => {
     const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click']
     
@@ -161,18 +171,30 @@ function App() {
   // Fetch user on mount and preserve current route
   useEffect(() => {
     const token = localStorage.getItem('token')
+    const cachedUser = localStorage.getItem(CACHED_USER_STORAGE_KEY)
+
     if (token) {
       if (checkSessionTimeout()) {
         setLoading(false)
         return
       }
+
+      if (cachedUser) {
+        try {
+          setUser(JSON.parse(cachedUser))
+        } catch {
+          localStorage.removeItem(CACHED_USER_STORAGE_KEY)
+        }
+      }
       
       fetch(apiUrl('/api/me'), {
         headers: { Authorization: `Bearer ${token}` },
       })
-        .then((r) => {
+        .then(async (r) => {
           if (r.ok) return r.json()
-          throw new Error()
+          const error = new Error('Failed to restore session')
+          error.status = r.status
+          throw error
         })
         .then((u) => {
           setUser(u)
@@ -180,16 +202,23 @@ function App() {
           setLoading(false)
           // User stays on current page - no redirect
         })
-        .catch(() => {
-          localStorage.removeItem('token')
-          localStorage.removeItem('lastActivity')
+        .catch((error) => {
+          if (error?.status === 401 || error?.status === 403) {
+            localStorage.removeItem('token')
+            localStorage.removeItem('lastActivity')
+            localStorage.removeItem(CACHED_USER_STORAGE_KEY)
+            setUser(null)
+            setLoading(false)
+            navigate('/login', { replace: true, state: { from: location.pathname + location.search } })
+            return
+          }
+
           setLoading(false)
-          navigate('/login')
         })
     } else {
       setLoading(false)
     }
-  }, [])
+  }, [location.pathname, location.search, navigate])
 
   // Poll notifications every 30 seconds
   useEffect(() => {

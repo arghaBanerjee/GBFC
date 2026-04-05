@@ -864,6 +864,11 @@ export default function Practice({ user }) {
   const sessionAvailableCount = voteSummary?.available_count ?? voteSummary?.available?.length ?? selectedSession?.available_count ?? 0
   const sessionRemainingSlots = voteSummary?.remaining_slots ?? Math.max(sessionMaximumCapacity - sessionAvailableCount, 0)
   const isCapacityReached = Boolean(voteSummary?.capacity_reached ?? selectedSession?.capacity_reached ?? (sessionAvailableCount >= sessionMaximumCapacity))
+  const sessionCapacityRatio = sessionMaximumCapacity > 0 ? Math.min(sessionAvailableCount / sessionMaximumCapacity, 1) : 0
+  const sessionBookingPercentage = Math.round(sessionCapacityRatio * 100)
+  const capacityChartRadius = 26
+  const capacityChartCircumference = 2 * Math.PI * capacityChartRadius
+  const capacityChartOffset = capacityChartCircumference * (1 - sessionCapacityRatio)
   const hasSelectedSessionPassed = Boolean(selectedSession && isSessionPast(selectedSession.date, selectedSession.time))
   const canSelectAvailable = selectedStatus === 'available' || !isCapacityReached
   const optionSectionEnabled = Boolean(selectedSession?.option_a_text && selectedSession?.option_b_text)
@@ -992,9 +997,25 @@ export default function Practice({ user }) {
                 </svg>
                 <span>Location: {selectedSession.location || 'TBD'}</span>
               </div>
-              <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: isCapacityReached ? 'var(--theme-warning-strong)' : 'var(--theme-success-strong)', fontWeight: '600' }}>
-                Capacity: {sessionAvailableCount}/{sessionMaximumCapacity} booked
-                {sessionRemainingSlots > 0 ? ` · ${sessionRemainingSlots} slot${sessionRemainingSlots === 1 ? '' : 's'} left` : ' · Full'}
+              <div style={{ marginTop: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem', borderRadius: '0.875rem', background: 'var(--theme-surface)', border: '1px solid var(--theme-border)' }}>
+                <div style={{ position: 'relative', width: '72px', height: '72px', flex: '0 0 72px' }}>
+                  <svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true">
+                    <circle cx="36" cy="36" r="26" fill="none" stroke="color-mix(in srgb, var(--theme-border) 78%, white)" strokeWidth="8" />
+                    <circle cx="36" cy="36" r="26" fill="none" stroke={isCapacityReached ? 'var(--theme-warning-strong)' : 'var(--theme-success-strong)'} strokeWidth="8" strokeLinecap="round" strokeDasharray={capacityChartCircumference} strokeDashoffset={capacityChartOffset} transform="rotate(-90 36 36)" />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                    <strong style={{ fontSize: '1.1rem', color: 'var(--theme-heading)' }}>{sessionBookingPercentage}%</strong>
+                  </div>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Capacity</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '700', color: isCapacityReached ? 'var(--theme-warning-strong)' : 'var(--theme-success-strong)', marginBottom: '0.2rem' }}>
+                    {sessionAvailableCount}/{sessionMaximumCapacity} booked
+                  </div>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--theme-text-muted)' }}>
+                    {sessionRemainingSlots > 0 ? `+${sessionRemainingSlots} slot${sessionRemainingSlots === 1 ? '' : 's'} available` : 'No slots available'}
+                  </div>
+                </div>
               </div>
             </div>
           ) : hasMultipleSessionsForSelectedDate ? (
@@ -1287,15 +1308,24 @@ export default function Practice({ user }) {
               )}
 
               <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
-                <strong>Member Availability</strong>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <strong>Member Availability</strong>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', fontWeight: '700', color: sessionRemainingSlots > 0 ? 'var(--theme-success-strong)' : 'var(--theme-warning-strong)' }}>
+                    <span style={{ display: 'inline-flex', width: '1.5rem', height: '1.5rem', borderRadius: '999px', alignItems: 'center', justifyContent: 'center', background: sessionRemainingSlots > 0 ? 'var(--theme-success-soft)' : 'var(--theme-warning-soft)', border: `1px solid ${sessionRemainingSlots > 0 ? 'color-mix(in srgb, var(--theme-success) 28%, white)' : 'color-mix(in srgb, var(--theme-warning) 28%, white)'}` }}>+</span>
+                    <span>{sessionRemainingSlots} slot{sessionRemainingSlots === 1 ? '' : 's'} available</span>
+                  </div>
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '0.75rem' }}>
-                  <div style={{ border: '1px solid color-mix(in srgb, var(--theme-success) 28%, white)', borderRadius: '0.75rem', padding: '0.75rem', background: 'var(--theme-success-soft)' }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--theme-success-strong)' }}>Available</div>
-                    {(voteSummary?.available || []).length > 0 && (
-                      <div style={{ fontSize: '0.875rem', color: 'var(--theme-success-strong)', fontWeight: '600', marginBottom: '0.5rem' }}>
-                        {selectedSession?.payment_requested ? `(Paid ${paidAvailablePlayersCount}/${(voteSummary?.available || []).length})` : `(${(voteSummary?.available || []).length})`}
-                      </div>
+                  <div style={{ border: '1px solid color-mix(in srgb, var(--theme-success) 28%, white)', borderRadius: '0.75rem', padding: '0.55rem', background: 'var(--theme-success-soft)' }}>
+                    <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-success-strong)' }}>
+                      {(voteSummary?.available || []).length}
+                      {selectedSession?.payment_requested && (voteSummary?.available || []).length > 0 && (
+                      <span style={{ fontSize: '0.700rem', color: 'var(--theme-success-strong)', fontWeight: '500'}}>
+                        &nbsp;Paid {paidAvailablePlayersCount}/{(voteSummary?.available || []).length}
+                      </span>
                     )}
+                    </div>
+                    <div style={{ fontSize: '1.1rem', marginBottom: '0.35rem', color: 'var(--theme-success-strong)' }}>Available</div>
                     <div style={{ marginTop: '0.5rem', paddingTop: '1rem' }}>
                       {(voteSummary?.available || []).map((n, idx) => {
                         const userEmail = voteSummary?.user_emails?.[n] || n
@@ -1311,9 +1341,11 @@ export default function Practice({ user }) {
                       })}
                     </div>
                   </div>
-                  <div style={{ border: '1px solid color-mix(in srgb, var(--theme-warning) 28%, white)', borderRadius: '0.75rem', padding: '0.75rem', background: 'var(--theme-warning-soft)' }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--theme-warning-strong)' }}>Tentative</div>
-                    {(voteSummary?.tentative || []).length > 0 && <div style={{ fontSize: '0.875rem', color: 'var(--theme-warning-strong)', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.tentative || []).length})</div>}
+                  <div style={{ border: '1px solid color-mix(in srgb, var(--theme-warning) 28%, white)', borderRadius: '0.75rem', padding: '0.55rem', background: 'var(--theme-warning-soft)' }}>
+                    <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-warning-strong)' }}>
+                      {(voteSummary?.tentative || []).length}
+                    </div>
+                    <div style={{ fontSize: '1.1rem', marginBottom: '0.35rem', color: 'var(--theme-warning-strong)' }}>Tentative</div>
                     <div style={{ marginTop: '0.5rem', paddingTop: '1rem' }}>
                       {(voteSummary?.tentative || []).map((n, idx) => (
                         <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
@@ -1322,9 +1354,11 @@ export default function Practice({ user }) {
                       ))}
                     </div>
                   </div>
-                  <div style={{ border: '1px solid color-mix(in srgb, var(--theme-danger) 28%, white)', borderRadius: '0.75rem', padding: '0.75rem', background: 'var(--theme-danger-soft)' }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', color: 'var(--theme-danger-strong)' }}>Unavailable</div>
-                    {(voteSummary?.not_available || []).length > 0 && <div style={{ fontSize: '0.875rem', color: 'var(--theme-danger-strong)', fontWeight: '600', marginBottom: '0.5rem' }}>({(voteSummary?.not_available || []).length})</div>}
+                  <div style={{ border: '1px solid color-mix(in srgb, var(--theme-danger) 28%, white)', borderRadius: '0.75rem', padding: '0.55rem', background: 'var(--theme-danger-soft)' }}>
+                    <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-danger-strong)' }}>
+                      {(voteSummary?.not_available || []).length}
+                    </div>
+                    <div style={{ fontSize: '1.1rem', marginBottom: '0.35rem', color: 'var(--theme-danger-strong)' }}>Unavailable</div>
                     <div style={{ marginTop: '0.5rem', paddingTop: '1rem' }}>
                       {(voteSummary?.not_available || []).map((n, idx) => (
                         <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
