@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
 from datetime import date, datetime, timedelta
+from html.parser import HTMLParser
 from typing import List, Optional
 import html
 import re
@@ -3068,6 +3069,164 @@ def normalize_event_type(value: Optional[str]) -> str:
         raise HTTPException(status_code=400, detail="Event type must be one of: Practice, Match, Social, Others")
     return normalized
 
+def sanitize_forum_comment_text(comment: str) -> str:
+    return (comment or "").strip()
+
+def sanitize_forum_post_html(content: str) -> str:
+    allowed_tags = {"a", "br", "div", "iframe", "img"}
+    allowed_attributes = {
+        "a": {"href", "target", "rel", "style"},
+        "div": {"style"},
+        "iframe": {"width", "height", "style", "src", "frameborder", "allow", "allowfullscreen"},
+        "img": {"src", "style"},
+    }
+    allowed_css_properties = {
+        "margin",
+        "margin-top",
+        "max-width",
+        "border-radius",
+        "width",
+        "height",
+        "display",
+        "text-decoration",
+        "color",
+    }
+
+    def sanitize_style(style_value: str) -> str:
+        sanitized_parts = []
+        for part in (style_value or "").split(";"):
+            if ":" not in part:
+                continue
+            name, value = part.split(":", 1)
+            normalized_name = name.strip().lower()
+            normalized_value = value.strip()
+            if not normalized_name or not normalized_value:
+                continue
+            if normalized_name not in allowed_css_properties:
+                continue
+            lower_value = normalized_value.lower()
+            if "expression" in lower_value or "javascript:" in lower_value or "url(" in lower_value:
+                continue
+            sanitized_parts.append(f"{normalized_name}: {normalized_value}")
+        return "; ".join(sanitized_parts)
+
+    def sanitize_url(raw_url: Optional[str], *, image_only: bool = False, iframe_only: bool = False) -> Optional[str]:
+        candidate = (raw_url or "").strip()
+        if not candidate:
+            return None
+        parsed = urlparse(candidate)
+        if image_only:
+            if candidate.startswith("/uploads/"):
+                return candidate
+            if parsed.scheme == "https" and parsed.netloc:
+                return candidate
+            if parsed.scheme == "http" and parsed.netloc in {"localhost:8000", "127.0.0.1:8000"}:
+                return candidate
+            return None
+        if parsed.scheme != "https":
+            return None
+        if iframe_only:
+            if parsed.netloc not in {"www.youtube.com", "youtube.com"}:
+                return None
+            if not parsed.path.startswith("/embed/"):
+                return None
+            return candidate
+        return candidate
+
+    class ForumContentSanitizer(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.parts = []
+
+        def handle_starttag(self, tag, attrs):
+            normalized_tag = tag.lower()
+            if normalized_tag not in allowed_tags:
+                return
+
+            sanitized_attrs = []
+            attr_map = dict(attrs)
+            for attr_name, attr_value in attrs:
+                normalized_attr = attr_name.lower()
+                if normalized_attr not in allowed_attributes.get(normalized_tag, set()):
+                    continue
+                if normalized_attr == "style":
+                    sanitized_style = sanitize_style(attr_value or "")
+                    if sanitized_style:
+                        sanitized_attrs.append((normalized_attr, sanitized_style))
+                    continue
+                if normalized_tag == "a" and normalized_attr == "href":
+                    sanitized_url = sanitize_url(attr_value)
+                    if sanitized_url:
+                        sanitized_attrs.append((normalized_attr, sanitized_url))
+                    continue
+                if normalized_tag == "img" and normalized_attr == "src":
+                    sanitized_url = sanitize_url(attr_value, image_only=True)
+                    if sanitized_url:
+                        sanitized_attrs.append((normalized_attr, sanitized_url))
+                    continue
+                if normalized_tag == "iframe" and normalized_attr == "src":
+                    sanitized_url = sanitize_url(attr_value, iframe_only=True)
+                    if sanitized_url:
+                        sanitized_attrs.append((normalized_attr, sanitized_url))
+                    continue
+                if normalized_tag == "iframe" and normalized_attr == "allow":
+                    lower_allow = (attr_value or "").lower()
+                    if "javascript" in lower_allow:
+                        continue
+                if normalized_tag == "a" and normalized_attr == "target":
+                    if attr_value != "_blank":
+                        continue
+                if normalized_tag == "a" and normalized_attr == "rel":
+                    sanitized_attrs.append((normalized_attr, "noopener noreferrer"))
+                    continue
+                sanitized_attrs.append((normalized_attr, attr_value or ""))
+
+            if normalized_tag == "a" and "href" not in dict(sanitized_attrs):
+                return
+            if normalized_tag == "iframe" and "src" not in dict(sanitized_attrs):
+                return
+            if normalized_tag == "img" and "src" not in dict(sanitized_attrs):
+                return
+            if normalized_tag == "a":
+                attr_keys = {name for name, _ in sanitized_attrs}
+                if "target" not in attr_keys:
+                    sanitized_attrs.append(("target", "_blank"))
+                if "rel" not in attr_keys:
+                    sanitized_attrs.append(("rel", "noopener noreferrer"))
+
+            rendered_attrs = "".join(
+                f' {name}="{html.escape(value, quote=True)}"'
+                for name, value in sanitized_attrs
+            )
+            self.parts.append(f"<{normalized_tag}{rendered_attrs}>")
+
+        def handle_startendtag(self, tag, attrs):
+            normalized_tag = tag.lower()
+            if normalized_tag != "br":
+                self.handle_starttag(tag, attrs)
+                return
+            self.parts.append("<br>")
+
+        def handle_endtag(self, tag):
+            normalized_tag = tag.lower()
+            if normalized_tag in allowed_tags and normalized_tag != "img" and normalized_tag != "br":
+                self.parts.append(f"</{normalized_tag}>")
+
+        def handle_data(self, data):
+            self.parts.append(html.escape(data))
+
+        def handle_entityref(self, name):
+            self.parts.append(f"&{name};")
+
+        def handle_charref(self, name):
+            self.parts.append(f"&#{name};")
+
+    sanitizer = ForumContentSanitizer()
+    sanitizer.feed(content or "")
+    sanitizer.close()
+    sanitized = "".join(sanitizer.parts)
+    return sanitized.strip()
+
 def default_event_title_for_type(event_type: str) -> str:
     return {
         "practice": "Session",
@@ -4699,6 +4858,7 @@ def get_forum_posts():
         posts = []
         for row in cur.fetchall():
             post = dict(row)
+            post["content"] = sanitize_forum_post_html(post.get("content") or "")
             # Use stored user_full_name, fallback to email if not set (for old posts)
             post_full_name = post.get("user_full_name")
             if not post_full_name:
@@ -4754,17 +4914,20 @@ def get_forum_posts():
 
 @app.post("/api/forum", response_model=ForumPostOut)
 def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_current_user)):
+    sanitized_content = sanitize_forum_post_html(post.content)
     # Validate visible text length instead of generated HTML length so embedded media markup does not fail valid posts
-    plain_text_content = re.sub(r"<[^>]+>", "", post.content or "")
+    plain_text_content = re.sub(r"<[^>]+>", "", sanitized_content or "")
     if len(html.unescape(plain_text_content).strip()) > 500:
         raise HTTPException(status_code=400, detail="Post content must be 500 characters or less")
+    if not sanitized_content:
+        raise HTTPException(status_code=400, detail="Post content cannot be empty")
     
     with get_connection() as conn:
         cur = conn.cursor()
         if USE_POSTGRES:
             cur.execute(
                 f"INSERT INTO forum_posts (user_email, user_full_name, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) RETURNING id, created_at",
-                (current_user["email"], current_user["full_name"], post.content),
+                (current_user["email"], current_user["full_name"], sanitized_content),
             )
             inserted_post = cur.fetchone()
             post_id = inserted_post["id"]
@@ -4772,7 +4935,7 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
         else:
             cur.execute(
                 f"INSERT INTO forum_posts (user_email, user_full_name, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (current_user["email"], current_user["full_name"], post.content),
+                (current_user["email"], current_user["full_name"], sanitized_content),
             )
             post_id = cur.lastrowid
             created_at = datetime.utcnow().isoformat()
@@ -4782,7 +4945,7 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
             "forum_post",
             {
                 "author_name": current_user["full_name"],
-                "content": post.content,
+                "content": sanitized_content,
             }
         )
         
@@ -4790,7 +4953,7 @@ def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_cu
             id=post_id,
             user_full_name=current_user["full_name"],
             user_email=current_user["email"],
-            content=post.content,
+            content=sanitized_content,
             created_at=created_at,
             likes_count=0,
             comments=[],
@@ -4802,6 +4965,13 @@ def update_forum_post(
     payload: ForumPostUpdate,
     current_user: dict = Depends(get_current_user),
 ):
+    sanitized_content = sanitize_forum_post_html(payload.content)
+    plain_text_content = re.sub(r"<[^>]+>", "", sanitized_content or "")
+    if len(html.unescape(plain_text_content).strip()) > 500:
+        raise HTTPException(status_code=400, detail="Post content must be 500 characters or less")
+    if not sanitized_content:
+        raise HTTPException(status_code=400, detail="Post content cannot be empty")
+
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(f"SELECT * FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
@@ -4812,11 +4982,11 @@ def update_forum_post(
         if row["user_email"] != current_user["email"] and not is_admin(current_user):
             raise HTTPException(status_code=403, detail="You can only edit your own posts")
 
-        cur.execute(f"UPDATE forum_posts SET content = {PLACEHOLDER} WHERE id = {PLACEHOLDER}", (payload.content, post_id))
+        cur.execute(f"UPDATE forum_posts SET content = {PLACEHOLDER} WHERE id = {PLACEHOLDER}", (sanitized_content, post_id))
         conn.commit()
 
         post = dict(row)
-        post["content"] = payload.content
+        post["content"] = sanitized_content
 
         # Use stored user_full_name, fallback to users table if not set (for old posts)
         post_full_name = post.get("user_full_name")
@@ -4858,7 +5028,7 @@ def update_forum_post(
             id=post_id,
             user_full_name=post_full_name,
             user_email=post["user_email"],
-            content=payload.content,
+            content=sanitized_content,
             created_at=post_created_at,
             likes_count=likes,
             comments=comments,
@@ -4918,18 +5088,21 @@ def get_my_forum_likes(current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/forum/{post_id}/comments", response_model=ForumCommentOut)
 def create_forum_comment(post_id: int, comment: ForumComment, current_user: dict = Depends(get_current_user)):
+    sanitized_comment = sanitize_forum_comment_text(comment.comment)
     # Validate comment length (max 100 characters for security)
-    if len(comment.comment) > 100:
+    if len(sanitized_comment) > 100:
         raise HTTPException(status_code=400, detail="Comment must be 100 characters or less")
-    
+    if not sanitized_comment:
+        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             f"INSERT INTO forum_comments (post_id, user_email, user_full_name, comment) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (post_id, current_user["email"], current_user["full_name"], comment.comment),
+            (post_id, current_user["email"], current_user["full_name"], sanitized_comment),
         )
         conn.commit()
-        return ForumCommentOut(id=cur.lastrowid, user_full_name=current_user["full_name"], comment=comment.comment, created_at=datetime.utcnow().isoformat())
+        return ForumCommentOut(id=cur.lastrowid, user_full_name=current_user["full_name"], comment=sanitized_comment, created_at=datetime.utcnow().isoformat())
 
 @app.delete("/api/practice/{date_str}")
 def delete_practice(date_str: str, current_user: dict = Depends(get_current_user)):
