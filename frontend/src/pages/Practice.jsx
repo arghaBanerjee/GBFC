@@ -7,16 +7,21 @@ export default function Practice({ user }) {
   const location = useLocation()
   const adminControlsRef = useRef(null)
   const selectedSessionRef = useRef(null)
-  const shouldUseInitialDeepLinkScrollRef = useRef((() => {
+  const initialLandingParamsRef = useRef((() => {
     const initialParams = new URLSearchParams(location.search)
-    return Boolean(initialParams.get('date') && initialParams.get('sessionId'))
+    return {
+      hasDate: Boolean(initialParams.get('date')),
+      hasSessionId: Boolean(initialParams.get('date') && initialParams.get('sessionId')),
+    }
   })())
+  const initialLandingScrollCompletedRef = useRef(!initialLandingParamsRef.current.hasDate)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(null)
   const [selectedSessionId, setSelectedSessionId] = useState(null)
   const [availability, setAvailability] = useState({})
   const [adminSessions, setAdminSessions] = useState([])
   const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false)
   const [voteSummary, setVoteSummary] = useState(null)
   const [allUsers, setAllUsers] = useState([])
   const [isAdmin, setIsAdmin] = useState(false)
@@ -272,28 +277,6 @@ export default function Practice({ user }) {
       .catch(() => setAllUsers([]))
       .finally(() => setAdminUsersLoading(false))
   }, [isAdmin, adminControlsOpen, token, allUsers.length, adminUsersLoading])
-
-  useEffect(() => {
-    if (!selectedDate) return
-    const target = selectedSessionId
-      ? document.getElementById('selected-session-details')
-      : document.getElementById('selected-date-details')
-    if (!target) return
-    window.requestAnimationFrame(() => {
-      const header = document.querySelector('.top-nav')
-      const headerHeight = header ? header.getBoundingClientRect().height : 0
-      const extraOffset = window.innerWidth <= 768 ? 12 : 16
-      const targetTop = target.getBoundingClientRect().top + window.scrollY - headerHeight - extraOffset
-      const shouldUseInstantScroll = Boolean(selectedSessionId && shouldUseInitialDeepLinkScrollRef.current)
-      window.scrollTo({
-        top: Math.max(targetTop, 0),
-        behavior: shouldUseInstantScroll ? 'auto' : 'smooth',
-      })
-      if (shouldUseInstantScroll) {
-        shouldUseInitialDeepLinkScrollRef.current = false
-      }
-    })
-  }, [selectedDate, selectedSessionId])
 
   const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
@@ -765,11 +748,20 @@ export default function Practice({ user }) {
   const sessionsForSelectedDate = selectedDateStr
     ? adminSessions.filter((session) => session.date === selectedDateStr)
     : []
-  const isDeepLinkedSessionPending = Boolean(selectedDateStr && hasRequestedSessionId && sessionsLoading)
   const hasMultipleSessionsForSelectedDate = sessionsForSelectedDate.length > 1
   const selectedSession = selectedSessionId == null
     ? (hasMultipleSessionsForSelectedDate ? null : sessionsForSelectedDate[0] || null)
     : sessionsForSelectedDate.find((session) => session.id === selectedSessionId) || null
+  const shouldShowInitialLandingLoader = Boolean(
+    !initialLandingScrollCompletedRef.current &&
+    initialLandingParamsRef.current.hasDate &&
+    (
+      sessionsLoading ||
+      (hasRequestedSessionId
+        ? (!selectedSession || sessionDetailsLoading)
+        : sessionsForSelectedDate.length === 1 && (!selectedSession || sessionDetailsLoading))
+    )
+  )
   const selectedStatus = getSessionAvailabilityStatus(voteSummary, user)
   const selectedPaidByUser = allUsers.find((u) => u.email === paidBy)
   const selectedEventTypeLabel = getEventTypeLabel(selectedSession?.event_type)
@@ -801,24 +793,87 @@ export default function Practice({ user }) {
     : false
 
   useEffect(() => {
+    if (!selectedDate) return
+    const isInitialLanding = !initialLandingScrollCompletedRef.current && initialLandingParamsRef.current.hasDate
+    let targetId = selectedSessionId ? 'selected-session-details' : 'selected-date-details'
+
+    if (isInitialLanding) {
+      if (sessionsLoading) return
+
+      if (hasRequestedSessionId) {
+        if (!selectedSession || sessionDetailsLoading) return
+        targetId = 'selected-session-details'
+      } else if (sessionsForSelectedDate.length === 1) {
+        if (!selectedSession || sessionDetailsLoading) return
+        targetId = 'selected-session-details'
+      } else {
+        targetId = 'selected-date-details'
+      }
+    }
+
+    const target = document.getElementById(targetId)
+    if (!target) return
+    window.requestAnimationFrame(() => {
+      const header = document.querySelector('.top-nav')
+      const headerHeight = header ? header.getBoundingClientRect().height : 0
+      const extraOffset = window.innerWidth <= 768 ? 12 : 16
+      const targetTop = target.getBoundingClientRect().top + window.scrollY - headerHeight - extraOffset
+      window.scrollTo({
+        top: Math.max(targetTop, 0),
+        behavior: 'smooth',
+      })
+      if (isInitialLanding) {
+        initialLandingScrollCompletedRef.current = true
+      }
+    })
+  }, [selectedDate, selectedSessionId, selectedSession?.id, sessionsLoading, sessionDetailsLoading, sessionsForSelectedDate.length, hasRequestedSessionId])
+
+  useEffect(() => {
     if (!selectedDateStr || !selectedSession) {
+      setSessionDetailsLoading(false)
       setVoteSummary(null)
       setPayments({})
       return
     }
-    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/availability`))
+    let cancelled = false
+    setSessionDetailsLoading(true)
+
+    const availabilityRequest = fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/availability`))
       .then(r => r.json())
-      .then(setVoteSummary)
-      .catch(() => setVoteSummary(null))
+      .then((data) => {
+        if (cancelled) return
+        setVoteSummary(data)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setVoteSummary(null)
+      })
     
-    // Fetch payment data for this session
+    let paymentsRequest = Promise.resolve()
     if (token) {
-      fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/payments`), {
+      paymentsRequest = fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/payments`), {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(r => r.json())
-        .then(data => setPayments(data || {}))
-        .catch(() => setPayments({}))
+        .then(data => {
+          if (cancelled) return
+          setPayments(data || {})
+        })
+        .catch(() => {
+          if (cancelled) return
+          setPayments({})
+        })
+    } else {
+      setPayments({})
+    }
+
+    Promise.all([availabilityRequest, paymentsRequest]).finally(() => {
+      if (cancelled) return
+      setSessionDetailsLoading(false)
+    })
+
+    return () => {
+      cancelled = true
     }
   }, [selectedDateStr, selectedSession?.id, token])
 
@@ -1023,14 +1078,14 @@ export default function Practice({ user }) {
                 </div>
               </div>
             </div>
-          ) : isDeepLinkedSessionPending ? (
+          ) : shouldShowInitialLandingLoader ? (
             <div id="selected-session-details" style={{ marginBottom: '1rem', padding: '1rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem', border: '1px solid var(--theme-border)' }}>
               <h3 style={{ marginBottom: '0.875rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Loading event'}</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '1rem', borderRadius: '0.875rem', background: 'var(--theme-surface)', border: '1px solid var(--theme-border)' }}>
                 <div style={{ width: '2.5rem', height: '2.5rem', borderRadius: '999px', border: '3px solid color-mix(in srgb, var(--theme-accent) 20%, white)', borderTopColor: 'var(--theme-accent)', animation: 'spin 0.8s linear infinite', flex: '0 0 auto' }} />
                 <div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--theme-heading)', marginBottom: '0.2rem' }}>Loading event details</div>
-                  <div style={{ fontSize: '0.875rem', color: 'var(--theme-text-muted)' }}>Preparing the selected session from your link...</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--theme-heading)', marginBottom: '0.2rem' }}>{hasRequestedSessionId || sessionsForSelectedDate.length === 1 ? 'Loading event details' : 'Loading events'}</div>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--theme-text-muted)' }}>{hasRequestedSessionId ? 'Preparing the selected session from your link...' : 'Preparing events for the selected date...'}</div>
                 </div>
               </div>
             </div>
