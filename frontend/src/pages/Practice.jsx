@@ -16,6 +16,7 @@ export default function Practice({ user }) {
   const [selectedSessionId, setSelectedSessionId] = useState(null)
   const [availability, setAvailability] = useState({})
   const [adminSessions, setAdminSessions] = useState([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
   const [voteSummary, setVoteSummary] = useState(null)
   const [allUsers, setAllUsers] = useState([])
   const [isAdmin, setIsAdmin] = useState(false)
@@ -227,9 +228,12 @@ export default function Practice({ user }) {
 
   useEffect(() => {
     // Fetch admin-created events
+    setSessionsLoading(true)
     fetch(apiUrl('/api/practice/sessions'))
       .then(r => r.json())
       .then(data => setAdminSessions(data || []))
+      .catch(() => setAdminSessions([]))
+      .finally(() => setSessionsLoading(false))
     
     // Fetch user availability
     if (user && token) {
@@ -761,6 +765,7 @@ export default function Practice({ user }) {
   const sessionsForSelectedDate = selectedDateStr
     ? adminSessions.filter((session) => session.date === selectedDateStr)
     : []
+  const isDeepLinkedSessionPending = Boolean(selectedDateStr && hasRequestedSessionId && sessionsLoading)
   const hasMultipleSessionsForSelectedDate = sessionsForSelectedDate.length > 1
   const selectedSession = selectedSessionId == null
     ? (hasMultipleSessionsForSelectedDate ? null : sessionsForSelectedDate[0] || null)
@@ -1015,6 +1020,17 @@ export default function Practice({ user }) {
                   <div style={{ fontSize: '0.875rem', color: 'var(--theme-text-muted)' }}>
                     {sessionRemainingSlots > 0 ? `+${sessionRemainingSlots} slot${sessionRemainingSlots === 1 ? '' : 's'} available` : 'No slots available'}
                   </div>
+                </div>
+              </div>
+            </div>
+          ) : isDeepLinkedSessionPending ? (
+            <div id="selected-session-details" style={{ marginBottom: '1rem', padding: '1rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem', border: '1px solid var(--theme-border)' }}>
+              <h3 style={{ marginBottom: '0.875rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Loading event'}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '1rem', borderRadius: '0.875rem', background: 'var(--theme-surface)', border: '1px solid var(--theme-border)' }}>
+                <div style={{ width: '2.5rem', height: '2.5rem', borderRadius: '999px', border: '3px solid color-mix(in srgb, var(--theme-accent) 20%, white)', borderTopColor: 'var(--theme-accent)', animation: 'spin 0.8s linear infinite', flex: '0 0 auto' }} />
+                <div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--theme-heading)', marginBottom: '0.2rem' }}>Loading event details</div>
+                  <div style={{ fontSize: '0.875rem', color: 'var(--theme-text-muted)' }}>Preparing the selected session from your link...</div>
                 </div>
               </div>
             </div>
