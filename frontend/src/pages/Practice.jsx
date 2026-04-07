@@ -1393,7 +1393,7 @@ export default function Practice({ user }) {
                     <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-success-strong)' }}>
                       {(voteSummary?.available || []).length}
                       {selectedSession?.payment_requested && (voteSummary?.available || []).length > 0 && (
-                      <span style={{ fontSize: '0.700rem', color: 'var(--theme-success-strong)', fontWeight: '500'}}>
+                      <span style={{ fontSize: '0.900rem', color: 'var(--theme-success-strong)', fontWeight: '500'}}>
                         &nbsp;&nbsp;(Paid {paidAvailablePlayersCount})
                       </span>
                     )}
