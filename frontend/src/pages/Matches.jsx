@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
 import '../styles/UserActions.css'
@@ -65,7 +65,7 @@ function getYouTubeEmbedUrl(url) {
   return match ? `https://www.youtube.com/embed/${match[1]}` : null
 }
 
-export default function Events({ user }) {
+export default function Matches({ user }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [events, setEvents] = useState([])
@@ -73,6 +73,7 @@ export default function Events({ user }) {
   const [commentText, setCommentText] = useState('')
   const [likesHover, setLikesHover] = useState(null)
   const [myLikedEventIds, setMyLikedEventIds] = useState(new Set())
+  const commentTextareaRef = useRef(null)
   const token = localStorage.getItem('token')
   
   // Validate route tab and redirect if invalid
@@ -87,7 +88,7 @@ export default function Events({ user }) {
   }, [pathTab, validatedTab, navigate])
 
   useEffect(() => {
-    fetch(apiUrl('/api/events'))
+    fetch(apiUrl('/api/matches'))
       .then((r) => r.json())
       .then(setEvents)
   }, [])
@@ -97,7 +98,7 @@ export default function Events({ user }) {
       setMyLikedEventIds(new Set())
       return
     }
-    fetch(apiUrl('/api/events/likes/me'), {
+    fetch(apiUrl('/api/matches/likes/me'), {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -106,6 +107,16 @@ export default function Events({ user }) {
       .then((ids) => setMyLikedEventIds(new Set(ids || [])))
       .catch(() => setMyLikedEventIds(new Set()))
   }, [user])
+
+  // Auto-focus comment textarea when comment section is opened
+  useEffect(() => {
+    if (commentingEventId && commentTextareaRef.current) {
+      // Small delay to ensure the textarea is rendered and visible
+      setTimeout(() => {
+        commentTextareaRef.current.focus()
+      }, 100)
+    }
+  }, [commentingEventId])
 
   const filtered = events.filter((e) => getEventTab(e) === tab).sort((a, b) => {
     const aDate = getEventDateTime(a)
@@ -123,10 +134,10 @@ export default function Events({ user }) {
   })
 
   const refreshEventsAndLikes = async () => {
-    const updated = await fetch(apiUrl('/api/events'))
+    const updated = await fetch(apiUrl('/api/matches'))
     setEvents(await updated.json())
     if (user && token) {
-      const likesRes = await fetch(apiUrl('/api/events/likes/me'), {
+      const likesRes = await fetch(apiUrl('/api/matches/likes/me'), {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (likesRes.ok) setMyLikedEventIds(new Set(await likesRes.json()))
@@ -137,7 +148,7 @@ export default function Events({ user }) {
     if (!user) return alert('Please log in to like')
 
     const alreadyLiked = myLikedEventIds.has(eventId)
-    await fetch(apiUrl(`/api/events/${eventId}/like`), {
+    await fetch(apiUrl(`/api/matches/${eventId}/like`), {
       method: alreadyLiked ? 'DELETE' : 'POST',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -192,7 +203,7 @@ export default function Events({ user }) {
     // Sanitize comment input before sending
     const sanitizedComment = sanitizeInput(commentText.trim())
     
-    await fetch(apiUrl(`/api/events/${commentingEventId}/comments`), {
+    await fetch(apiUrl(`/api/matches/${commentingEventId}/comments`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -203,7 +214,7 @@ export default function Events({ user }) {
     setCommentText('')
     setCommentingEventId(null)
     // Refetch events to get updated comments
-    const updated = await fetch(apiUrl('/api/events'))
+    const updated = await fetch(apiUrl('/api/matches'))
     setEvents(await updated.json())
   }
 
@@ -310,6 +321,7 @@ export default function Events({ user }) {
                     <div style={{ padding: '1rem', background: 'var(--theme-surface-alt)', borderBottom: '1px solid var(--theme-border)' }}>
                       <div style={{ width: '100%', marginBottom: '0.75rem' }}>
                         <textarea
+                          ref={commentTextareaRef}
                           rows={3}
                           value={commentText}
                           onChange={(e) => setCommentText(e.target.value)}

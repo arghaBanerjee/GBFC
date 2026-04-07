@@ -193,6 +193,37 @@ python tests/test_payment_request_comprehensive.py
 
 ---
 
+### `test_practice_session_id_foundation.py`
+
+Tests for the practice session ID foundation and API endpoint functionality.
+
+**Test Coverage (1 test):**
+- **API Endpoint Renaming**: Tests `/api/matches` endpoint (renamed from `/api/events`)
+
+**Run Command:**
+```bash
+python tests/test_practice_session_id_foundation.py
+```
+
+---
+
+### `test_forum_crud.py`
+
+Tests for forum CRUD operations and functionality.
+
+**Test Coverage (4 tests):**
+- **Forum Post Creation**: Creating new forum posts with rich text
+- **Forum Post Updates**: Editing existing forum posts
+- **Forum Post Deletion**: Deleting forum posts
+- **Forum Comment Operations**: Adding and managing comments
+
+**Run Command:**
+```bash
+python tests/test_forum_crud.py
+```
+
+---
+
 ### `test_payment_notifications.py`
 
 Tests for notification system related to payment requests.
@@ -200,14 +231,14 @@ Tests for notification system related to payment requests.
 **Test Coverage (4 tests):**
 
 #### Payment Request Notifications
-- ✅ All available users receive notifications when admin requests payment
-- ✅ Tentative/unavailable users do NOT receive notifications
-- ✅ Notification message format is correct
+- All available users receive notifications when admin requests payment
+- Tentative/unavailable users do NOT receive notifications
+- Notification message format is correct
 
 #### Payment Confirmation Notifications
-- ✅ All admin users receive notifications when user confirms payment
-- ✅ Notification includes user name, date, time, and location
-- ✅ No admin notifications sent when user unchecks payment
+- All admin users receive notifications when user confirms payment
+- Notification includes user name, date, time, and location
+- No admin notifications sent when user unchecks payment
 
 **Run Command:**
 ```bash
@@ -336,10 +367,25 @@ Individual tests timeout after 60 seconds. If tests are slow:
 
 ## Test Statistics
 
-- **Total Test Files**: 3
-- **Total Tests**: 26 (4 + 18 + 4)
-- **Average Execution Time**: ~1.5 seconds
-- **Code Coverage**: Database compatibility, payment request functionality, notifications, data integrity
+- **Total Test Files**: 5
+- **Total Tests**: 31 (4 + 18 + 1 + 4 + 4)
+- **Average Execution Time**: ~7.8 seconds
+- **Code Coverage**: Database compatibility, payment request functionality, notifications, API endpoint refactoring, forum CRUD operations, data integrity
+
+## Recent Updates (April 2026)
+
+### API Endpoint Refactoring
+- **Calendar Events**: `/api/calendar-events` endpoints renamed to `/api/calendar/events`
+- **Matches**: `/api/events` endpoints renamed to `/api/matches`
+- **Frontend Components**: 
+  - `Practice.jsx` renamed to `Calendar.jsx`
+  - `Events.jsx` renamed to `Matches.jsx`
+
+### Test Suite Updates
+- Added `test_practice_session_id_foundation.py` for API endpoint testing
+- Added `test_forum_crud.py` for forum functionality testing
+- Updated all tests to work with new API endpoints
+- Maintained backward compatibility for legacy endpoints
 
 ## Legacy Test Files
 

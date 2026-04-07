@@ -7,6 +7,7 @@ export default function Forum({ user }) {
   const [newContent, setNewContent] = useState('')
   const [newYoutubeUrl, setNewYoutubeUrl] = useState('')
   const editorRef = useRef(null)
+  const commentTextareaRef = useRef(null)
   const [editingPostId, setEditingPostId] = useState(null)
   const [editingPostContent, setEditingPostContent] = useState('')
   const [editingPostImagePreview, setEditingPostImagePreview] = useState(null)
@@ -39,6 +40,16 @@ export default function Forum({ user }) {
       .then((ids) => setMyLikedPostIds(new Set(ids || [])))
       .catch(() => setMyLikedPostIds(new Set()))
   }, [user])
+
+  // Auto-focus comment textarea when comment section is opened
+  useEffect(() => {
+    if (commentingPostId && commentTextareaRef.current) {
+      // Small delay to ensure the textarea is rendered and visible
+      setTimeout(() => {
+        commentTextareaRef.current.focus()
+      }, 100)
+    }
+  }, [commentingPostId])
 
   const getYouTubeVideoId = (url) => {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/
@@ -722,6 +733,7 @@ export default function Forum({ user }) {
                 <div style={{ padding: '1rem', background: 'var(--theme-surface-alt)', borderBottom: '1px solid var(--theme-border)' }}>
                   <div style={{ width: '100%', marginBottom: '0.75rem' }}>
                     <textarea
+                      ref={commentTextareaRef}
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
                       placeholder="Write a comment..."

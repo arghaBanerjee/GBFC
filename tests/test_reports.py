@@ -17,9 +17,26 @@ from openpyxl import load_workbook
 os.environ["TEST_MODE"] = "true"
 
 from api import app, init_db, hash_password, USE_POSTGRES, get_connection, PLACEHOLDER, DB_PATH
+from api import SESSIONS
 from fastapi.testclient import TestClient
+import pytest
 
 client = TestClient(app)
+
+@pytest.fixture(autouse=True)
+def setup_reports_test_state():
+    init_db()
+    SESSIONS.clear()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM auth_sessions")
+        cur.execute("DELETE FROM practice_payments")
+        cur.execute("DELETE FROM practice_availability")
+        cur.execute("DELETE FROM practice_sessions")
+        cur.execute("DELETE FROM users")
+        conn.commit()
+    setup_test_data()
+    yield
 
 def setup_test_data():
     """Create test data for reports"""

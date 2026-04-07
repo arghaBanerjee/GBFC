@@ -40,24 +40,24 @@ export default function Admin({ user, loading }) {
   const [eventYoutubeUrl, setEventYoutubeUrl] = useState('')
   const [uploading, setUploading] = useState(false)
 
-  // Practice sessions
-  const [practiceSessions, setPracticeSessions] = useState([])
-  const [editingPracticeId, setEditingPracticeId] = useState(null)
-  const [practiceDate, setPracticeDate] = useState('')
-  const [practiceTime, setPracticeTime] = useState('21:00')
-  const [practiceLocation, setPracticeLocation] = useState('Toryglen')
-  const [practiceEventType, setPracticeEventType] = useState('practice')
-  const [practiceEventTitle, setPracticeEventTitle] = useState('Session')
-  const [practiceDescription, setPracticeDescription] = useState('')
-  const [practiceImageUrl, setPracticeImageUrl] = useState('')
-  const [practiceYoutubeUrl, setPracticeYoutubeUrl] = useState('')
-  const [practiceOptionAText, setPracticeOptionAText] = useState('')
-  const [practiceOptionBText, setPracticeOptionBText] = useState('')
-  const [practiceSessionCost, setPracticeSessionCost] = useState('')
-  const [practicePaidBy, setPracticePaidBy] = useState('')
-  const [practiceMaximumCapacity, setPracticeMaximumCapacity] = useState('18')
-  const [practiceInlineStatus, setPracticeInlineStatus] = useState('')
-  const [isSubmittingPractice, setIsSubmittingPractice] = useState(false)
+  // Calendar Events
+  const [calendarEvents, setCalendarEvents] = useState([])
+  const [editingCalendarEventId, setEditingCalendarEventId] = useState(null)
+  const [calendarEventDate, setCalendarEventDate] = useState('')
+  const [calendarEventTime, setCalendarEventTime] = useState('21:00')
+  const [calendarEventLocation, setCalendarEventLocation] = useState('Toryglen')
+  const [calendarEventEventType, setCalendarEventEventType] = useState('practice')
+  const [calendarEventTitle, setCalendarEventTitle] = useState('Session')
+  const [calendarEventDescription, setCalendarEventDescription] = useState('')
+  const [calendarEventImageUrl, setCalendarEventImageUrl] = useState('')
+  const [calendarEventYoutubeUrl, setCalendarEventYoutubeUrl] = useState('')
+  const [calendarEventOptionAText, setCalendarEventOptionAText] = useState('')
+  const [calendarEventOptionBText, setCalendarEventOptionBText] = useState('')
+  const [calendarEventSessionCost, setCalendarEventSessionCost] = useState('')
+  const [calendarEventPaidBy, setCalendarEventPaidBy] = useState('')
+  const [calendarEventMaximumCapacity, setCalendarEventMaximumCapacity] = useState('18')
+  const [calendarEventInlineStatus, setCalendarEventInlineStatus] = useState('')
+  const [isSubmittingCalendarEvent, setIsSubmittingCalendarEvent] = useState(false)
   const [practiceListTab, setPracticeListTab] = useState('upcoming')
 
   // Users
@@ -171,7 +171,7 @@ export default function Admin({ user, loading }) {
       event_type: 'practice',
       event_type_label: 'Practice',
       event_title: 'Session',
-      payments_link: 'https://glasgow-bengali-fc.vercel.app/user-actions/payments',
+      payments_link: 'https://glasgow-bengali-fc.vercel.app/user/payments',
       time_suffix: ' at 8:00 PM',
       location_suffix: ' at Scotstoun Sports Campus',
       location_comma_suffix: ', Scotstoun Sports Campus',
@@ -284,13 +284,13 @@ export default function Admin({ user, loading }) {
   }, [routeTab, loading, user, isAdmin, navigate])
 
   const loadEvents = async () => {
-    const res = await fetch(apiUrl('/api/events'))
+    const res = await fetch(apiUrl('/api/matches'))
     if (res.ok) setEvents(await res.json())
   }
 
-  const loadPracticeSessions = async () => {
-    const res = await fetch(apiUrl('/api/practice/sessions'))
-    if (res.ok) setPracticeSessions(await res.json())
+  const loadCalendarEvents = async () => {
+    const res = await fetch(apiUrl('/api/calendar/events'))
+    if (res.ok) setCalendarEvents(await res.json())
   }
 
   const loadUsers = async () => {
@@ -331,7 +331,7 @@ export default function Admin({ user, loading }) {
 
   const refreshTabData = (tabName) => {
     if (tabName === 'events') {
-      loadPracticeSessions()
+      loadCalendarEvents()
       loadUsers()
     }
     else if (tabName === 'users') loadUsers()
@@ -379,7 +379,7 @@ export default function Admin({ user, loading }) {
       let didLoadTab = false
       
       if (activeTab === 'events') {
-        loadPracticeSessions()
+        loadCalendarEvents()
         loadUsers()
         newLoadedTabs.add('events')
         didLoadTab = true
@@ -494,22 +494,22 @@ export default function Admin({ user, loading }) {
     setEventTime('')
   }
 
-  const resetPracticeForm = () => {
-    setEditingPracticeId(null)
-    setPracticeDate('')
-    setPracticeTime('21:00')
-    setPracticeLocation('Toryglen')
-    setPracticeEventType('practice')
-    setPracticeEventTitle('Session')
-    setPracticeDescription('')
-    setPracticeImageUrl('')
-    setPracticeYoutubeUrl('')
-    setPracticeOptionAText('')
-    setPracticeOptionBText('')
-    setPracticeSessionCost('')
-    setPracticePaidBy('')
-    setPracticeMaximumCapacity('18')
-    setPracticeInlineStatus('')
+  const resetCalendarEventForm = () => {
+    setEditingCalendarEventId(null)
+    setCalendarEventDate('')
+    setCalendarEventTime('21:00')
+    setCalendarEventLocation('Toryglen')
+    setCalendarEventEventType('practice')
+    setCalendarEventTitle('Session')
+    setCalendarEventDescription('')
+    setCalendarEventImageUrl('')
+    setCalendarEventYoutubeUrl('')
+    setCalendarEventOptionAText('')
+    setCalendarEventOptionBText('')
+    setCalendarEventSessionCost('')
+    setCalendarEventPaidBy('')
+    setCalendarEventMaximumCapacity('18')
+    setCalendarEventInlineStatus('')
   }
 
   const resetExpenseForm = () => {
@@ -537,7 +537,7 @@ export default function Admin({ user, loading }) {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.detail || 'Upload failed')
-      setPracticeImageUrl(data.image_url)
+      setCalendarEventImageUrl(data.image_url)
     } catch (err) {
       setMessage(String(err))
     } finally {
@@ -556,7 +556,7 @@ export default function Admin({ user, loading }) {
       image_url: eventImageUrl,
       youtube_url: eventYoutubeUrl,
     }
-    const res = await fetch(apiUrl(editingEventId ? `/api/events/${editingEventId}` : '/api/events'), {
+    const res = await fetch(apiUrl(editingEventId ? `/api/matches/${editingEventId}` : '/api/matches'), {
       method: editingEventId ? 'PUT' : 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -588,7 +588,7 @@ export default function Admin({ user, loading }) {
 
   const handleDeleteEvent = async (id) => {
     if (!confirm('Delete this event?')) return
-    const res = await fetch(apiUrl(`/api/events/${id}`), {
+    const res = await fetch(apiUrl(`/api/matches/${id}`), {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -601,41 +601,40 @@ export default function Admin({ user, loading }) {
     refreshTabData('event')
   }
 
-  const handleSubmitPractice = async (e) => {
+  const handleSubmitCalendarEvent = async (e) => {
     e.preventDefault()
-    const isEditingPractice = Boolean(editingPracticeId)
-    const trimmedOptionA = practiceOptionAText.trim()
-    const trimmedOptionB = practiceOptionBText.trim()
+    const isEditingPractice = Boolean(editingCalendarEventId)
+    const trimmedOptionA = calendarEventOptionAText.trim()
+    const trimmedOptionB = calendarEventOptionBText.trim()
 
     if ((trimmedOptionA && !trimmedOptionB) || (!trimmedOptionA && trimmedOptionB)) {
       setMessage('')
-      setPracticeInlineStatus('Please either add both event options or remove both. Option A and Option B must be saved together.')
-      setIsSubmittingPractice(false)
+      setIsSubmittingCalendarEvent(false)
       return
     }
 
-    setPracticeInlineStatus(isEditingPractice ? 'Saving changes...' : 'Saving new event...')
-    setIsSubmittingPractice(true)
+    setCalendarEventInlineStatus(editingCalendarEventId ? 'Saving changes...' : 'Saving new event...')
+    setIsSubmittingCalendarEvent(true)
 
     const payload = {
-      date: practiceDate,
-      time: practiceTime,
-      location: practiceLocation,
-      event_type: practiceEventType,
-      event_title: practiceEventTitle,
-      description: practiceDescription || null,
-      image_url: practiceImageUrl || null,
-      youtube_url: practiceYoutubeUrl || null,
+      date: calendarEventDate,
+      time: calendarEventTime,
+      location: calendarEventLocation,
+      event_type: calendarEventEventType,
+      event_title: calendarEventTitle,
+      description: calendarEventDescription,
+      image_url: calendarEventImageUrl || null,
+      youtube_url: calendarEventYoutubeUrl || null,
       option_a_text: trimmedOptionA || null,
       option_b_text: trimmedOptionB || null,
-      session_cost: practiceSessionCost !== '' ? parseFloat(practiceSessionCost) : null,
-      paid_by: practicePaidBy || null,
-      maximum_capacity: practiceMaximumCapacity ? parseInt(practiceMaximumCapacity, 10) : 100,
+      session_cost: calendarEventSessionCost !== '' ? parseFloat(calendarEventSessionCost) : null,
+      paid_by: calendarEventPaidBy || null,
+      maximum_capacity: calendarEventMaximumCapacity ? parseInt(calendarEventMaximumCapacity, 10) : 100,
     }
 
     let res
-    if (editingPracticeId) {
-      res = await fetch(apiUrl(`/api/practice/sessions/id/${editingPracticeId}`), {
+    if (editingCalendarEventId) {
+      res = await fetch(apiUrl(`/api/calendar/events/id/${editingCalendarEventId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -644,7 +643,7 @@ export default function Admin({ user, loading }) {
         body: JSON.stringify(payload),
       })
     } else {
-      res = await fetch(apiUrl('/api/practice/sessions'), {
+      res = await fetch(apiUrl('/api/calendar/events'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -657,60 +656,59 @@ export default function Admin({ user, loading }) {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setMessage(data?.detail || 'Failed to save event')
-      setPracticeInlineStatus('')
+      setCalendarEventInlineStatus('')
       return
     }
     setMessage(isEditingPractice ? 'Event updated.' : 'Event created.')
-    resetPracticeForm()
-    setPracticeInlineStatus(isEditingPractice ? 'Record updated successfully!' : 'New event added!')
+    resetCalendarEventForm()
+    setCalendarEventInlineStatus(isEditingPractice ? 'Record updated successfully!' : 'New event added!')
     refreshTabData('events')
     setTimeout(() => {
-      setPracticeInlineStatus((currentStatus) => (
+      setCalendarEventInlineStatus((currentStatus) => (
         currentStatus === (isEditingPractice ? 'Record updated successfully!' : 'New event added!') ? '' : currentStatus
       ))
     }, 2500)
   }
 
-  const hasPartialPracticeOptions = (practiceOptionAText.trim() && !practiceOptionBText.trim()) || (!practiceOptionAText.trim() && practiceOptionBText.trim())
-  const showPracticeOptionInputs = practiceEventType === 'match' || practiceEventType === 'social'
+  const hasPartialPracticeOptions = (calendarEventOptionAText.trim() && !calendarEventOptionBText.trim()) || (!calendarEventOptionAText.trim() && calendarEventOptionBText.trim())
+  const showPracticeOptionInputs = calendarEventEventType === 'match' || calendarEventEventType === 'social'
   const practiceOptionInputStyle = {
     width: '100%',
     background: hasPartialPracticeOptions ? '#fff7ed' : undefined,
     border: hasPartialPracticeOptions ? '1px solid #f59e0b' : undefined,
   }
 
-  const handleSubmitPracticeWithReset = async (e) => {
+  const handleSubmitCalendarEventWithReset = async (e) => {
     try {
-      await handleSubmitPractice(e)
+      await handleSubmitCalendarEvent(e)
     } finally {
-      setIsSubmittingPractice(false)
+      setIsSubmittingCalendarEvent(false)
     }
   }
 
-  const handleEditPractice = (s) => {
-    if (s.payment_requested) return
+  const handleEditCalendarEvent = (s) => {
     setActiveTab('events')
-    setPracticeInlineStatus('')
-    setEditingPracticeId(s.id)
-    setPracticeDate(s.date || '')
-    setPracticeTime(s.time || '')
-    setPracticeLocation(s.location || '')
-    setPracticeEventType(s.event_type || 'practice')
-    setPracticeEventTitle(s.event_title || '')
-    setPracticeDescription(s.description || '')
-    setPracticeImageUrl(s.image_url || '')
-    setPracticeYoutubeUrl(s.youtube_url || '')
-    setPracticeOptionAText(s.option_a_text || '')
-    setPracticeOptionBText(s.option_b_text || '')
-    setPracticeSessionCost(s.session_cost != null ? String(s.session_cost) : '')
-    setPracticePaidBy(s.paid_by || '')
-    setPracticeMaximumCapacity((s.maximum_capacity || 100).toString())
+    setCalendarEventInlineStatus('')
+    setEditingCalendarEventId(s.id)
+    setCalendarEventDate(s.date || '')
+    setCalendarEventTime(s.time || '')
+    setCalendarEventLocation(s.location || '')
+    setCalendarEventEventType(s.event_type || 'practice')
+    setCalendarEventTitle(s.event_title || 'Session')
+    setCalendarEventDescription(s.description || '')
+    setCalendarEventImageUrl(s.image_url || '')
+    setCalendarEventYoutubeUrl(s.youtube_url || '')
+    setCalendarEventOptionAText(s.option_a_text || '')
+    setCalendarEventOptionBText(s.option_b_text || '')
+    setCalendarEventSessionCost(s.session_cost != null ? String(s.session_cost) : '')
+    setCalendarEventPaidBy(s.paid_by || '')
+    setCalendarEventMaximumCapacity((s.maximum_capacity || 100).toString())
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleDeletePractice = async (sessionId) => {
+  const handleDeleteCalendarEvent = async (sessionId) => {
     if (!confirm('Delete this event?')) return
-    const res = await fetch(apiUrl(`/api/practice/sessions/id/${sessionId}`), {
+    const res = await fetch(apiUrl(`/api/calendar/events/id/${sessionId}`), {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -720,7 +718,7 @@ export default function Admin({ user, loading }) {
       return
     }
     setMessage('Event deleted.')
-    if (editingPracticeId === sessionId) resetPracticeForm()
+    if (editingCalendarEventId === sessionId) resetCalendarEventForm()
     refreshTabData('events')
   }
 
@@ -905,23 +903,19 @@ export default function Admin({ user, loading }) {
     return eventTypeOptions.find((option) => option.value === value)?.label || 'Practice'
   }
 
-  const upcomingPracticeSessions = practiceSessions
+  const upcomingCalendarEvents = calendarEvents
     .filter((s) => new Date(`${s.date}T00:00:00`) >= todayAtMidnight)
     .sort((a, b) => {
       const dateCompare = new Date(`${a.date}T00:00:00`) - new Date(`${b.date}T00:00:00`)
       if (dateCompare !== 0) return dateCompare
-      const timeCompare = (a.time || '').localeCompare(b.time || '')
-      if (timeCompare !== 0) return timeCompare
       return (a.id || 0) - (b.id || 0)
     })
 
-  const pastPracticeSessions = practiceSessions
+  const pastCalendarEvents = calendarEvents
     .filter((s) => new Date(`${s.date}T00:00:00`) < todayAtMidnight)
     .sort((a, b) => {
       const dateCompare = new Date(`${b.date}T00:00:00`) - new Date(`${a.date}T00:00:00`)
       if (dateCompare !== 0) return dateCompare
-      const timeCompare = (b.time || '').localeCompare(a.time || '')
-      if (timeCompare !== 0) return timeCompare
       return (b.id || 0) - (a.id || 0)
     })
 
@@ -1056,28 +1050,18 @@ export default function Admin({ user, loading }) {
 
       {activeTab === 'events' && (
         <>
-          <form onSubmit={handleSubmitPracticeWithReset} style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '1rem', 
-            maxWidth: 560,
-            border: '1px solid #d1d5db',
-            borderRadius: '0.5rem',
-            padding: '1.5rem',
-            background: 'white',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-          }}>
+          <form onSubmit={handleSubmitCalendarEventWithReset} style={{ display: 'grid', gap: '1rem', padding: '1.5rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
             <div>
               <label>Event Type</label>
-              <select value={practiceEventType} onChange={(e) => {
+              <select value={calendarEventEventType} onChange={(e) => {
                 const nextEventType = e.target.value
-                setPracticeEventType(nextEventType)
+                setCalendarEventEventType(nextEventType)
                 if (nextEventType !== 'practice') {
-                  setPracticeEventTitle('')
+                  setCalendarEventTitle('')
                 }
                 if (nextEventType !== 'match' && nextEventType !== 'social') {
-                  setPracticeOptionAText('')
-                  setPracticeOptionBText('')
+                  setCalendarEventOptionAText('')
+                  setCalendarEventOptionBText('')
                 }
               }} style={{ width: '100%' }}>
                 {eventTypeOptions.map((option) => (
@@ -1087,29 +1071,29 @@ export default function Admin({ user, loading }) {
             </div>
             <div>
               <label>Event Title</label>
-              <input value={practiceEventTitle} onChange={(e) => setPracticeEventTitle(e.target.value.slice(0, 30))} maxLength={30} placeholder="Enter event title" style={{ width: '100%' }} />
+              <input value={calendarEventTitle} onChange={(e) => setCalendarEventTitle(e.target.value.slice(0, 30))} maxLength={30} placeholder="Enter event title" style={{ width: '100%' }} />
             </div>
             <div>
               <label>Date</label>
-              <input type="date" value={practiceDate} onChange={(e) => setPracticeDate(e.target.value)} required style={{ width: '100%' }} />
+              <input type="date" value={calendarEventDate} onChange={(e) => setCalendarEventDate(e.target.value)} required style={{ width: '100%' }} />
             </div>
             <div>
               <label>Time</label>
-              <input type="time" value={practiceTime} onChange={(e) => setPracticeTime(e.target.value)} style={{ width: '100%' }} />
+              <input type="time" value={calendarEventTime} onChange={(e) => setCalendarEventTime(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div>
               <label>Location</label>
-              <input value={practiceLocation} onChange={(e) => setPracticeLocation(e.target.value)} style={{ width: '100%' }} />
+              <input value={calendarEventLocation} onChange={(e) => setCalendarEventLocation(e.target.value)} style={{ width: '100%' }} />
             </div>
             {showPracticeOptionInputs && (
               <>
                 <div>
                   <label>Option A</label>
-                  <input value={practiceOptionAText} onChange={(e) => setPracticeOptionAText(e.target.value)} placeholder="Optional member choice label" style={practiceOptionInputStyle} />
+                  <input value={calendarEventOptionAText} onChange={(e) => setCalendarEventOptionAText(e.target.value)} placeholder="Optional member choice label" style={practiceOptionInputStyle} />
                 </div>
                 <div>
                   <label>Option B</label>
-                  <input value={practiceOptionBText} onChange={(e) => setPracticeOptionBText(e.target.value)} placeholder="Optional member choice label" style={practiceOptionInputStyle} />
+                  <input value={calendarEventOptionBText} onChange={(e) => setCalendarEventOptionBText(e.target.value)} placeholder="Optional member choice label" style={practiceOptionInputStyle} />
                 </div>
                 {hasPartialPracticeOptions && (
                   <div style={{ color: '#dc2626', fontSize: '0.875rem', fontWeight: '500', marginTop: '0.5rem' }}>
@@ -1118,55 +1102,57 @@ export default function Admin({ user, loading }) {
                 )}
               </>
             )}
-            {practiceEventType === 'match' && (
+            {calendarEventEventType === 'match' && (
               <>
                 <div>
                   <label>Description</label>
-                  <textarea value={practiceDescription} onChange={(e) => setPracticeDescription(e.target.value)} rows={5} style={{ width: '100%' }} />
+                  <textarea value={calendarEventDescription} onChange={(e) => setCalendarEventDescription(e.target.value)} rows={5} style={{ width: '100%' }} />
                 </div>
                 <div>
                   <label>Match Image</label>
                   <div style={{ display: 'grid', gap: '0.5rem' }}>
-                    <input value={practiceImageUrl} onChange={(e) => setPracticeImageUrl(e.target.value)} placeholder="Image URL" style={{ width: '100%' }} />
+                    <input value={calendarEventImageUrl} onChange={(e) => setCalendarEventImageUrl(e.target.value)} placeholder="Image URL" style={{ width: '100%' }} />
                     <input type="file" accept="image/*" onChange={handleImageUpload} disabled={uploading} style={{ width: '100%' }} />
                     {uploading && <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Uploading image...</div>}
-                    {practiceImageUrl && <img src={practiceImageUrl} alt="Match" style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 8, objectFit: 'cover' }} />}
+                    {calendarEventImageUrl && <img src={calendarEventImageUrl} alt="Match" style={{ maxWidth: '100%', maxHeight: 220, borderRadius: 8, objectFit: 'cover' }} />}
                   </div>
                 </div>
                 <div>
                   <label>YouTube URL</label>
-                  <input value={practiceYoutubeUrl} onChange={(e) => setPracticeYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." style={{ width: '100%' }} />
+                  <input value={calendarEventYoutubeUrl} onChange={(e) => setCalendarEventYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." style={{ width: '100%' }} />
                 </div>
               </>
             )}
             <div>
               <label>Maximum Capacity</label>
-              <input type="number" min="1" value={practiceMaximumCapacity} onChange={(e) => setPracticeMaximumCapacity(e.target.value)} style={{ width: '100%' }} />
+              <input type="number" min="1" value={calendarEventMaximumCapacity} onChange={(e) => setCalendarEventMaximumCapacity(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div>
               <label>Total Cost</label>
-              <input type="number" min="0" step="0.01" value={practiceSessionCost} onChange={(e) => setPracticeSessionCost(e.target.value)} style={{ width: '100%' }} />
+              <input type="number" min="0" step="0.01" value={calendarEventSessionCost} onChange={(e) => setCalendarEventSessionCost(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div>
               <label>Paid By</label>
-              <select value={practicePaidBy} onChange={(e) => setPracticePaidBy(e.target.value)} style={{ width: '100%' }}>
-                <option value="">Select User</option>
+              <select value={calendarEventPaidBy} onChange={(e) => setCalendarEventPaidBy(e.target.value)} style={{ width: '100%' }}>
+                <option value="">Not specified</option>
                 {users.map((u) => (
-                  <option key={u.email} value={u.email}>{u.full_name}</option>
+                  <option key={u.email} value={u.email}>
+                    {u.full_name || u.email}
+                  </option>
                 ))}
               </select>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="nav-btn" type="submit" disabled={isSubmittingPractice} style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600', opacity: isSubmittingPractice ? 0.7 : 1, cursor: isSubmittingPractice ? 'not-allowed' : 'pointer' }}>{isSubmittingPractice ? (editingPracticeId ? 'Updating Event...' : 'Adding Event...') : (editingPracticeId ? 'Update Event' : 'Add Event')}</button>
-              {(editingPracticeId || practiceDate || practiceTime !== '21:00' || practiceLocation || practiceEventType !== 'practice' || practiceEventTitle !== 'Session' || practiceDescription || practiceImageUrl || practiceYoutubeUrl || practiceOptionAText || practiceOptionBText || practiceSessionCost || practicePaidBy || practiceMaximumCapacity !== '18') && (
-                <button className="nav-btn" type="button" onClick={resetPracticeForm} disabled={isSubmittingPractice} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600', opacity: isSubmittingPractice ? 0.7 : 1, cursor: isSubmittingPractice ? 'not-allowed' : 'pointer' }}>
+              <button className="nav-btn" type="submit" disabled={isSubmittingCalendarEvent} style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600', opacity: isSubmittingCalendarEvent ? 0.7 : 1, cursor: isSubmittingCalendarEvent ? 'not-allowed' : 'pointer' }}>{isSubmittingCalendarEvent ? (editingCalendarEventId ? 'Updating Event...' : 'Adding Event...') : (editingCalendarEventId ? 'Update Event' : 'Add Event')}</button>
+              {(editingCalendarEventId || calendarEventDate || calendarEventTime !== '21:00' || calendarEventLocation || calendarEventEventType !== 'practice' || calendarEventTitle !== 'Session' || calendarEventDescription || calendarEventImageUrl || calendarEventYoutubeUrl || calendarEventOptionAText || calendarEventOptionBText || calendarEventSessionCost || calendarEventPaidBy || calendarEventMaximumCapacity !== '18') && (
+                <button className="nav-btn" type="button" onClick={resetCalendarEventForm} disabled={isSubmittingCalendarEvent} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600', opacity: isSubmittingCalendarEvent ? 0.7 : 1, cursor: isSubmittingCalendarEvent ? 'not-allowed' : 'pointer' }}>
                   Clear
                 </button>
               )}
             </div>
-            {practiceInlineStatus && (
-              <div style={{ color: practiceInlineStatus.includes('both event options') || practiceInlineStatus.includes('saved together') ? '#dc2626' : (isSubmittingPractice ? '#6b7280' : '#16a34a'), fontSize: '0.875rem', fontWeight: '500' }}>
-                {practiceInlineStatus}
+            {calendarEventInlineStatus && (
+              <div style={{ color: calendarEventInlineStatus.includes('both event options') || calendarEventInlineStatus.includes('saved together') ? '#dc2626' : (isSubmittingCalendarEvent ? '#6b7280' : '#16a34a'), fontSize: '0.875rem', fontWeight: '500' }}>
+                {calendarEventInlineStatus}
               </div>
             )}
           </form>
@@ -1199,7 +1185,7 @@ export default function Admin({ user, loading }) {
               </button>
             </div>
             <div style={{ display: 'grid', gap: '1rem' }}>
-              {(practiceListTab === 'upcoming' ? upcomingPracticeSessions : pastPracticeSessions).map((s) => (
+              {(practiceListTab === 'upcoming' ? upcomingCalendarEvents : pastCalendarEvents).map((s) => (
                 <div
                   key={s.id}
                   onClick={() => {
@@ -1221,7 +1207,7 @@ export default function Admin({ user, loading }) {
                       <div style={{ opacity: 0.7, fontSize: '0.85rem', marginTop: 2 }}>{s.event_title || formatEventTypeLabel(s.event_type)}</div>
                     </div>
                     <div className="admin-mobile-action-group">
-                      <button className="nav-btn admin-mobile-action-btn" onClick={(e) => { e.stopPropagation(); handleEditPractice(s) }} disabled={actionsLocked} aria-label="Edit event" title="Edit event" style={{ border: '1px solid #d1d5db', color: actionsLocked ? '#9ca3af' : '#111827', cursor: actionsLocked ? 'not-allowed' : 'pointer', background: actionsLocked ? '#f3f4f6' : 'var(--theme-surface-alt)' }}>
+                      <button className="nav-btn admin-mobile-action-btn" onClick={(e) => { e.stopPropagation(); handleEditCalendarEvent(s) }} disabled={actionsLocked} aria-label="Edit event" title="Edit event" style={{ border: '1px solid #d1d5db', color: actionsLocked ? '#9ca3af' : '#111827', cursor: actionsLocked ? 'not-allowed' : 'pointer', background: actionsLocked ? '#f3f4f6' : 'var(--theme-surface-alt)' }}>
                         <span className="admin-mobile-action-text">Edit</span>
                         <span className="admin-mobile-action-icon" aria-hidden="true">
                           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1232,7 +1218,7 @@ export default function Admin({ user, loading }) {
                       </button>
                       <button
                         className="nav-btn admin-mobile-action-btn"
-                        onClick={(e) => { e.stopPropagation(); handleDeletePractice(s.id) }}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteCalendarEvent(s.id) }}
                         disabled={actionsLocked}
                         aria-label="Delete event"
                         title="Delete event"
@@ -1292,7 +1278,7 @@ export default function Admin({ user, loading }) {
                   )}
                 </div>
               ))}
-              {(practiceListTab === 'upcoming' ? upcomingPracticeSessions : pastPracticeSessions).length === 0 && (
+              {(practiceListTab === 'upcoming' ? upcomingCalendarEvents : pastCalendarEvents).length === 0 && (
                 <p>{practiceListTab === 'upcoming' ? 'No upcoming events.' : 'No past events.'}</p>
               )}
             </div>
@@ -1483,7 +1469,7 @@ export default function Admin({ user, loading }) {
                         disabled={u.user_type === 'admin' && u.email !== user?.email}
                         onClick={() => {
                           if (u.email === user?.email) {
-                            navigate('/profile')
+                            navigate('/user/profile')
                             return
                           }
                           if (u.user_type === 'admin') {

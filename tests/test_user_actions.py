@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 # Set test mode before importing api
 os.environ["TEST_MODE"] = "true"
 
-from api import app, init_db, hash_password, USE_POSTGRES, get_connection, PLACEHOLDER, notify_practice_slots_available, deliver_notification
+from api import app, init_db, hash_password, USE_POSTGRES, get_connection, PLACEHOLDER, notify_practice_slots_available, deliver_notification, SESSIONS
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -21,10 +21,12 @@ client = TestClient(app)
 def setup_test_data():
     """Create test data for user actions"""
     init_db()
+    SESSIONS.clear()
     with get_connection() as conn:
         cur = conn.cursor()
         
         # Clear existing data
+        cur.execute("DELETE FROM auth_sessions")
         cur.execute("DELETE FROM notifications")
         cur.execute("DELETE FROM practice_payments")
         cur.execute("DELETE FROM practice_availability")
@@ -369,10 +371,12 @@ def test_individual_amount_calculation():
     print("Testing individual amount calculation...")
 
     init_db()
+    SESSIONS.clear()
     with get_connection() as conn:
         cur = conn.cursor()
         
         # Clear and setup specific test data
+        cur.execute("DELETE FROM auth_sessions")
         cur.execute("DELETE FROM practice_payments")
         cur.execute("DELETE FROM practice_availability")
         cur.execute("DELETE FROM practice_sessions")

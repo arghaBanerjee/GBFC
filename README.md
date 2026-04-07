@@ -5,10 +5,10 @@ A modern web application for the Glasgow Bengali Football Club with a React fron
 ## Features
 
 - User authentication (signup/login)
-- Events (past/upcoming) with likes and comments
-- Practice availability calendar with admin-managed sessions
+- Matches (past/upcoming) with likes and comments
+- Calendar availability with admin-managed events
 - Forum with rich text posts, likes, and comments
-- Admin panel for managing events, practice sessions, and forum posts
+- Admin panel for managing matches, calendar events,expenses, reports
 - About Us page with committee and member information
 - Responsive modern UI
 
@@ -76,28 +76,41 @@ See **[docs/QUICKSTART_DEPLOY.md](docs/QUICKSTART_DEPLOY.md)** for a 15-minute d
 
 ```
 Football/
-├── api.py              # FastAPI backend
-├── requirements.txt    # Python dependencies
-├── render.yaml         # Render deployment config
-├── run_all_tests.py    # Master test runner
-├── docs/               # Documentation
-│   ├── DEPLOYMENT.md           # Detailed deployment guide
-│   ├── QUICKSTART_DEPLOY.md    # Quick deployment guide
-│   ├── TESTING.md              # Testing documentation
-│   ├── EMAIL_SETUP.md          # Email configuration guide
-│   ├── README_DEPLOYMENT.md    # Deployment README
-│   └── README_REACT.md         # React setup guide
-├── tests/              # Test directory
-│   ├── test_database_compatibility.py
-│   ├── test_payment_request_comprehensive.py
-│   └── test_payment_notifications.py
-└── frontend/
-    ├── src/
-    │   ├── pages/      # React pages
-    │   ├── App.jsx     # Main app component
-    │   └── api.js      # API utility
-    ├── vercel.json     # Vercel deployment config
-    └── package.json    # Node dependencies
+|-- api.py              # FastAPI backend
+|-- requirements.txt    # Python dependencies
+|-- render.yaml         # Render deployment config
+|-- run_all_tests.py    # Master test runner
+|-- docs/               # Documentation
+|   |-- DEPLOYMENT.md           # Detailed deployment guide
+|   |-- QUICKSTART_DEPLOY.md    # Quick deployment guide
+|   |-- TESTING.md              # Testing documentation
+|   |-- EMAIL_SETUP.md          # Email configuration guide
+|   |-- README_DEPLOYMENT.md    # Deployment README
+|   |-- README_REACT.md         # React setup guide
+|-- tests/              # Test directory
+|   |-- test_database_compatibility.py
+|   |-- test_payment_request_comprehensive.py
+|   |-- test_payment_notifications.py
+|   |-- test_practice_session_id_foundation.py
+|   |-- test_forum_crud.py
+|-- frontend/
+    |-- src/
+    |   |-- pages/      # React pages
+    |   |   |-- Calendar.jsx    # Calendar component (formerly Practice.jsx)
+    |   |   |-- Matches.jsx     # Matches component (formerly Events.jsx)
+    |   |   |-- Forum.jsx       # Forum discussions
+    |   |   |-- Admin.jsx       # Admin panel
+    |   |   |-- UserActions.jsx # User actions (/user/*)
+    |   |   |-- Profile.jsx     # User profile
+    |   |   |-- About.jsx       # About page
+    |   |   |-- Home.jsx        # Home page
+    |   |   |-- Login.jsx       # Login page
+    |   |   |-- Signup.jsx      # Signup page
+    |   |   |-- ResetPassword.jsx # Password reset
+    |   |-- App.jsx     # Main app component
+    |   |-- api.js      # API utility
+    |-- vercel.json     # Vercel deployment config
+    |-- package.json    # Node dependencies
 ```
 
 ## Development Notes

@@ -1,33 +1,34 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
+import '../styles/UserActions.css'
 
-export default function Practice({ user }) {
+export default function Calendar({ user }) {
   const navigate = useNavigate()
   const location = useLocation()
   const adminControlsRef = useRef(null)
-  const selectedSessionRef = useRef(null)
+  const selectedCalendarEventRef = useRef(null)
   const initialLandingParamsRef = useRef((() => {
     const initialParams = new URLSearchParams(location.search)
     return {
       hasDate: Boolean(initialParams.get('date')),
-      hasSessionId: Boolean(initialParams.get('date') && initialParams.get('sessionId')),
+      hasCalendarEventId: Boolean(initialParams.get('date') && initialParams.get('sessionId')),
     }
   })())
   const initialLandingScrollCompletedRef = useRef(!initialLandingParamsRef.current.hasDate)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(null)
-  const [selectedSessionId, setSelectedSessionId] = useState(null)
+  const [selectedCalendarEventId, setSelectedCalendarEventId] = useState(null)
   const [availability, setAvailability] = useState({})
-  const [adminSessions, setAdminSessions] = useState([])
-  const [sessionsLoading, setSessionsLoading] = useState(true)
-  const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false)
+  const [adminCalendarEvents, setAdminCalendarEvents] = useState([])
+  const [calendarEventsLoading, setCalendarEventsLoading] = useState(true)
+  const [calendarEventDetailsLoading, setCalendarEventDetailsLoading] = useState(false)
   const [voteSummary, setVoteSummary] = useState(null)
   const [allUsers, setAllUsers] = useState([])
   const [isAdmin, setIsAdmin] = useState(false)
   const [selectedUserEmail, setSelectedUserEmail] = useState('')
   const [adminSelectedStatus, setAdminSelectedStatus] = useState('available')
-  const [sessionCost, setSessionCost] = useState('')
+  const [calendarEventCost, setCalendarEventCost] = useState('')
   const [paidBy, setPaidBy] = useState('')
   const [maximumCapacity, setMaximumCapacity] = useState('100')
   const [payments, setPayments] = useState({})
@@ -86,56 +87,60 @@ export default function Practice({ user }) {
     return dt
   }
 
-  const getSessionDateTime = (dateStr, timeStr) => {
+  const getCalendarEventDateTime = (dateStr, timeStr) => {
     if (!dateStr) return null
     const effectiveTime = timeStr || '21:00'
     const [year, month, day] = dateStr.split('-').map(Number)
     const [hours, minutes] = effectiveTime.split(':').map(Number)
-    if (!year || !month || !day || Number.isNaN(hours) || Number.isNaN(minutes)) return null
-    return new Date(year, month - 1, day, hours, minutes, 0, 0)
+    if (!year || !month || !day) return null
+    const dt = new Date(year, month - 1, day, hours, minutes, 0, 0)
+    // Validate round-trip
+    const rt = formatDateStr(dt)
+    if (rt !== dateStr) return null
+    return dt
   }
 
-  const isSessionPast = (dateStr, timeStr) => {
-    const sessionDateTime = getSessionDateTime(dateStr, timeStr)
-    if (!sessionDateTime) return false
-    return sessionDateTime.getTime() < Date.now()
+  const isCalendarEventPast = (dateStr, timeStr) => {
+    const calendarEventDateTime = getCalendarEventDateTime(dateStr, timeStr)
+    if (!calendarEventDateTime) return false
+    return calendarEventDateTime.getTime() < Date.now()
   }
 
   const getEventTypeLabel = (eventType) => eventTypeLabelMap[eventType] || 'Event'
 
-  const getEventDisplayTitle = (session) => {
-    if (!session) return 'Event'
-    const title = session.event_title?.trim()
-    return title || getEventTypeLabel(session.event_type)
+  const getEventDisplayTitle = (calendarEvent) => {
+    if (!calendarEvent) return 'Event'
+    const title = calendarEvent.event_title?.trim()
+    return title || getEventTypeLabel(calendarEvent.event_type)
   }
 
-  const getSessionAvailabilityStatus = (sessionSummary, currentUser) => {
-    if (!sessionSummary || !currentUser?.email) return null
-    const matchesUser = (name) => sessionSummary.user_emails?.[name] === currentUser.email
-    if ((sessionSummary.available || []).some(matchesUser)) return 'available'
-    if ((sessionSummary.tentative || []).some(matchesUser)) return 'tentative'
-    if ((sessionSummary.not_available || []).some(matchesUser)) return 'not_available'
+  const getCalendarEventAvailabilityStatus = (calendarEventSummary, currentUser) => {
+    if (!calendarEventSummary || !currentUser?.email) return null
+    const matchesUser = (name) => calendarEventSummary.user_emails?.[name] === currentUser.email
+    if ((calendarEventSummary.available || []).some(matchesUser)) return 'available'
+    if ((calendarEventSummary.tentative || []).some(matchesUser)) return 'tentative'
+    if ((calendarEventSummary.not_available || []).some(matchesUser)) return 'not_available'
     return null
   }
 
-  const mergeUpdatedSession = (updatedSession) => {
-    if (!updatedSession?.id) return
-    setAdminSessions((prev) => {
-      const existingIndex = prev.findIndex((session) => session.id === updatedSession.id)
+  const mergeUpdatedCalendarEvent = (updatedCalendarEvent) => {
+    if (!updatedCalendarEvent?.id) return
+    setAdminCalendarEvents((prev) => {
+      const existingIndex = prev.findIndex((calendarEvent) => calendarEvent.id === updatedCalendarEvent.id)
       if (existingIndex === -1) {
-        return [...prev, updatedSession].sort((a, b) => {
+        return [...prev, updatedCalendarEvent].sort((a, b) => {
           if (a.date !== b.date) return a.date.localeCompare(b.date)
           return (a.time || '').localeCompare(b.time || '') || a.id - b.id
         })
       }
-      return prev.map((session) =>
-        session.id === updatedSession.id ? { ...session, ...updatedSession } : session
+      return prev.map((calendarEvent) =>
+        calendarEvent.id === updatedCalendarEvent.id ? { ...calendarEvent, ...updatedCalendarEvent } : calendarEvent
       )
     })
   }
 
-  const updateSessionCapacityState = (sessionId, updater) => {
-    if (!sessionId) return
+  const updateCalendarEventCapacityState = (calendarEventId, updater) => {
+    if (!calendarEventId) return
     setVoteSummary((prev) => {
       if (!prev) return prev
       const next = updater(prev)
@@ -147,17 +152,17 @@ export default function Practice({ user }) {
         capacity_reached: (next.available?.length ?? 0) >= (next.maximum_capacity ?? 100),
       }
     })
-    setAdminSessions((prev) => prev.map((session) => {
-      if (session.id !== sessionId) return session
-      const availableCount = voteSummary?.available_count ?? session.available_count ?? 0
-      const maximumCapacityValue = voteSummary?.maximum_capacity ?? session.maximum_capacity ?? 100
+    setAdminCalendarEvents((prev) => prev.map((calendarEvent) => {
+      if (calendarEvent.id !== calendarEventId) return calendarEvent
+      const availableCount = voteSummary?.available_count ?? calendarEvent.available_count ?? 0
+      const maximumCapacityValue = voteSummary?.maximum_capacity ?? calendarEvent.maximum_capacity ?? 100
       const nextSummary = updater({
         available: Array.from({ length: availableCount }),
         maximum_capacity: maximumCapacityValue,
       })
       const nextAvailableCount = nextSummary?.available?.length ?? availableCount
       return {
-        ...session,
+        ...calendarEvent,
         available_count: nextAvailableCount,
         remaining_slots: Math.max(maximumCapacityValue - nextAvailableCount, 0),
         capacity_reached: nextAvailableCount >= maximumCapacityValue,
@@ -165,42 +170,38 @@ export default function Practice({ user }) {
     }))
   }
 
-  const refreshSelectedDateData = (session, { refreshAvailabilityMap = false, refreshPayments = false } = {}) => {
-    if (!session?.id) return Promise.resolve()
+  const refreshSelectedDateData = (calendarEvent, { refreshAvailabilityMap = false, refreshPayments = false } = {}) => {
+    if (!calendarEvent?.id) return Promise.resolve()
     const requests = [
-      fetch(apiUrl(`/api/practice/sessions/id/${session.id}/availability`))
+      fetch(apiUrl(`/api/calendar/events/id/${calendarEvent.id}/availability`))
         .then(r => r.json())
         .then((data) => {
           setVoteSummary(data)
-          mergeUpdatedSession({
-            id: session.id,
+          mergeUpdatedCalendarEvent({
+            id: calendarEvent.id,
             maximum_capacity: data.maximum_capacity,
             available_count: data.available_count,
             remaining_slots: data.remaining_slots,
             capacity_reached: data.capacity_reached,
           })
         })
-        .catch(() => {}),
+        .catch(() => {
+          setVoteSummary(null)
+        }),
     ]
-
-    if (refreshAvailabilityMap && token) {
-      requests.push(
-        fetch(apiUrl('/api/practice/availability'), {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then(r => r.json())
-          .then(data => setAvailability(data || {}))
-          .catch(() => {})
-      )
-    }
 
     if (refreshPayments && token) {
       requests.push(
-        fetch(apiUrl(`/api/practice/sessions/id/${session.id}/payments`), {
+        fetch(apiUrl(`/api/calendar/events/id/${calendarEvent.id}/payments`), {
           headers: { Authorization: `Bearer ${token}` },
         })
           .then(r => r.json())
-          .then(data => setPayments(data || {}))
+          .then((data) => {
+            setPayments(data || {})
+          })
+          .catch(() => {
+            setPayments({})
+          })
           .catch(() => setPayments({}))
       )
     }
@@ -216,13 +217,13 @@ export default function Practice({ user }) {
     const dt = parseDateStr(dateStr)
     if (!dt) {
       setSelectedDate(null)
-      setSelectedSessionId(null)
+      setSelectedCalendarEventId(null)
       setCurrentDate(new Date())
       return
     }
 
     const parsedSessionId = sessionIdParam != null ? Number(sessionIdParam) : null
-    setSelectedSessionId(Number.isInteger(parsedSessionId) ? parsedSessionId : null)
+    setSelectedCalendarEventId(Number.isInteger(parsedSessionId) ? parsedSessionId : null)
 
     const currentSelected = selectedDate ? formatDateStr(selectedDate) : null
     if (currentSelected !== dateStr) {
@@ -233,16 +234,16 @@ export default function Practice({ user }) {
 
   useEffect(() => {
     // Fetch admin-created events
-    setSessionsLoading(true)
-    fetch(apiUrl('/api/practice/sessions'))
+    setCalendarEventsLoading(true)
+    fetch(apiUrl('/api/calendar/events'))
       .then(r => r.json())
-      .then(data => setAdminSessions(data || []))
-      .catch(() => setAdminSessions([]))
-      .finally(() => setSessionsLoading(false))
+      .then(data => setAdminCalendarEvents(data || []))
+      .catch(() => setAdminCalendarEvents([]))
+      .finally(() => setCalendarEventsLoading(false))
     
     // Fetch user availability
     if (user && token) {
-      fetch(apiUrl('/api/practice/availability'), {
+      fetch(apiUrl('/api/event-availability'), {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -287,19 +288,19 @@ export default function Practice({ user }) {
   const handlePrevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))
     setSelectedDate(null)
-    setSelectedSessionId(null)
+    setSelectedCalendarEventId(null)
   }
 
   const handleNextMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))
     setSelectedDate(null)
-    setSelectedSessionId(null)
+    setSelectedCalendarEventId(null)
   }
 
   const handleDateClick = (day) => {
     const clicked = new Date(currentDate.getFullYear(), currentDate.getMonth(), day, 12, 0, 0, 0)
     setSelectedDate(clicked)
-    setSelectedSessionId(null)
+    setSelectedCalendarEventId(null)
 
     const dateStr = formatDateStr(clicked)
     const params = new URLSearchParams(location.search)
@@ -318,8 +319,8 @@ export default function Practice({ user }) {
     if (!selectedSession) return
     
     const dateStr = selectedSession.date
-    const sessionAvailabilityKey = String(selectedSession.id)
-    if (isSessionPast(dateStr, selectedSession?.time)) {
+    const calendarEventAvailabilityKey = String(selectedSession.id)
+    if (isCalendarEventPast(dateStr, selectedSession?.time)) {
       setAvailabilityError('Cannot change availability after session time has passed.')
       return
     }
@@ -333,18 +334,37 @@ export default function Practice({ user }) {
     setAvailabilityError('')
     setAvailabilityUpdating(true)
 
+    // Clear event options if user is no longer "available"
+    const shouldClearOptions = currentStatus === 'available' && newStatus !== 'available'
+    const previousOptionChoice = selectedOptionChoice
+
     if (isDeselecting) {
       setAvailability(prev => {
         const updated = { ...prev }
-        delete updated[sessionAvailabilityKey]
+        delete updated[calendarEventAvailabilityKey]
         return updated
       })
     } else {
-      setAvailability(prev => ({ ...prev, [sessionAvailabilityKey]: newStatus }))
+      setAvailability(prev => ({ ...prev, [calendarEventAvailabilityKey]: newStatus }))
+    }
+
+    // Clear local option choice state if user is no longer available
+    if (shouldClearOptions) {
+      setVoteSummary(prev => {
+        if (!prev) return prev
+        const currentName = user.full_name || user.email
+        const nextOptionA = (prev.option_a || []).filter((name) => name !== currentName)
+        const nextOptionB = (prev.option_b || []).filter((name) => name !== currentName)
+        return {
+          ...prev,
+          option_a: nextOptionA,
+          option_b: nextOptionB,
+        }
+      })
     }
 
     if (currentStatus === 'available' || newStatus === 'available') {
-      updateSessionCapacityState(selectedSession.id, (prev) => {
+      updateCalendarEventCapacityState(selectedSession.id, (prev) => {
         const available = [...(prev.available || [])]
         const currentName = user.full_name || user.email
         const filteredAvailable = available.filter((name) => {
@@ -365,13 +385,16 @@ export default function Practice({ user }) {
       })
     }
     
-    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/availability`), {
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ status: newStatus }),
+      body: JSON.stringify({ 
+        status: newStatus, 
+        option_choice: shouldClearOptions ? null : selectedOptionChoice 
+      }),
     })
       .then(r => {
         if (!r.ok) {
@@ -416,7 +439,7 @@ export default function Practice({ user }) {
       }
     })
 
-    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/availability`), {
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -447,7 +470,7 @@ export default function Practice({ user }) {
   const handleSavePaymentInfo = () => {
     if (!selectedSession) return
     
-    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}`), {
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}`), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -464,7 +487,7 @@ export default function Practice({ user }) {
         youtube_url: selectedSession.youtube_url,
         option_a_text: selectedSession.option_a_text,
         option_b_text: selectedSession.option_b_text,
-        session_cost: sessionCost ? parseFloat(sessionCost) : null,
+        session_cost: calendarEventCost ? parseFloat(calendarEventCost) : null,
         paid_by: paidBy || null,
         maximum_capacity: maximumCapacity ? parseInt(maximumCapacity, 10) : 100,
       }),
@@ -478,14 +501,14 @@ export default function Practice({ user }) {
         return r.json()
       })
       .then((updatedSession) => {
-        mergeUpdatedSession(updatedSession)
-        setSessionCost(updatedSession.session_cost != null ? updatedSession.session_cost.toString() : '')
+        mergeUpdatedCalendarEvent(updatedSession)
+        setCalendarEventCost(updatedSession.session_cost != null ? updatedSession.session_cost.toString() : '')
         setPaidBy(updatedSession.paid_by || '')
         setMaximumCapacity((updatedSession.maximum_capacity || 100).toString())
         setPaymentInfoSaved(Boolean(updatedSession.session_cost != null && updatedSession.paid_by))
-        return fetch(apiUrl('/api/practice/sessions'))
+        return fetch(apiUrl('/api/calendar/events'))
           .then(r => r.json())
-          .then(data => setAdminSessions(data || []))
+          .then(data => setAdminCalendarEvents(data || []))
       })
       .catch(err => console.error('Failed to save payment info:', err))
   }
@@ -496,7 +519,7 @@ export default function Practice({ user }) {
     if (!window.confirm(
       '⚠️ WARNING: This action cannot be reversed!\n\n' +
       'Before enabling payment request, please review:\n' +
-      `• Total Cost: £${sessionCost || '0'}\n` +
+      `• Total Cost: £${calendarEventCost || '0'}\n` +
       `• Paid by: ${paidBy || 'Not set'}\n` +
       `• Available users: ${voteSummary?.available?.length || 0}\n\n` +
       'Once enabled, users will be asked to confirm payment.\n\n' +
@@ -505,7 +528,7 @@ export default function Practice({ user }) {
       return
     }
     
-    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/request-payment`), {
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/request-payment`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -522,9 +545,9 @@ export default function Practice({ user }) {
       })
       .then(() => {
         // Refresh admin sessions
-        return fetch(apiUrl('/api/practice/sessions'))
+        return fetch(apiUrl('/api/calendar/events'))
           .then(r => r.json())
-          .then(data => setAdminSessions(data || []))
+          .then(data => setAdminCalendarEvents(data || []))
       })
       .catch(err => console.error('Failed to request payment:', err))
   }
@@ -539,7 +562,7 @@ export default function Practice({ user }) {
       [user.email]: paid,
     }))
     
-    fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/payment`), {
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/payment`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -557,7 +580,7 @@ export default function Practice({ user }) {
       })
       .then(() => {
         // Refresh payment data
-        return fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/payments`), {
+        return fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/payments`), {
           headers: { Authorization: `Bearer ${token}` }
         })
           .then(r => r.json())
@@ -580,7 +603,7 @@ export default function Practice({ user }) {
     setAdminAvailabilityError('')
     setAdminAvailabilityUpdating(true)
     
-    fetch(apiUrl(`/api/admin/practice/sessions/id/${selectedSession.id}/availability`), {
+    fetch(apiUrl(`/api/admin/calendar/events/id/${selectedSession.id}/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -620,7 +643,7 @@ export default function Practice({ user }) {
     setAdminAvailabilityError('')
     setAdminAvailabilityUpdating(true)
     
-    fetch(apiUrl(`/api/admin/practice/sessions/id/${selectedSession.id}/availability`), {
+    fetch(apiUrl(`/api/admin/calendar/events/id/${selectedSession.id}/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -694,9 +717,9 @@ export default function Practice({ user }) {
 
     return calendar.map((day, index) => {
       const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      const sessionsForDate = adminSessions.filter(s => s.date === dateStr)
+      const calendarEventsForDate = adminCalendarEvents.filter(s => s.date === dateStr)
       const isSelected = Boolean(day) && formatDateStr(selectedDate) === dateStr
-      const uniqueEventTypes = [...new Set(sessionsForDate.map((session) => session.event_type || 'practice'))]
+      const uniqueEventTypes = [...new Set(calendarEventsForDate.map((session) => session.event_type || 'practice'))]
 
       let background = '#ffffff'
       if (uniqueEventTypes.length === 1) {
@@ -730,9 +753,9 @@ export default function Practice({ user }) {
           }}
         >
           <div>{day}</div>
-          {sessionsForDate.length > 1 && (
+          {calendarEventsForDate.length > 1 && (
             <div style={{ marginTop: '0.25rem', fontSize: '0.625rem', fontWeight: '700', color: 'var(--theme-heading)' }}>
-              {sessionsForDate.length} events
+              {calendarEventsForDate.length} events
             </div>
           )}
         </div>
@@ -746,23 +769,23 @@ export default function Practice({ user }) {
   const requestedSessionId = requestedSessionIdParam != null ? Number(requestedSessionIdParam) : null
   const hasRequestedSessionId = Number.isInteger(requestedSessionId)
   const sessionsForSelectedDate = selectedDateStr
-    ? adminSessions.filter((session) => session.date === selectedDateStr)
+    ? adminCalendarEvents.filter((session) => session.date === selectedDateStr)
     : []
   const hasMultipleSessionsForSelectedDate = sessionsForSelectedDate.length > 1
-  const selectedSession = selectedSessionId == null
+  const selectedSession = selectedCalendarEventId == null
     ? (hasMultipleSessionsForSelectedDate ? null : sessionsForSelectedDate[0] || null)
-    : sessionsForSelectedDate.find((session) => session.id === selectedSessionId) || null
+    : sessionsForSelectedDate.find((session) => session.id === selectedCalendarEventId) || null
   const shouldShowInitialLandingLoader = Boolean(
     !initialLandingScrollCompletedRef.current &&
     initialLandingParamsRef.current.hasDate &&
     (
-      sessionsLoading ||
+      calendarEventsLoading ||
       (hasRequestedSessionId
-        ? (!selectedSession || sessionDetailsLoading)
-        : sessionsForSelectedDate.length === 1 && (!selectedSession || sessionDetailsLoading))
+        ? (!selectedSession || calendarEventDetailsLoading)
+        : sessionsForSelectedDate.length === 1 && (!selectedSession || calendarEventDetailsLoading))
     )
   )
-  const selectedStatus = getSessionAvailabilityStatus(voteSummary, user)
+  const selectedStatus = getCalendarEventAvailabilityStatus(voteSummary, user)
   const selectedPaidByUser = allUsers.find((u) => u.email === paidBy)
   const selectedEventTypeLabel = getEventTypeLabel(selectedSession?.event_type)
   const selectedEventTitle = getEventDisplayTitle(selectedSession)
@@ -795,16 +818,16 @@ export default function Practice({ user }) {
   useEffect(() => {
     if (!selectedDate) return
     const isInitialLanding = !initialLandingScrollCompletedRef.current && initialLandingParamsRef.current.hasDate
-    let targetId = selectedSessionId ? 'selected-session-details' : 'selected-date-details'
+    let targetId = selectedCalendarEventId ? 'selected-session-details' : 'selected-date-details'
 
     if (isInitialLanding) {
-      if (sessionsLoading) return
+      if (calendarEventsLoading) return
 
       if (hasRequestedSessionId) {
-        if (!selectedSession || sessionDetailsLoading) return
+        if (!selectedSession || calendarEventDetailsLoading) return
         targetId = 'selected-session-details'
       } else if (sessionsForSelectedDate.length === 1) {
-        if (!selectedSession || sessionDetailsLoading) return
+        if (!selectedSession || calendarEventDetailsLoading) return
         targetId = 'selected-session-details'
       } else {
         targetId = 'selected-date-details'
@@ -826,19 +849,19 @@ export default function Practice({ user }) {
         initialLandingScrollCompletedRef.current = true
       }
     })
-  }, [selectedDate, selectedSessionId, selectedSession?.id, sessionsLoading, sessionDetailsLoading, sessionsForSelectedDate.length, hasRequestedSessionId])
+  }, [selectedDate, selectedCalendarEventId, selectedSession?.id, calendarEventsLoading, calendarEventDetailsLoading, sessionsForSelectedDate.length, hasRequestedSessionId])
 
   useEffect(() => {
     if (!selectedDateStr || !selectedSession) {
-      setSessionDetailsLoading(false)
+      setCalendarEventDetailsLoading(false)
       setVoteSummary(null)
       setPayments({})
       return
     }
     let cancelled = false
-    setSessionDetailsLoading(true)
+    setCalendarEventDetailsLoading(true)
 
-    const availabilityRequest = fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/availability`))
+    const availabilityRequest = fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/availability`))
       .then(r => r.json())
       .then((data) => {
         if (cancelled) return
@@ -851,7 +874,7 @@ export default function Practice({ user }) {
     
     let paymentsRequest = Promise.resolve()
     if (token) {
-      paymentsRequest = fetch(apiUrl(`/api/practice/sessions/id/${selectedSession.id}/payments`), {
+      paymentsRequest = fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/payments`), {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(r => r.json())
@@ -869,7 +892,7 @@ export default function Practice({ user }) {
 
     Promise.all([availabilityRequest, paymentsRequest]).finally(() => {
       if (cancelled) return
-      setSessionDetailsLoading(false)
+      setCalendarEventDetailsLoading(false)
     })
 
     return () => {
@@ -879,7 +902,7 @@ export default function Practice({ user }) {
 
   useEffect(() => {
     if (!selectedDateStr) {
-      setSelectedSessionId(null)
+      setSelectedCalendarEventId(null)
       return
     }
     if (!sessionsForSelectedDate.length) {
@@ -887,33 +910,33 @@ export default function Practice({ user }) {
     }
     if (hasRequestedSessionId) {
       if (sessionsForSelectedDate.some((session) => session.id === requestedSessionId)) {
-        if (selectedSessionId !== requestedSessionId) {
-          setSelectedSessionId(requestedSessionId)
+        if (selectedCalendarEventId !== requestedSessionId) {
+          setSelectedCalendarEventId(requestedSessionId)
         }
         return
       }
     }
     if (sessionsForSelectedDate.length === 1) {
-      if (selectedSessionId !== sessionsForSelectedDate[0].id) {
-        setSelectedSessionId(sessionsForSelectedDate[0].id)
+      if (selectedCalendarEventId !== sessionsForSelectedDate[0].id) {
+        setSelectedCalendarEventId(sessionsForSelectedDate[0].id)
       }
       return
     }
-    if (selectedSessionId != null && !sessionsForSelectedDate.some((session) => session.id === selectedSessionId)) {
-      setSelectedSessionId(null)
+    if (selectedCalendarEventId != null && !sessionsForSelectedDate.some((session) => session.id === selectedCalendarEventId)) {
+      setSelectedCalendarEventId(null)
     }
-  }, [selectedDateStr, selectedSessionId, sessionsForSelectedDate, hasRequestedSessionId, requestedSessionId])
+  }, [selectedDateStr, selectedCalendarEventId, sessionsForSelectedDate, hasRequestedSessionId, requestedSessionId])
   
   // Update session cost and paid_by when selected session data changes
   useEffect(() => {
     if (selectedSession) {
-      setSessionCost(selectedSession.session_cost != null ? selectedSession.session_cost.toString() : '')
+      setCalendarEventCost(selectedSession.session_cost != null ? selectedSession.session_cost.toString() : '')
       setPaidBy(selectedSession.paid_by || '')
       setMaximumCapacity((selectedSession.maximum_capacity || 100).toString())
       // Check if payment info is already saved (both fields have values in DB)
       setPaymentInfoSaved(Boolean(selectedSession.session_cost != null && selectedSession.paid_by))
     } else {
-      setSessionCost('')
+      setCalendarEventCost('')
       setPaidBy('')
       setMaximumCapacity('100')
       setPaymentInfoSaved(false)
@@ -929,7 +952,7 @@ export default function Practice({ user }) {
   const capacityChartRadius = 26
   const capacityChartCircumference = 2 * Math.PI * capacityChartRadius
   const capacityChartOffset = capacityChartCircumference * (1 - sessionCapacityRatio)
-  const hasSelectedSessionPassed = Boolean(selectedSession && isSessionPast(selectedSession.date, selectedSession.time))
+  const hasSelectedSessionPassed = Boolean(selectedSession && isCalendarEventPast(selectedSession.date, selectedSession.time))
   const canSelectAvailable = selectedStatus === 'available' || !isCapacityReached
   const optionSectionEnabled = Boolean(selectedSession?.option_a_text && selectedSession?.option_b_text)
   const getDisplayFirstName = (name) => {
@@ -945,7 +968,7 @@ export default function Practice({ user }) {
         ? 'B'
         : null
     : null
-  const canSavePaymentInfo = Boolean(sessionCost && paidBy && maximumCapacity && Number(maximumCapacity) > 0)
+  const canSavePaymentInfo = Boolean(calendarEventCost && paidBy && maximumCapacity && Number(maximumCapacity) > 0)
   const availablePlayersForPayment = voteSummary?.available?.length || 0
   const paidAvailablePlayersCount = (voteSummary?.available || []).reduce((count, name) => {
     const userEmail = voteSummary?.user_emails?.[name] || name
@@ -990,7 +1013,7 @@ export default function Practice({ user }) {
 
       {/* Selected Date Details */}
       {selectedDate && (
-        <div id="selected-date-details" ref={selectedSessionRef} style={{ background: 'var(--theme-surface)', borderRadius: 12, padding: '1.5rem', minHeight: 220, boxShadow: 'var(--theme-card-shadow)', border: '1px solid var(--theme-border)' }}>
+        <div id="selected-date-details" ref={selectedCalendarEventRef} style={{ background: 'var(--theme-surface)', borderRadius: 12, padding: '1.5rem', minHeight: 220, boxShadow: 'var(--theme-card-shadow)', border: '1px solid var(--theme-border)' }}>
           {hasMultipleSessionsForSelectedDate && (
             <div style={{ marginBottom: '1rem', padding: '0.875rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem', border: '1px solid var(--theme-border)' }}>
               <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.625rem' }}>Events on {selectedDate.toDateString()}</div>
@@ -1007,7 +1030,7 @@ export default function Practice({ user }) {
                       key={session.id}
                       type="button"
                       onClick={() => {
-                        setSelectedSessionId(session.id)
+                        setSelectedCalendarEventId(session.id)
                         const params = new URLSearchParams(location.search)
                         params.set('date', session.date)
                         params.set('sessionId', String(session.id))
@@ -1136,9 +1159,9 @@ export default function Practice({ user }) {
                             <input
                               type="number"
                               step="0.01"
-                              value={sessionCost}
+                              value={calendarEventCost}
                               onChange={(e) => {
-                                setSessionCost(e.target.value)
+                                setCalendarEventCost(e.target.value)
                                 setPaymentInfoSaved(false)
                               }}
                               placeholder="0.00"

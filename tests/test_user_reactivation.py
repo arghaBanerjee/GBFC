@@ -24,6 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from api import app, get_connection, hash_password, USE_POSTGRES, PLACEHOLDER
+from api import SESSIONS
 
 from fastapi.testclient import TestClient
 
@@ -45,6 +46,20 @@ def setup_test_db():
     # Initialize database
     from api import init_db
     init_db()
+
+    SESSIONS.clear()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM auth_sessions")
+        cur.execute("DELETE FROM forum_likes")
+        cur.execute("DELETE FROM forum_comments")
+        cur.execute("DELETE FROM forum_posts")
+        cur.execute("DELETE FROM notifications")
+        cur.execute("DELETE FROM practice_payments")
+        cur.execute("DELETE FROM practice_availability")
+        cur.execute("DELETE FROM practice_sessions")
+        cur.execute("DELETE FROM users")
+        conn.commit()
     
     yield
     

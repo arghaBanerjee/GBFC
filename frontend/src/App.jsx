@@ -1,8 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
-import Events from './pages/Events'
-import Practice from './pages/Practice'
+import Matches from './pages/Matches'
+import Calendar from './pages/Calendar'
 import Forum from './pages/Forum'
 import About from './pages/About'
 import Login from './pages/Login'
@@ -268,7 +268,7 @@ function App() {
   const navItems = ['Home', 'Matches', 'Calendar', 'Forum']
   const isActive = (path) => location.pathname === path
   const isSectionActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`)
-  const isUserActionsActive = location.pathname === '/user-actions' || location.pathname.startsWith('/user-actions/')
+  const isUserActionsActive = location.pathname === '/user' || location.pathname.startsWith('/user/')
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
   const isAdmin = user && (user.user_type === 'admin' || user.email === 'super@admin.com')
@@ -362,7 +362,7 @@ function App() {
           <div className="nav-actions">
             {/* User Actions Icon - visible on both desktop and mobile */}
             {user && (
-              <Link to="/user-actions/events" style={{ textDecoration: 'none' }} title="My Actions">
+              <Link to="/user/events" style={{ textDecoration: 'none' }} title="My Actions">
                 <button
                   className="social-icon nav-action-icon"
                   style={{
@@ -475,7 +475,7 @@ function App() {
                             setMobileMenuOpen(false)
                             if (notif.type === 'forum_post') navigate('/forum')
                             else if (notif.type === 'match') navigate('/matches/upcoming')
-                            else if (notif.type === 'pending_payment_reminder') navigate('/user-actions/payments')
+                            else if (notif.type === 'pending_payment_reminder') navigate('/user/payments')
                             else if (
                               notif.type === 'practice' ||
                               notif.type === 'payment_request' ||
@@ -514,7 +514,7 @@ function App() {
             <div className="desktop-auth">
               {user ? (
                 <>
-                  <Link to="/profile" style={{ textDecoration: 'none' }}>
+                  <Link to="/user/profile" style={{ textDecoration: 'none' }}>
                     <span className="user-name" style={{ cursor: 'pointer', border: '1px solid var(--theme-accent)', color: 'var(--theme-accent)', backgroundColor: 'var(--theme-badge-bg)', padding: '0.5rem 1rem', borderRadius: '0.375rem' }}>{user.full_name}</span>
                   </Link>
                   <button className="nav-btn logout-btn" onClick={logout}>
@@ -584,7 +584,7 @@ function App() {
             <div className="mobile-auth">
               {user ? (
                 <>
-                  <Link to="/profile" onClick={() => setMobileMenuOpen(false)} style={{ textDecoration: 'none' }}>
+                  <Link to="/user/profile" onClick={() => setMobileMenuOpen(false)} style={{ textDecoration: 'none' }}>
                     <span className="user-name mobile-profile-link" style={{ textAlign: 'center', display: 'block', cursor: 'pointer', border: '1px solid var(--theme-accent)', color: 'var(--theme-accent)', backgroundColor: 'var(--theme-badge-bg)', padding: '0.75rem 1rem', borderRadius: '0.5rem' }}>{user.full_name}</span>
                   </Link>
                   <button className="nav-btn logout-btn" onClick={() => { logout(); setMobileMenuOpen(false); }}>
@@ -624,17 +624,17 @@ function App() {
           <Route path="/matches" element={<Navigate to="/matches/upcoming" replace />} />
           <Route path="/matches/upcoming" element={
             <ProtectedRoute user={user} loading={loading}>
-              <Events user={user} />
+              <Matches user={user} />
             </ProtectedRoute>
           } />
           <Route path="/matches/past" element={
             <ProtectedRoute user={user} loading={loading}>
-              <Events user={user} />
+              <Matches user={user} />
             </ProtectedRoute>
           } />
           <Route path="/calendar" element={
             <ProtectedRoute user={user} loading={loading}>
-              <Practice user={user} />
+              <Calendar user={user} />
             </ProtectedRoute>
           } />
           <Route path="/book-practice" element={<Navigate to="/calendar" replace />} />
@@ -643,7 +643,7 @@ function App() {
               <Forum user={user} />
             </ProtectedRoute>
           } />
-          <Route path="/profile" element={
+          <Route path="/user/profile" element={
             <ProtectedRoute user={user} loading={loading}>
               <Profile user={user} setUser={setUser} loading={loading} />
             </ProtectedRoute>
@@ -660,20 +660,20 @@ function App() {
               <Navigate to="/admin/reports" replace />
             </ProtectedRoute>
           } />
-          <Route path="/user-actions" element={<Navigate to="/user-actions/events" replace />} />
-          <Route path="/user-actions/upcoming" element={<Navigate to="/user-actions/events" replace />} />
-          <Route path="/user-actions/events" element={
+          <Route path="/user" element={<Navigate to="/user/events" replace />} />
+          <Route path="/user/upcoming" element={<Navigate to="/user/events" replace />} />
+          <Route path="/user/events" element={
             <ProtectedRoute user={user} loading={loading}>
               <UserActions user={user} loading={loading} />
             </ProtectedRoute>
           } />
-          <Route path="/user-actions/upcoming-events" element={<Navigate to="/user-actions/events" replace />} />
-          <Route path="/user-actions/payments" element={
+          <Route path="/user/upcoming-events" element={<Navigate to="/user/events" replace />} />
+          <Route path="/user/payments" element={
             <ProtectedRoute user={user} loading={loading}>
               <UserActions user={user} loading={loading} />
             </ProtectedRoute>
           } />
-          <Route path="/user-actions/pending-payments" element={<Navigate to="/user-actions/payments" replace />} />
+          <Route path="/user/pending-payments" element={<Navigate to="/user/payments" replace />} />
         </Routes>
       </RouteErrorBoundary>
     </div>

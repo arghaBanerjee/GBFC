@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import '../styles/UserActions.css'
 import { validateUserActionsTab } from '../utils/routeValidation'
@@ -8,10 +8,11 @@ const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 function UserActions({ user, loading }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const [upcomingSessions, setUpcomingSessions] = useState([])
+  const [upcomingCalendarEvents, setUpcomingCalendarEvents] = useState([])
   const [pendingPayments, setPendingPayments] = useState([])
   const [loadingData, setLoadingData] = useState(true)
   const [error, setError] = useState('')
+  const hasLoadedData = useRef(false)
   const [updatingAvailabilityDates, setUpdatingAvailabilityDates] = useState({})
 
   const eventTypeLabelMap = {
@@ -28,13 +29,24 @@ function UserActions({ user, loading }) {
   
   useEffect(() => {
     if (pathTab !== validatedTab) {
-      navigate(`/user-actions/${validatedTab}`, { replace: true })
+      navigate(`/user/${validatedTab}`, { replace: true })
     }
   }, [pathTab, validatedTab, navigate])
 
   useEffect(() => {
-    if (user) {
+    if (user && !hasLoadedData.current) {
+      hasLoadedData.current = true
       fetchData()
+    }
+  }, [user])
+
+  useEffect(() => {
+    // Reset data loading state when user logs out
+    if (!user) {
+      hasLoadedData.current = false
+      setUpcomingCalendarEvents([])
+      setPendingPayments([])
+      setError('')
     }
   }, [user])
 
@@ -58,7 +70,7 @@ function UserActions({ user, loading }) {
       
       if (upcomingRes.ok) {
         const upcomingData = await upcomingRes.json()
-        setUpcomingSessions(upcomingData.sessions || [])
+        setUpcomingCalendarEvents(upcomingData.sessions || [])
       } else {
         if (upcomingRes.status === 401) {
           setError('Session expired. Please log in again.')
@@ -108,7 +120,7 @@ function UserActions({ user, loading }) {
     }
   }
 
-  const refreshUpcomingSessions = async () => {
+  const refreshUpcomingCalendarEvents = async () => {
     const token = localStorage.getItem('token')
     if (!token) return
 
@@ -118,34 +130,48 @@ function UserActions({ user, loading }) {
 
     if (upcomingRes.ok) {
       const upcomingData = await upcomingRes.json()
-      setUpcomingSessions(upcomingData.sessions || [])
+      setUpcomingCalendarEvents(upcomingData.sessions || [])
+    }
+  }
+
+  const refreshPendingPayments = async () => {
+    const token = localStorage.getItem('token')
+    if (!token) return
+
+    const paymentsRes = await fetch(`${API_URL}/api/user-actions/payments`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+
+    if (paymentsRes.ok) {
+      const paymentsData = await paymentsRes.json()
+      setPendingPayments(paymentsData.payments || [])
     }
   }
 
   const handleAvailabilityChange = async (sessionId, status) => {
     if (updatingAvailabilityDates[sessionId]) return
 
-    let previousSessions = upcomingSessions
+    let previousCalendarEvents = upcomingCalendarEvents
 
     try {
       const token = localStorage.getItem('token')
-      const currentSession = upcomingSessions.find((session) => session.id === sessionId)
-      const currentStatus = currentSession?.user_status
+      const currentCalendarEvent = upcomingCalendarEvents.find((calendarEvent) => calendarEvent.id === sessionId)
+      const currentStatus = currentCalendarEvent?.user_status
       const newStatus = currentStatus === status ? 'none' : status
-      previousSessions = upcomingSessions
+      previousCalendarEvents = upcomingCalendarEvents
       setError('')
       setUpdatingAvailabilityDates(prev => ({ ...prev, [sessionId]: true }))
 
-      setUpcomingSessions(prev => prev.map(session => {
-        if (session.id !== sessionId) return session
+      setUpcomingCalendarEvents(prev => prev.map(calendarEvent => {
+        if (calendarEvent.id !== sessionId) return calendarEvent
 
-        const previousWasAvailable = session.user_status === 'available'
+        const previousWasAvailable = calendarEvent.user_status === 'available'
         const nextIsAvailable = newStatus === 'available'
-        const availableCount = (session.available_count || 0) + (nextIsAvailable ? 1 : 0) - (previousWasAvailable ? 1 : 0)
-        const maximumCapacity = session.maximum_capacity || 100
+        const availableCount = (calendarEvent.available_count || 0) + (nextIsAvailable ? 1 : 0) - (previousWasAvailable ? 1 : 0)
+        const maximumCapacity = calendarEvent.maximum_capacity || 100
 
         return {
-          ...session,
+          ...calendarEvent,
           user_status: newStatus === 'none' ? null : newStatus,
           available_count: availableCount,
           remaining_slots: Math.max(maximumCapacity - availableCount, 0),
@@ -153,7 +179,7 @@ function UserActions({ user, loading }) {
         }
       }))
 
-      const response = await fetch(`${API_URL}/api/practice/sessions/id/${sessionId}/availability`, {
+      const response = await fetch(`${API_URL}/api/calendar/events/id/${sessionId}/availability`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,14 +189,14 @@ function UserActions({ user, loading }) {
       })
 
       if (response.ok) {
-        await refreshUpcomingSessions()
+        await refreshUpcomingCalendarEvents()
       } else {
         const err = await response.json()
-        setUpcomingSessions(previousSessions)
+        setUpcomingCalendarEvents(previousCalendarEvents)
         setError(err.detail || 'Failed to update availability')
       }
     } catch (err) {
-      setUpcomingSessions(previousSessions)
+      setUpcomingCalendarEvents(previousCalendarEvents)
       setError('Failed to update availability')
       console.error(err)
     } finally {
@@ -181,7 +207,7 @@ function UserActions({ user, loading }) {
   const handlePaymentConfirmation = async (sessionId, paid) => {
     try {
       const token = localStorage.getItem('token')
-      const response = await fetch(`${API_URL}/api/practice/sessions/id/${sessionId}/payment`, {
+      const response = await fetch(`${API_URL}/api/calendar/events/id/${sessionId}/payment`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -191,8 +217,8 @@ function UserActions({ user, loading }) {
       })
 
       if (response.ok) {
-        // Refresh pending payments list
-        fetchData()
+        // Refresh pending payments list only
+        refreshPendingPayments()
       } else {
         const err = await response.json()
         setError(err.detail || 'Failed to update payment')
@@ -215,7 +241,7 @@ function UserActions({ user, loading }) {
     return title || getEventTypeLabel(item?.event_type)
   }
 
-  const navigateToPracticeDate = (date, sessionId) => {
+  const navigateToCalendarEvent = (date, sessionId) => {
     const params = new URLSearchParams()
     params.set('date', date)
     if (sessionId != null) {
@@ -248,16 +274,16 @@ function UserActions({ user, loading }) {
       <div className="tabs">
         <button 
           className={`tab-btn ${activeTab === 'events' ? 'active' : ''}`}
-          onClick={() => navigate('/user-actions/events')}
+          onClick={() => navigate('/user/events')}
         >
           Upcoming Events
-          {upcomingSessions.length > 0 && (
-            <span className="badge">{upcomingSessions.length}</span>
+          {upcomingCalendarEvents.length > 0 && (
+            <span className="badge">{upcomingCalendarEvents.length}</span>
           )}
         </button>
         <button 
           className={`tab-btn ${activeTab === 'payments' ? 'active' : ''}`}
-          onClick={() => navigate('/user-actions/payments')}
+          onClick={() => navigate('/user/payments')}
         >
           Pending Payments
           {pendingPayments.length > 0 && (
@@ -271,67 +297,71 @@ function UserActions({ user, loading }) {
         {loadingData ? (
           <p>Loading...</p>
         ) : activeTab === 'events' ? (
-          <div className="upcoming-sessions">
-            {upcomingSessions.length === 0 ? (
+          <div className="upcoming-calendar-events">
+            {upcomingCalendarEvents.length === 0 ? (
               <p className="empty-message">No upcoming events</p>
             ) : (
-              upcomingSessions.map(session => (
-                <div key={session.id} className="session-card">
+              upcomingCalendarEvents.map(calendarEvent => (
+                <div key={calendarEvent.id} className="calendar-event-card">
                   <button
                     type="button"
                     className="card-header clickable-card-header"
-                    onClick={() => navigateToPracticeDate(session.date, session.id)}
+                    onClick={() => navigateToCalendarEvent(calendarEvent.date, calendarEvent.id)}
+                    style={{
+                      cursor: 'pointer',
+                      transition: 'transform 0.2s',
+                    }}
                   >
                     <div className="card-header-main">
-                      <h3>{getEventTypeLabel(session.event_type)}&nbsp;</h3>
-                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{getEventDisplayTitle(session)}</p>
+                      <h3>{getEventTypeLabel(calendarEvent.event_type)}&nbsp;</h3>
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{getEventDisplayTitle(calendarEvent)}</p>
                     </div>
                     <div className="card-header-meta">
-                      <span className="card-header-cta">View details →</span>
+                      <span className="card-header-cta">View details</span>
                     </div>
                   </button>
                   <div className="card-body">
-                    <div className="session-details compact-details">
+                    <div className="calendar-event-details compact-details">
                       <div className="detail-chip">
                         <span className="label">Location</span>
-                        <span className="value">{session.location || 'TBD'}</span>
+                        <span className="value">{calendarEvent.location || 'TBD'}</span>
                       </div>
                       <div className="detail-chip">
                         <span className="label">Date & Time</span>
-                        <span className="value">{`${formatDate(session.date)}${session.time ? `, ${session.time}` : ', TBD'}`}</span>
+                        <span className="value">{`${formatDate(calendarEvent.date)}${calendarEvent.time ? `, ${calendarEvent.time}` : ', TBD'}`}</span>
                       </div>
                     </div>
                     
                     <div className="availability-section">
                       <p className="section-label">Availability</p>
-                      <p style={{ marginBottom: '0.5rem', fontSize: '0.8125rem', color: session.capacity_reached ? 'var(--theme-warning-strong, color-mix(in srgb, var(--theme-warning) 84%, black 16%))' : 'var(--theme-accent-strong)' }}>
-                        Capacity: {session.available_count || 0}/{session.maximum_capacity || 100} booked
-                        {session.remaining_slots > 0 ? ` · ${session.remaining_slots} slot${session.remaining_slots === 1 ? '' : 's'} available` : ' · Full'}
+                      <p style={{ marginBottom: '0.5rem', fontSize: '0.8125rem', color: calendarEvent.capacity_reached ? 'var(--theme-warning-strong, color-mix(in srgb, var(--theme-warning) 84%, black 16%))' : 'var(--theme-accent-strong)' }}>
+                        Capacity: {calendarEvent.available_count || 0}/{calendarEvent.maximum_capacity || 100} booked
+                        {calendarEvent.remaining_slots > 0 ? ` · ${calendarEvent.remaining_slots} slot${calendarEvent.remaining_slots === 1 ? '' : 's'} available` : ' · Full'}
                       </p>
                       <div className="availability-buttons">
                         <button
-                          className={`availability-btn available ${session.user_status === 'available' ? 'selected' : ''}`}
-                          onClick={() => handleAvailabilityChange(session.id, 'available')}
-                          disabled={updatingAvailabilityDates[session.id] || (session.capacity_reached && session.user_status !== 'available')}
+                          className={`availability-btn available ${calendarEvent.user_status === 'available' ? 'selected' : ''}`}
+                          onClick={() => handleAvailabilityChange(calendarEvent.id, 'available')}
+                          disabled={updatingAvailabilityDates[calendarEvent.id] || (calendarEvent.capacity_reached && calendarEvent.user_status !== 'available')}
                         >
-                          {updatingAvailabilityDates[session.id] && session.user_status === 'available' ? 'Updating...' : 'Available'}
+                          {updatingAvailabilityDates[calendarEvent.id] && calendarEvent.user_status === 'available' ? 'Updating...' : 'Available'}
                         </button>
                         <button
-                          className={`availability-btn tentative ${session.user_status === 'tentative' ? 'selected' : ''}`}
-                          onClick={() => handleAvailabilityChange(session.id, 'tentative')}
-                          disabled={updatingAvailabilityDates[session.id]}
+                          className={`availability-btn tentative ${calendarEvent.user_status === 'tentative' ? 'selected' : ''}`}
+                          onClick={() => handleAvailabilityChange(calendarEvent.id, 'tentative')}
+                          disabled={updatingAvailabilityDates[calendarEvent.id]}
                         >
-                          {updatingAvailabilityDates[session.id] && session.user_status === 'tentative' ? 'Updating...' : 'Tentative'}
+                          {updatingAvailabilityDates[calendarEvent.id] && calendarEvent.user_status === 'tentative' ? 'Updating...' : 'Tentative'}
                         </button>
                         <button
-                          className={`availability-btn not-available ${session.user_status === 'not_available' ? 'selected' : ''}`}
-                          onClick={() => handleAvailabilityChange(session.id, 'not_available')}
-                          disabled={updatingAvailabilityDates[session.id]}
+                          className={`availability-btn not-available ${calendarEvent.user_status === 'not_available' ? 'selected' : ''}`}
+                          onClick={() => handleAvailabilityChange(calendarEvent.id, 'not_available')}
+                          disabled={updatingAvailabilityDates[calendarEvent.id]}
                         >
-                          {updatingAvailabilityDates[session.id] && session.user_status === 'not_available' ? 'Updating...' : 'Unavailable'}
+                          {updatingAvailabilityDates[calendarEvent.id] && calendarEvent.user_status === 'not_available' ? 'Updating...' : 'Not Available'}
                         </button>
                       </div>
-                      {session.capacity_reached && session.user_status !== 'available' && (
+                      {calendarEvent.capacity_reached && calendarEvent.user_status !== 'available' && (
                         <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-warning-strong, color-mix(in srgb, var(--theme-warning) 84%, black 16%))' }}>
                           Full capacity. No Availability until a slot opens.
                         </p>
@@ -352,7 +382,11 @@ function UserActions({ user, loading }) {
                   <button
                     type="button"
                     className="card-header clickable-card-header"
-                    onClick={() => navigateToPracticeDate(payment.date, payment.id)}
+                    onClick={() => navigateToCalendarEvent(payment.date, payment.id)}
+                    style={{
+                      cursor: 'pointer',
+                      transition: 'transform 0.2s',
+                    }}
                   >
                     <div className="card-header-main">
                       <h3>{getEventTypeLabel(payment.event_type)}&nbsp;</h3>

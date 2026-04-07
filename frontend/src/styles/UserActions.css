@@ -65,8 +65,8 @@
   font-size: 1.125rem;
 }
 
-/* Session and Payment Cards */
-.session-card,
+/* Calendar Event and Payment Cards */
+.calendar-event-card,
 .payment-card {
   background: var(--theme-surface);
   border: 1px solid var(--theme-border);
@@ -76,7 +76,7 @@
   transition: box-shadow 0.2s;
 }
 
-.session-card:hover,
+.calendar-event-card:hover,
 .payment-card:hover {
   box-shadow: var(--theme-shadow-strong);
 }
@@ -144,8 +144,8 @@
   padding: 1rem;
 }
 
-/* Session and Payment Details */
-.session-details,
+/* Calendar Event and Payment Details */
+.calendar-event-details,
 .payment-details {
   margin-bottom: 1rem;
 }
@@ -393,13 +393,13 @@
     padding: 0.875rem;
   }
 
-  .session-card,
+  .calendar-event-card,
   .payment-card {
     border-radius: 0.875rem;
     margin-bottom: 0.875rem;
   }
 
-  .session-details,
+  .calendar-event-details,
   .payment-details {
     margin-bottom: 0.75rem;
   }

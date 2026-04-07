@@ -43,6 +43,9 @@ from whatsapp_notifier import (
 DATABASE_URL = os.environ.get("DATABASE_URL")  # Render provides this
 SESSION_DURATION = timedelta(days=90)
 USE_POSTGRES = DATABASE_URL is not None
+CALENDAR_EVENTS_TABLE = "practice_sessions"
+EVENT_AVAILABILITY_TABLE = "practice_availability"
+EVENT_PAYMENTS_TABLE = "practice_payments"
 
 # Test database configuration - use separate database for testing
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
@@ -2370,13 +2373,13 @@ def is_practice_datetime_in_past(date_value: str, time_value: Optional[str]) -> 
         return False
     return practice_datetime < datetime.now()
 
-def get_practice_session_basic(cur, date_str: str) -> Optional[dict]:
-    session_id = get_practice_session_id_by_date(cur, date_str)
+def get_calendar_event_basic(cur, date_str: str) -> Optional[dict]:
+    session_id = get_calendar_event_id_by_date(cur, date_str)
     if session_id is None:
         return None
-    return get_practice_session_basic_by_id(cur, session_id)
+    return get_calendar_event_basic_by_id(cur, session_id)
 
-def get_practice_session_id_by_date(cur, date_str: str) -> Optional[int]:
+def get_calendar_event_id_by_date(cur, date_str: str) -> Optional[int]:
     cur.execute(
         f"SELECT id FROM practice_sessions WHERE date = {PLACEHOLDER} ORDER BY id ASC LIMIT 1",
         (date_str,),
@@ -2384,19 +2387,25 @@ def get_practice_session_id_by_date(cur, date_str: str) -> Optional[int]:
     row = cur.fetchone()
     return dict(row).get("id") if row else None
 
-def get_available_count_for_session(cur, date_str: str) -> int:
-    session_id = get_practice_session_id_by_date(cur, date_str)
+def get_available_count_for_calendar_event(cur, date_str: str) -> int:
+    session_id = get_calendar_event_id_by_date(cur, date_str)
     if session_id is None:
         return 0
-    return get_available_count_for_session_id(cur, session_id)
+    return get_available_count_for_calendar_event_id(cur, session_id)
 
-def get_practice_session_with_capacity(cur, date_str: str) -> Optional[dict]:
-    session_id = get_practice_session_id_by_date(cur, date_str)
+def get_calendar_event_with_capacity(cur, date_str: str) -> Optional[dict]:
+    session_id = get_calendar_event_id_by_date(cur, date_str)
     if session_id is None:
         return None
-    return get_practice_session_with_capacity_by_id(cur, session_id)
+    return get_calendar_event_with_capacity_by_id(cur, session_id)
 
-def get_practice_session_basic_by_id(cur, session_id: int) -> Optional[dict]:
+def set_calendar_event_availability_for_session_id(cur, conn, session_id: int, user_email: str, user_full_name: str, status_value: str, option_choice_value: Optional[str]):
+    return set_practice_availability_for_session_id(cur, conn, session_id, user_email, user_full_name, status_value, option_choice_value)
+
+def admin_set_calendar_event_availability_for_session_id(cur, conn, session_id: int, user_email: str, user_full_name: str, status_value: str, option_choice_value: Optional[str]):
+    return admin_set_practice_availability_for_session_id(cur, conn, session_id, user_email, user_full_name, status_value, option_choice_value)
+
+def get_calendar_event_basic_by_id(cur, session_id: int) -> Optional[dict]:
     cur.execute(
         f"SELECT id, date, time, location, event_type, event_title, description, image_url, youtube_url, option_a_text, option_b_text, payment_requested, payment_requested_at, COALESCE(maximum_capacity, 100) as maximum_capacity FROM practice_sessions WHERE id = {PLACEHOLDER}",
         (session_id,),
@@ -2412,7 +2421,7 @@ def get_practice_session_basic_by_id(cur, session_id: int) -> Optional[dict]:
     session["option_b_text"] = (session.get("option_b_text") or "").strip() or None
     return session
 
-def get_practice_session_with_capacity_by_id(cur, session_id: int) -> Optional[dict]:
+def get_calendar_event_with_capacity_by_id(cur, session_id: int) -> Optional[dict]:
     cur.execute(
         f"""
         SELECT 
@@ -2457,7 +2466,7 @@ def get_practice_session_with_capacity_by_id(cur, session_id: int) -> Optional[d
     session["event_title"] = normalize_event_title(session.get("event_title"), session["event_type"])
     session["option_a_text"] = (session.get("option_a_text") or "").strip() or None
     session["option_b_text"] = (session.get("option_b_text") or "").strip() or None
-    available_count = get_available_count_for_session_id(cur, session_id)
+    available_count = get_available_count_for_calendar_event_id(cur, session_id)
     maximum_capacity = normalize_maximum_capacity(session.get("maximum_capacity"))
     session["maximum_capacity"] = maximum_capacity
     session["available_count"] = available_count
@@ -2465,17 +2474,37 @@ def get_practice_session_with_capacity_by_id(cur, session_id: int) -> Optional[d
     session["capacity_reached"] = available_count >= maximum_capacity
     return session
 
-def get_available_count_for_session_id(cur, session_id: int) -> int:
+def get_available_count_for_calendar_event_id(cur, session_id: int) -> int:
+    session_date = get_calendar_event_date_by_id(cur, session_id)
+    if session_date is None:
+        return 0
     cur.execute(
-        f"SELECT COUNT(*) as count FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND status = {PLACEHOLDER}",
-        (session_id, "available"),
+        f"""
+        SELECT COUNT(*) as count
+        FROM practice_availability pa
+        WHERE pa.status = {PLACEHOLDER}
+          AND (
+            pa.practice_session_id = {PLACEHOLDER}
+            OR (
+              pa.practice_session_id IS NULL
+              AND pa.date = {PLACEHOLDER}
+              AND NOT EXISTS (
+                SELECT 1
+                FROM practice_sessions ps2
+                WHERE ps2.date = {PLACEHOLDER}
+                  AND ps2.id <> {PLACEHOLDER}
+              )
+            )
+          )
+        """,
+        ("available", session_id, session_date, session_date, session_id),
     )
     row = cur.fetchone()
     if not row:
         return 0
     return dict(row).get("count", 0) if USE_POSTGRES else row[0]
 
-def get_practice_session_date_by_id(cur, session_id: int) -> Optional[str]:
+def get_calendar_event_date_by_id(cur, session_id: int) -> Optional[str]:
     cur.execute(
         f"SELECT date FROM practice_sessions WHERE id = {PLACEHOLDER}",
         (session_id,),
@@ -2484,6 +2513,73 @@ def get_practice_session_date_by_id(cur, session_id: int) -> Optional[str]:
     if not row:
         return None
     return dict(row).get("date")
+
+get_practice_session_basic = get_calendar_event_basic
+get_practice_session_id_by_date = get_calendar_event_id_by_date
+get_available_count_for_session = get_available_count_for_calendar_event
+get_practice_session_with_capacity = get_calendar_event_with_capacity
+get_practice_session_basic_by_id = get_calendar_event_basic_by_id
+get_practice_session_with_capacity_by_id = get_calendar_event_with_capacity_by_id
+get_available_count_for_session_id = get_available_count_for_calendar_event_id
+get_practice_session_date_by_id = get_calendar_event_date_by_id
+
+def get_session_user_availability_status(cur, session: dict, user_email: str) -> Optional[str]:
+    cur.execute(
+        f"""
+        SELECT pa.status
+        FROM practice_availability pa
+        WHERE pa.user_email = {PLACEHOLDER}
+          AND (
+            pa.practice_session_id = {PLACEHOLDER}
+            OR (
+              pa.practice_session_id IS NULL
+              AND pa.date = {PLACEHOLDER}
+              AND NOT EXISTS (
+                SELECT 1
+                FROM practice_sessions ps2
+                WHERE ps2.date = {PLACEHOLDER}
+                  AND ps2.id <> {PLACEHOLDER}
+              )
+            )
+          )
+        ORDER BY pa.id DESC
+        LIMIT 1
+        """,
+        (user_email, session["id"], session["date"], session["date"], session["id"]),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    return dict(row).get("status")
+
+def get_session_user_payment_status(cur, session: dict, user_email: str):
+    cur.execute(
+        f"""
+        SELECT pp.paid
+        FROM practice_payments pp
+        WHERE pp.user_email = {PLACEHOLDER}
+          AND (
+            pp.practice_session_id = {PLACEHOLDER}
+            OR (
+              pp.practice_session_id IS NULL
+              AND pp.date = {PLACEHOLDER}
+              AND NOT EXISTS (
+                SELECT 1
+                FROM practice_sessions ps2
+                WHERE ps2.date = {PLACEHOLDER}
+                  AND ps2.id <> {PLACEHOLDER}
+              )
+            )
+          )
+        ORDER BY pp.id DESC
+        LIMIT 1
+        """,
+        (user_email, session["id"], session["date"], session["date"], session["id"]),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    return dict(row).get("paid")
 
 def normalize_option_pair(option_a_text: Optional[str], option_b_text: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     normalized_a = (option_a_text or "").strip() or None
@@ -2586,8 +2682,24 @@ def set_practice_availability_for_session_id(cur, conn, session_id: int, user_em
 
     if status_value == "none":
         cur.execute(
-            f"DELETE FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-            (session_id, user_email),
+            f"""
+            DELETE FROM practice_availability
+            WHERE user_email = {PLACEHOLDER}
+              AND (
+                practice_session_id = {PLACEHOLDER}
+                OR (
+                  practice_session_id IS NULL
+                  AND date = {PLACEHOLDER}
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM practice_sessions ps2
+                    WHERE ps2.date = {PLACEHOLDER}
+                      AND ps2.id <> {PLACEHOLDER}
+                  )
+                )
+              )
+            """,
+            (user_email, session_id, session["date"], session["date"], session_id),
         )
         conn.commit()
         return {"message": "Availability removed"}
@@ -2660,8 +2772,22 @@ def admin_set_practice_availability_for_session_id(cur, conn, session_id: int, u
 
 def get_practice_availability_summary_by_session(cur, session: dict):
     cur.execute(
-        f"SELECT user_email, user_full_name, status, option_choice FROM practice_availability WHERE practice_session_id = {PLACEHOLDER}",
-        (session["id"],),
+        f"""
+        SELECT user_email, user_full_name, status, option_choice
+        FROM practice_availability
+        WHERE practice_session_id = {PLACEHOLDER}
+           OR (
+                practice_session_id IS NULL
+                AND date = {PLACEHOLDER}
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM practice_sessions ps2
+                    WHERE ps2.date = {PLACEHOLDER}
+                      AND ps2.id <> {PLACEHOLDER}
+                )
+           )
+        """,
+        (session["id"], session["date"], session["date"], session["id"]),
     )
     rows = [dict(r) for r in cur.fetchall()]
 
@@ -2989,7 +3115,7 @@ class AdminPracticeAvailability(BaseModel):
     status: str  # 'available', 'tentative', 'not_available', or 'delete' to remove
     option_choice: Optional[str] = None
 
-class PracticeSessionCreate(BaseModel):
+class CalendarEventCreate(BaseModel):
     date: str
     time: Optional[str] = None
     location: Optional[str] = None
@@ -3004,7 +3130,7 @@ class PracticeSessionCreate(BaseModel):
     paid_by: Optional[str] = None
     maximum_capacity: int = 100
 
-class PracticeSessionOut(BaseModel):
+class CalendarEventOut(BaseModel):
     id: int
     date: str
     time: Optional[str] = None
@@ -3027,6 +3153,9 @@ class PracticeSessionOut(BaseModel):
     paid_by_sort_code: Optional[str] = None
     paid_by_account_number: Optional[str] = None
     payment_requested: Optional[bool] = False
+
+PracticeSessionCreate = CalendarEventCreate
+PracticeSessionOut = CalendarEventOut
 
 class ExpenseCreate(BaseModel):
     title: str
@@ -3787,6 +3916,137 @@ def update_user_name(email: str, data: dict, current_user: dict = Depends(get_cu
         
         return {"message": "User name updated successfully"}
 
+@app.get("/api/matches/likes/me")
+def get_my_match_likes(current_user: dict = Depends(get_current_user)):
+    """Get match event IDs liked by the current user"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT el.event_id FROM event_likes el
+            JOIN events e ON el.event_id = e.id
+            WHERE el.user_email = {PLACEHOLDER}
+            """,
+            (current_user["email"],),
+        )
+        return [row["event_id"] for row in cur.fetchall()]
+
+@app.post("/api/matches/{match_id}/like")
+def like_match(match_id: int, current_user: dict = Depends(get_current_user)):
+    """Like a match event"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if match event exists 
+        cur.execute(
+            f"SELECT id FROM events WHERE id = {PLACEHOLDER}",
+            (match_id,)
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        # Check if already liked
+        cur.execute(
+            f"SELECT id FROM event_likes WHERE event_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (match_id, current_user["email"])
+        )
+        if cur.fetchone():
+            raise HTTPException(status_code=400, detail="Match already liked")
+        
+        # Add like
+        cur.execute(
+            f"INSERT INTO event_likes (event_id, user_email) VALUES ({PLACEHOLDER}, {PLACEHOLDER})",
+            (match_id, current_user["email"])
+        )
+        conn.commit()
+        return {"message": "Match liked successfully"}
+
+@app.delete("/api/matches/{match_id}/like")
+def unlike_match(match_id: int, current_user: dict = Depends(get_current_user)):
+    """Unlike a match event"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if match event exists
+        cur.execute(
+            f"SELECT id FROM events WHERE id = {PLACEHOLDER}",
+            (match_id,)
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        # Remove like
+        cur.execute(
+            f"DELETE FROM event_likes WHERE event_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (match_id, current_user["email"])
+        )
+        conn.commit()
+        return {"message": "Match unliked successfully"}
+
+@app.post("/api/matches/{match_id}/comments")
+def add_match_comment(match_id: int, comment_data: dict, current_user: dict = Depends(get_current_user)):
+    """Add a comment to a match event"""
+    comment = comment_data.get("comment", "").strip()
+    if not comment:
+        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+    
+    if len(comment) > 100:
+        raise HTTPException(status_code=400, detail="Comment must be 100 characters or less")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if match event exists
+        cur.execute(
+            f"SELECT id FROM events WHERE id = {PLACEHOLDER}",
+            (match_id,)
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        # Add comment
+        cur.execute(
+            f"""
+            INSERT INTO event_comments (event_id, user_email, user_full_name, comment)
+            VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
+            """,
+            (match_id, current_user["email"], current_user.get("full_name", ""), comment)
+        )
+        conn.commit()
+        return {"message": "Comment added successfully"}
+
+@app.get("/api/matches/{match_id}/comments")
+def get_match_comments(match_id: int):
+    """Get comments for a match event"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if match event exists
+        cur.execute(
+            f"SELECT id FROM events WHERE id = {PLACEHOLDER}",
+            (match_id,)
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Match not found")
+        
+        # Get comments
+        cur.execute(
+            f"""
+            SELECT ec.id, ec.user_email, ec.user_full_name, ec.comment, ec.created_at
+            FROM event_comments ec
+            JOIN events e ON ec.event_id = e.id
+            WHERE e.id = {PLACEHOLDER}
+            ORDER BY ec.created_at DESC
+            """,
+            (match_id,)
+        )
+        comments = []
+        for row in cur.fetchall():
+            comment = dict(row)
+            comment["created_at"] = comment["created_at"].isoformat()
+            comments.append(comment)
+        return comments
+
 @app.put("/api/profile/name")
 def update_own_name(data: dict, current_user: dict = Depends(get_current_user)):
     """Allow user to update their own name"""
@@ -4001,8 +4261,8 @@ def delete_user(email: str, current_user: dict = Depends(get_current_user)):
         return {"message": "User deleted successfully. Historical posts/comments preserved, likes removed."}
 
 # --- Events endpoints ---
-@app.get("/api/events", response_model=List[EventOut])
-def get_events():
+@app.get("/api/matches", response_model=List[EventOut])
+def get_matches():
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -4043,11 +4303,11 @@ def get_events():
             events.append(EventOut(**event))
         return events
 
-@app.get("/api/events/{event_id}", response_model=EventOut)
-def get_event(event_id: int):
+@app.get("/api/matches/{match_id}", response_model=EventOut)
+def get_match(match_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM events WHERE id = {PLACEHOLDER}", (event_id,))
+        cur.execute(f"SELECT * FROM events WHERE id = {PLACEHOLDER}", (match_id,))
         event = cur.fetchone()
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
@@ -4055,8 +4315,8 @@ def get_event(event_id: int):
         event_dict.pop("type", None)
         return EventOut(**event_dict)
 
-@app.post("/api/events", response_model=EventOut)
-def create_event(event: EventCreate, current_user: dict = Depends(get_current_user)):
+@app.post("/api/matches", response_model=EventOut)
+def create_match(match: EventCreate, current_user: dict = Depends(get_current_user)):
     # Admin only
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
@@ -4065,7 +4325,7 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
         cur = conn.cursor()
         cur.execute(
             f"INSERT INTO events (name, date, time, location, description, image_url, youtube_url) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (event.name, event.date, event.time, event.location, event.description, event.image_url, event.youtube_url),
+            (match.name, match.date, match.time, match.location, match.description, match.image_url, match.youtube_url),
         )
         conn.commit()
         
@@ -4073,7 +4333,7 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
         if USE_POSTGRES:
             cur.execute(
                 f"SELECT id FROM events WHERE name = {PLACEHOLDER} AND date = {PLACEHOLDER} ORDER BY id DESC LIMIT 1",
-                (event.name, event.date)
+                (match.name, match.date)
             )
             event_id = cur.fetchone()['id']
         else:
@@ -4082,18 +4342,18 @@ def create_event(event: EventCreate, current_user: dict = Depends(get_current_us
         deliver_notification(
             "practice",
             {
-                "date": event.date,
-                "time": event.time,
-                "location": event.location,
-                "event_name": event.name,
+                "date": match.date,
+                "time": match.time,
+                "location": match.location,
+                "event_name": match.name,
             },
-            related_date=event.date
+            related_date=match.date
         )
 
-        return EventOut(id=event_id, **event.model_dump())
+        return EventOut(id=event_id, **match.model_dump())
 
-@app.put("/api/events/{event_id}", response_model=EventOut)
-def update_event(event_id: int, event: EventCreate, current_user: dict = Depends(get_current_user)):
+@app.put("/api/matches/{match_id}", response_model=EventOut)
+def update_match(match_id: int, match: EventCreate, current_user: dict = Depends(get_current_user)):
     # Admin only
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
@@ -4101,24 +4361,24 @@ def update_event(event_id: int, event: EventCreate, current_user: dict = Depends
         cur = conn.cursor()
         cur.execute(
             f"UPDATE events SET name={PLACEHOLDER}, date={PLACEHOLDER}, time={PLACEHOLDER}, location={PLACEHOLDER}, description={PLACEHOLDER}, image_url={PLACEHOLDER}, youtube_url={PLACEHOLDER} WHERE id={PLACEHOLDER}",
-            (event.name, event.date, event.time, event.location, event.description, event.image_url, event.youtube_url, event_id),
+            (match.name, match.date, match.time, match.location, match.description, match.image_url, match.youtube_url, match_id),
         )
         conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Event not found")
-        return EventOut(id=event_id, **event.model_dump())
+        return EventOut(id=match_id, **match.model_dump())
 
-@app.delete("/api/events/{event_id}")
-def delete_event(event_id: int, current_user: dict = Depends(get_current_user)):
+@app.delete("/api/matches/{match_id}")
+def delete_match(match_id: int, current_user: dict = Depends(get_current_user)):
     # Admin only
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
         # Delete related records first to avoid foreign key constraint violations
-        cur.execute(f"DELETE FROM event_likes WHERE event_id={PLACEHOLDER}", (event_id,))
-        cur.execute(f"DELETE FROM event_comments WHERE event_id={PLACEHOLDER}", (event_id,))
-        cur.execute(f"DELETE FROM events WHERE id={PLACEHOLDER}", (event_id,))
+        cur.execute(f"DELETE FROM event_likes WHERE event_id={PLACEHOLDER}", (match_id,))
+        cur.execute(f"DELETE FROM event_comments WHERE event_id={PLACEHOLDER}", (match_id,))
+        cur.execute(f"DELETE FROM events WHERE id={PLACEHOLDER}", (match_id,))
         conn.commit()
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Event not found")
@@ -4148,6 +4408,187 @@ async def upload_image(file: UploadFile = File(...), current_user: dict = Depend
             shutil.copyfileobj(file.file, buffer)
         return {"image_url": f"http://localhost:8000/{UPLOAD_DIR}/{filename}"}
 
+@app.get("/api/forum", response_model=List[ForumPostOut])
+def list_forum_posts():
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT fp.id, fp.user_email, fp.user_full_name, fp.content, fp.created_at,
+                   COUNT(DISTINCT fl.id) as likes_count
+            FROM forum_posts fp
+            LEFT JOIN forum_likes fl ON fl.post_id = fp.id
+            GROUP BY fp.id, fp.user_email, fp.user_full_name, fp.content, fp.created_at
+            ORDER BY fp.created_at DESC, fp.id DESC
+            """
+        )
+        posts = []
+        for row in cur.fetchall():
+            post = dict(row)
+            cur.execute(
+                f"SELECT user_email FROM forum_likes WHERE post_id = {PLACEHOLDER} ORDER BY id ASC",
+                (post["id"],),
+            )
+            likes = [{"user_email": like_row["user_email"]} for like_row in cur.fetchall()]
+            cur.execute(
+                f"SELECT id, user_full_name, comment, created_at FROM forum_comments WHERE post_id = {PLACEHOLDER} ORDER BY id ASC",
+                (post["id"],),
+            )
+            comments = []
+            for comment_row in cur.fetchall():
+                comment_dict = dict(comment_row)
+                comments.append({
+                    "id": comment_dict["id"],
+                    "user_full_name": comment_dict.get("user_full_name") or "Member",
+                    "comment": comment_dict["comment"],
+                    "created_at": str(comment_dict["created_at"]),
+                })
+            posts.append({
+                "id": post["id"],
+                "user_full_name": post.get("user_full_name") or post.get("user_email") or "Member",
+                "user_email": post["user_email"],
+                "content": post["content"],
+                "created_at": str(post["created_at"]),
+                "likes_count": post["likes_count"],
+                "likes": likes,
+                "comments": comments,
+            })
+        return posts
+
+@app.get("/api/forum/likes/me")
+def get_my_forum_likes(current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT post_id FROM forum_likes WHERE user_email = {PLACEHOLDER}",
+            (current_user["email"],),
+        )
+        return [row["post_id"] for row in cur.fetchall()]
+
+@app.post("/api/forum", response_model=ForumPostOut)
+def create_forum_post(data: ForumPostCreate, current_user: dict = Depends(get_current_user)):
+    content = sanitize_forum_post_html(data.content)
+    if not content:
+        raise HTTPException(status_code=400, detail="Post content cannot be empty")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO forum_posts (user_email, user_full_name, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (current_user["email"], current_user["full_name"], content),
+        )
+        post_id = cur.lastrowid if not USE_POSTGRES else None
+        if USE_POSTGRES:
+            cur.execute(f"SELECT id FROM forum_posts WHERE user_email = {PLACEHOLDER} ORDER BY id DESC LIMIT 1", (current_user["email"],))
+            post_id = cur.fetchone()["id"]
+        conn.commit()
+        cur.execute(
+            f"SELECT id, user_email, user_full_name, content, created_at FROM forum_posts WHERE id = {PLACEHOLDER}",
+            (post_id,),
+        )
+        row = dict(cur.fetchone())
+        return {
+            "id": row["id"],
+            "user_full_name": row.get("user_full_name") or current_user["full_name"],
+            "user_email": row["user_email"],
+            "content": row["content"],
+            "created_at": str(row["created_at"]),
+            "likes_count": 0,
+            "likes": [],
+            "comments": [],
+        }
+
+@app.put("/api/forum/{post_id}", response_model=ForumPostOut)
+def update_forum_post(post_id: int, data: ForumPostUpdate, current_user: dict = Depends(get_current_user)):
+    content = sanitize_forum_post_html(data.content)
+    if not content:
+        raise HTTPException(status_code=400, detail="Post content cannot be empty")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id, user_email, user_full_name, content, created_at FROM forum_posts WHERE id = {PLACEHOLDER}",
+            (post_id,),
+        )
+        existing = cur.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Post not found")
+        post = dict(existing)
+        if post["user_email"] != current_user["email"] and not is_admin(current_user):
+            raise HTTPException(status_code=403, detail="You can only edit your own posts")
+        cur.execute(
+            f"UPDATE forum_posts SET content = {PLACEHOLDER} WHERE id = {PLACEHOLDER}",
+            (content, post_id),
+        )
+        conn.commit()
+        return {
+            "id": post_id,
+            "user_full_name": post.get("user_full_name") or post.get("user_email") or "Member",
+            "user_email": post["user_email"],
+            "content": content,
+            "created_at": str(post["created_at"]),
+            "likes_count": 0,
+            "likes": [],
+            "comments": [],
+        }
+
+@app.delete("/api/forum/{post_id}")
+def delete_forum_post(post_id: int, current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT user_email FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Post not found")
+        post = dict(row)
+        if post["user_email"] != current_user["email"] and not is_admin(current_user):
+            raise HTTPException(status_code=403, detail="You can only delete your own posts")
+        cur.execute(f"DELETE FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post_id,))
+        cur.execute(f"DELETE FROM forum_comments WHERE post_id = {PLACEHOLDER}", (post_id,))
+        cur.execute(f"DELETE FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
+        conn.commit()
+        return {"message": "Post deleted"}
+
+@app.post("/api/forum/{post_id}/like")
+def like_forum_post(post_id: int, current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO forum_likes (post_id, user_email) VALUES ({PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (post_id, user_email) DO NOTHING",
+                (post_id, current_user["email"]),
+            )
+        else:
+            cur.execute(
+                f"INSERT OR IGNORE INTO forum_likes (post_id, user_email) VALUES ({PLACEHOLDER}, {PLACEHOLDER})",
+                (post_id, current_user["email"]),
+            )
+        conn.commit()
+        return {"message": "Post liked"}
+
+@app.delete("/api/forum/{post_id}/like")
+def unlike_forum_post(post_id: int, current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"DELETE FROM forum_likes WHERE post_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (post_id, current_user["email"]),
+        )
+        conn.commit()
+        return {"message": "Post unliked"}
+
+@app.post("/api/forum/{post_id}/comments")
+def add_forum_comment(post_id: int, data: ForumComment, current_user: dict = Depends(get_current_user)):
+    comment = sanitize_forum_comment_text(data.comment)
+    if not comment:
+        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO forum_comments (post_id, user_email, user_full_name, comment) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (post_id, current_user["email"], current_user["full_name"], comment),
+        )
+        conn.commit()
+        return {"message": "Comment added"}
+
 @app.post("/api/forum/upload-image")
 async def upload_forum_image(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     if not file.content_type.startswith("image/"):
@@ -4176,8 +4617,9 @@ def get_uploaded_file(filename: str):
     return FileResponse(path)
 
 # --- Practice Sessions (admin-managed) ---
+@app.get("/api/calendar/events", response_model=List[PracticeSessionOut])
 @app.get("/api/practice/sessions", response_model=List[PracticeSessionOut])
-def list_practice_sessions():
+def list_calendar_events():
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(f"SELECT id FROM practice_sessions ORDER BY date ASC, COALESCE(time, ''), id ASC")
@@ -4189,8 +4631,9 @@ def list_practice_sessions():
                 sessions.append(PracticeSessionOut(**session))
         return sessions
 
+@app.get("/api/calendar/events/id/{session_id}", response_model=PracticeSessionOut)
 @app.get("/api/practice/sessions/id/{session_id}", response_model=PracticeSessionOut)
-def get_practice_session_by_id(session_id: int):
+def get_calendar_event_by_id(session_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
         session = get_practice_session_with_capacity_by_id(cur, session_id)
@@ -4198,8 +4641,9 @@ def get_practice_session_by_id(session_id: int):
             raise HTTPException(status_code=404, detail="Practice session not found")
         return PracticeSessionOut(**session)
 
+@app.post("/api/calendar/events", response_model=PracticeSessionOut)
 @app.post("/api/practice/sessions", response_model=PracticeSessionOut)
-def create_practice_session(session: PracticeSessionCreate, current_user: dict = Depends(get_current_user)):
+def create_calendar_event(session: CalendarEventCreate, current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     maximum_capacity = normalize_maximum_capacity(session.maximum_capacity)
@@ -4252,8 +4696,9 @@ def create_practice_session(session: PracticeSessionCreate, current_user: dict =
         created_session = get_practice_session_with_capacity_by_id(cur, created_session_id)
         return PracticeSessionOut(**created_session)
 
+@app.put("/api/calendar/events/id/{session_id}", response_model=PracticeSessionOut)
 @app.put("/api/practice/sessions/id/{session_id}", response_model=PracticeSessionOut)
-def update_practice_session_by_id(session_id: int, session: PracticeSessionCreate, current_user: dict = Depends(get_current_user)):
+def update_calendar_event_by_id(session_id: int, session: CalendarEventCreate, current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     maximum_capacity = normalize_maximum_capacity(session.maximum_capacity)
@@ -4287,51 +4732,26 @@ def update_practice_session_by_id(session_id: int, session: PracticeSessionCreat
         updated_session = get_practice_session_with_capacity_by_id(cur, session_id)
         return PracticeSessionOut(**updated_session)
 
+@app.put("/api/calendar/events/{date_str}", response_model=PracticeSessionOut)
 @app.put("/api/practice/sessions/{date_str}", response_model=PracticeSessionOut)
-def update_practice_session(date_str: str, session: PracticeSessionCreate, current_user: dict = Depends(get_current_user)):
+def update_calendar_event(date_str: str, session: CalendarEventCreate, current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
-    maximum_capacity = normalize_maximum_capacity(session.maximum_capacity)
-    normalized_time = normalize_practice_time(session.time)
-    normalized_event_type = normalize_event_type(session.event_type)
-    normalized_event_title = normalize_event_title(session.event_title, normalized_event_type)
-    normalized_option_a, normalized_option_b = normalize_option_pair(session.option_a_text, session.option_b_text)
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(
-            f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}",
-            (date_str,),
-        )
-        existing_session = cur.fetchone()
-        if not existing_session:
+        session_id = get_practice_session_id_by_date(cur, date_str)
+        if not session_id:
             raise HTTPException(status_code=404, detail="Practice session not found")
-        if existing_session["payment_requested"]:
-            raise HTTPException(status_code=400, detail="Practice session cannot be edited after payment has been requested")
-        cur.execute(
-            f"UPDATE practice_sessions SET time = {PLACEHOLDER}, location = {PLACEHOLDER}, event_type = {PLACEHOLDER}, event_title = {PLACEHOLDER}, description = {PLACEHOLDER}, image_url = {PLACEHOLDER}, youtube_url = {PLACEHOLDER}, option_a_text = {PLACEHOLDER}, option_b_text = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER} WHERE date = {PLACEHOLDER}",
-            (normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.paid_by, maximum_capacity, date_str),
-        )
-        updated_rows = cur.rowcount
-        updated_session_id = get_practice_session_id_by_date(cur, date_str)
-        sync_match_session_to_events(cur, {
-            "id": updated_session_id,
-            "date": date_str,
-            "time": normalized_time,
-            "location": session.location,
-            "event_type": normalized_event_type,
-            "event_title": normalized_event_title,
-            "description": session.description,
-            "image_url": session.image_url,
-            "youtube_url": session.youtube_url,
-        })
-        conn.commit()
-        if updated_rows == 0:
-            raise HTTPException(status_code=404, detail="Practice session not found")
-        updated_session = get_practice_session_with_capacity(cur, date_str)
-        return PracticeSessionOut(**updated_session)
+    return update_calendar_event_by_id(session_id, session, current_user)
 
-@app.post("/api/practice/sessions/id/{session_id}/request-payment")
-def request_payment_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
+list_practice_sessions = list_calendar_events
+get_practice_session_by_id = get_calendar_event_by_id
+create_practice_session = create_calendar_event
+update_practice_session_by_id = update_calendar_event_by_id
+update_practice_session = update_calendar_event
+
+@app.post("/api/calendar/events/id/{session_id}/request-payment")
+def request_calendar_event_payment_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
     """Admin endpoint to enable payment request for a specific practice session"""
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
@@ -4375,8 +4795,12 @@ def request_payment_by_id(session_id: int, current_user: dict = Depends(get_curr
 
         return {"message": "Payment requested successfully"}
 
-@app.post("/api/practice/sessions/{date_str}/request-payment")
-def request_payment(date_str: str, current_user: dict = Depends(get_current_user)):
+@app.post("/api/practice/sessions/id/{session_id}/request-payment")
+def request_payment_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
+    return request_calendar_event_payment_by_id(session_id, current_user)
+
+@app.post("/api/calendar/events/{date_str}/request-payment")
+def request_calendar_event_payment(date_str: str, current_user: dict = Depends(get_current_user)):
     """Admin endpoint to enable payment request for a practice session"""
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
@@ -4395,10 +4819,14 @@ def request_payment(date_str: str, current_user: dict = Depends(get_current_user
         session = cur.fetchone()
     if not session:
         raise HTTPException(status_code=404, detail="Practice session not found")
-    return request_payment_by_id(session["id"], current_user)
+    return request_calendar_event_payment_by_id(session["id"], current_user)
 
-@app.get("/api/practice/sessions/id/{session_id}/payments")
-def get_session_payments_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
+@app.post("/api/practice/sessions/{date_str}/request-payment")
+def request_payment(date_str: str, current_user: dict = Depends(get_current_user)):
+    return request_calendar_event_payment(date_str, current_user)
+
+@app.get("/api/calendar/events/id/{session_id}/payments")
+def get_calendar_event_payments_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         session = get_practice_session_with_capacity_by_id(cur, session_id)
@@ -4414,8 +4842,12 @@ def get_session_payments_by_id(session_id: int, current_user: dict = Depends(get
             payments[row_dict["user_email"]] = row_dict["paid"]
         return payments
 
-@app.get("/api/practice/sessions/{date_str}/payments")
-def get_session_payments(date_str: str, current_user: dict = Depends(get_current_user)):
+@app.get("/api/practice/sessions/id/{session_id}/payments")
+def get_session_payments_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
+    return get_calendar_event_payments_by_id(session_id, current_user)
+
+@app.get("/api/calendar/events/{date_str}/payments")
+def get_calendar_event_payments(date_str: str, current_user: dict = Depends(get_current_user)):
     """Get payment status for all users in a practice session"""
     with get_connection() as conn:
         cur = conn.cursor()
@@ -4429,8 +4861,21 @@ def get_session_payments(date_str: str, current_user: dict = Depends(get_current
             payments[row_dict["user_email"]] = row_dict["paid"]
         return payments
 
-@app.post("/api/practice/sessions/id/{session_id}/payment")
-def confirm_payment_by_id(session_id: int, data: dict, current_user: dict = Depends(get_current_user)):
+@app.post("/api/practice/sessions/{date_str}/payment")
+def confirm_payment_by_date(date_str: str, data: dict, current_user: dict = Depends(get_current_user)):
+    return confirm_calendar_event_payment_by_date(date_str, data, current_user)
+
+def confirm_calendar_event_payment_by_date(date_str: str, data: dict, current_user: dict = Depends(get_current_user)):
+    """User endpoint to confirm or unconfirm payment for a practice session (used by User Actions page)"""
+    with get_connection() as conn:
+        cur = conn.cursor()
+        session_id = get_calendar_event_id_by_date(cur, date_str)
+        if not session_id:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+    return confirm_calendar_event_payment_by_id(session_id, data, current_user)
+
+@app.post("/api/calendar/events/id/{session_id}/payment")
+def confirm_calendar_event_payment_by_id(session_id: int, data: dict, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         session = get_practice_session_with_capacity_by_id(cur, session_id)
@@ -4450,11 +4895,21 @@ def confirm_payment_by_id(session_id: int, data: dict, current_user: dict = Depe
         if not session["payment_requested"]:
             raise HTTPException(status_code=400, detail="Payment has not been requested for this session")
 
+        # Check if user is available for this session (check both session_id and date for legacy compatibility)
         cur.execute(
             f"SELECT status FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
             (session_id, current_user["email"]),
         )
         availability = cur.fetchone()
+        
+        # If no session_id-based availability, check date-based availability for legacy compatibility
+        if not availability:
+            cur.execute(
+                f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER} AND practice_session_id IS NULL",
+                (session["date"], current_user["email"]),
+            )
+            availability = cur.fetchone()
+        
         if not availability or availability["status"] != "available":
             raise HTTPException(status_code=400, detail="You must be marked as available for this session to confirm payment")
 
@@ -4488,82 +4943,24 @@ def confirm_payment_by_id(session_id: int, data: dict, current_user: dict = Depe
             )
         return {"message": "Payment confirmation updated", "paid": paid}
 
-@app.post("/api/practice/{date}/payment")
-def confirm_payment_by_date(date: str, data: dict, current_user: dict = Depends(get_current_user)):
-    """User endpoint to confirm or unconfirm payment for a practice session (used by User Actions page)"""
-    paid = data.get("paid", False)
-    
-    with get_connection() as conn:
-        cur = conn.cursor()
-        session_id = get_practice_session_id_by_date(cur, date)
-        if session_id is None:
-            raise HTTPException(status_code=404, detail="Practice session not found")
-        
-        # Check if payment is requested for this session and get session details
-        cur.execute(
-            f"SELECT id, payment_requested, time, location, event_type, event_title FROM practice_sessions WHERE date = {PLACEHOLDER}",
-            (date,)
-        )
-        session = cur.fetchone()
-        if not session:
-            raise HTTPException(status_code=404, detail="Practice session not found")
-        
-        if not session["payment_requested"]:
-            raise HTTPException(status_code=400, detail="Payment request has not been enabled for this session")
+@app.post("/api/practice/sessions/id/{session_id}/payment")
+def confirm_payment_by_id(session_id: int, data: dict, current_user: dict = Depends(get_current_user)):
+    return confirm_calendar_event_payment_by_id(session_id, data, current_user)
 
-        session_time = session["time"] or "TBD"
-        session_location = session["location"] or "TBD"
-        
-        # Check if user is available for this session
-        cur.execute(
-            f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-            (date, current_user["email"]),
-        )
-        availability = cur.fetchone()
-        if not availability or availability["status"] != "available":
-            raise HTTPException(status_code=400, detail="You must be marked as available for this session to confirm payment")
-        
-        # Insert or update payment confirmation
-        if USE_POSTGRES:
-            cur.execute(
-                f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (date, user_email) DO UPDATE SET practice_session_id = EXCLUDED.practice_session_id, paid = EXCLUDED.paid",
-                (session_id, date, current_user["email"], paid),
-            )
-        else:
-            cur.execute(
-                f"INSERT OR REPLACE INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (session_id, date, current_user["email"], 1 if paid else 0),
-            )
-        
-        conn.commit()
-        
-        if paid:
-            deliver_notification(
-                "payment_confirmed",
-                {
-                    "session_id": session["id"],
-                    "date": date,
-                    "time": session["time"],
-                    "location": session["location"],
-                    "event_type": session["event_type"],
-                    "event_title": session["event_title"],
-                    "member_name": current_user.get("full_name", current_user["email"]),
-                    "full_name": current_user.get("full_name", current_user["email"]),
-                },
-                related_date=date,
-            )
-        return {"message": "Payment confirmation updated", "paid": paid}
-
+@app.post("/api/calendar/events/{date_str}/payment")
+@app.post("/api/practice/{date_str}/payment")
 @app.post("/api/practice/sessions/{date_str}/payment")
 def confirm_payment(date_str: str, data: dict, current_user: dict = Depends(get_current_user)):
-    return confirm_payment_by_date(date_str, data, current_user)
+    return confirm_calendar_event_payment_by_date(date_str, data, current_user)
 
+@app.post("/api/calendar/events/id/{session_id}/availability")
 @app.post("/api/practice/sessions/id/{session_id}/availability")
-def set_practice_availability_by_session_id(session_id: int, status: dict, current_user: dict = Depends(get_current_user)):
+def set_calendar_event_availability_by_session_id(session_id: int, status: dict, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
-        return set_practice_availability_for_session_id(cur, conn, session_id, current_user["email"], current_user["full_name"], status.get("status", ""), status.get("option_choice"))
+        return set_calendar_event_availability_for_session_id(cur, conn, session_id, current_user["email"], current_user["full_name"], status.get("status", ""), status.get("option_choice"))
 
+@app.post("/api/admin/calendar/events/id/{session_id}/availability")
 @app.post("/api/admin/practice/sessions/id/{session_id}/availability")
 def admin_set_practice_availability_by_session_id(session_id: int, payload: dict, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
@@ -4585,10 +4982,10 @@ def admin_set_practice_availability_by_session_id(session_id: int, payload: dict
         user_row = cur.fetchone()
         if not user_row:
             raise HTTPException(status_code=404, detail="User not found")
-        return admin_set_practice_availability_for_session_id(cur, conn, session_id, avail.user_email, user_row["full_name"], avail.status, avail.option_choice)
+        return admin_set_calendar_event_availability_for_session_id(cur, conn, session_id, avail.user_email, user_row["full_name"], avail.status, avail.option_choice)
 
-@app.get("/api/practice/sessions/id/{session_id}/availability")
-def get_practice_availability_summary_by_session_id(session_id: int):
+@app.get("/api/calendar/events/id/{session_id}/availability")
+def get_calendar_event_availability_summary_by_session_id(session_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
         session = get_practice_session_with_capacity_by_id(cur, session_id)
@@ -4601,8 +4998,12 @@ def get_practice_availability_summary_by_session_id(session_id: int):
             raise HTTPException(status_code=404, detail="Practice session not found")
         return get_practice_availability_summary_by_session(cur, session)
 
-@app.delete("/api/practice/sessions/id/{session_id}")
-def delete_practice_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
+@app.get("/api/practice/sessions/id/{session_id}/availability")
+def get_practice_availability_summary_by_session_id(session_id: int):
+    return get_calendar_event_availability_summary_by_session_id(session_id)
+
+@app.delete("/api/calendar/events/id/{session_id}")
+def delete_calendar_event_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         session = get_practice_session_basic_by_id(cur, session_id)
@@ -4622,533 +5023,28 @@ def delete_practice_by_id(session_id: int, current_user: dict = Depends(get_curr
         conn.commit()
         return {"message": "Practice session deleted"}
 
-# --- Likes/Comments for Events ---
-@app.post("/api/events/{event_id}/like")
-def like_event(event_id: int, current_user: dict = Depends(get_current_user)):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"INSERT INTO event_likes (event_id, user_email) VALUES ({PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT DO NOTHING",
-            (event_id, current_user["email"]),
-        )
-        conn.commit()
-        return {"message": "Liked"}
+@app.delete("/api/practice/sessions/id/{session_id}")
+def delete_practice_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
+    return delete_calendar_event_by_id(session_id, current_user)
 
-@app.delete("/api/events/{event_id}/like")
-def unlike_event(event_id: int, current_user: dict = Depends(get_current_user)):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"DELETE FROM event_likes WHERE event_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-            (event_id, current_user["email"]),
-        )
-        conn.commit()
-        return {"message": "Unliked"}
-
-@app.get("/api/expenses", response_model=List[ExpenseOut])
-def list_expenses(current_user: dict = Depends(get_current_user)):
-    if not is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Admins only")
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"""
-            SELECT e.id, e.title, e.amount, e.paid_by, e.expense_date, e.category, e.payment_method,
-                   e.description, e.created_at, e.updated_at, u.full_name as paid_by_name
-            FROM expenses e
-            LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-            """
-        )
-        expense_rows = []
-        for row in cur.fetchall():
-            row_dict = dict(row)
-            row_dict.update(
-                {
-                    "source": "expense",
-                    "is_booking_expense": False,
-                    "practice_session_date": None,
-                    "linked_practice_time": None,
-                    "linked_practice_location": None,
-                    "can_edit": True,
-                    "can_delete": True,
-                }
-            )
-            expense_rows.append(serialize_expense(row_dict))
-
-        cur.execute(
-            f"""
-            SELECT ps.id, ps.date, ps.event_type, ps.event_title, ps.time, ps.location, ps.session_cost, ps.paid_by, ps.payment_requested_at,
-                   u.full_name as paid_by_name
-            FROM practice_sessions ps
-            LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-            WHERE ps.session_cost IS NOT NULL
-            """
-        )
-        booking_rows = []
-        for row in cur.fetchall():
-            row_dict = dict(row)
-            session_date = row_dict.get("date")
-            event_type = normalize_event_type(row_dict.get("event_type")) if row_dict.get("event_type") else "practice"
-            event_title = normalize_event_title(row_dict.get("event_title"), event_type)
-            event_name = f"{default_event_type_label(event_type)} - {event_title}"
-            time_value = row_dict.get("time")
-            location_value = row_dict.get("location")
-            if time_value and location_value:
-                description = f"{event_name} booking at {time_value} - {location_value}"
-            elif time_value:
-                description = f"{event_name} booking at {time_value}"
-            elif location_value:
-                description = f"{event_name} booking - {location_value}"
-            else:
-                description = f"{event_name} booking cost"
-            booking_rows.append(
-                serialize_expense(
-                    {
-                        "id": -int(row_dict.get("id")),  # Use actual session ID as negative
-                        "title": event_name,
-                        "amount": row_dict.get("session_cost") or 0,
-                        "paid_by": row_dict.get("paid_by"),
-                        "expense_date": session_date,
-                        "category": "Event Booking",
-                        "payment_method": None,
-                        "description": description,
-                        "paid_by_name": row_dict.get("paid_by_name"),
-                        "source": "practice_booking",
-                        "is_booking_expense": True,
-                        "practice_session_date": session_date,
-                        "linked_practice_time": row_dict.get("time"),
-                        "linked_practice_location": row_dict.get("location"),
-                        "can_edit": False,
-                        "can_delete": False,
-                        "created_at": row_dict.get("payment_requested_at"),
-                        "updated_at": row_dict.get("payment_requested_at"),
-                    }
-                )
-            )
-
-        merged_rows = expense_rows + booking_rows
-        merged_rows.sort(
-            key=lambda item: (
-                item.get("expense_date") or "",
-                item.get("created_at") or "",
-                item.get("id") or 0,
-            ),
-            reverse=True,
-        )
-        return [ExpenseOut(**row) for row in merged_rows]
-
-@app.post("/api/expenses", response_model=ExpenseOut)
-def create_expense(expense: ExpenseCreate, current_user: dict = Depends(get_current_user)):
-    if not is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Admins only")
-    paid_by = (expense.paid_by or "").strip() or None
-    with get_connection() as conn:
-        cur = conn.cursor()
-        if USE_POSTGRES:
-            cur.execute(
-                f"""
-                INSERT INTO expenses (title, amount, paid_by, expense_date, category, payment_method, description, updated_at)
-                VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)
-                RETURNING id
-                """,
-                (expense.title, expense.amount, paid_by, expense.expense_date, expense.category, expense.payment_method, expense.description),
-            )
-            expense_id = dict(cur.fetchone())["id"]
-        else:
-            cur.execute(
-                f"""
-                INSERT INTO expenses (title, amount, paid_by, expense_date, category, payment_method, description, updated_at)
-                VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)
-                """,
-                (expense.title, expense.amount, paid_by, expense.expense_date, expense.category, expense.payment_method, expense.description),
-            )
-            expense_id = cur.lastrowid
-        conn.commit()
-        cur.execute(
-            f"""
-            SELECT e.id, e.title, e.amount, e.paid_by, e.expense_date, e.category, e.payment_method,
-                   e.description, e.created_at, e.updated_at, u.full_name as paid_by_name
-            FROM expenses e
-            LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-            WHERE e.id = {PLACEHOLDER}
-            """,
-            (expense_id,),
-        )
-        row = cur.fetchone()
-        return ExpenseOut(**serialize_expense(dict(row)))
-
-@app.put("/api/expenses/{expense_id}", response_model=ExpenseOut)
-def update_expense(expense_id: int, expense: ExpenseCreate, current_user: dict = Depends(get_current_user)):
-    if not is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Admins only")
-    paid_by = (expense.paid_by or "").strip() or None
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"""
-            UPDATE expenses
-            SET title = {PLACEHOLDER}, amount = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, expense_date = {PLACEHOLDER},
-                category = {PLACEHOLDER}, payment_method = {PLACEHOLDER}, description = {PLACEHOLDER}, updated_at = CURRENT_TIMESTAMP
-            WHERE id = {PLACEHOLDER}
-            """,
-            (expense.title, expense.amount, paid_by, expense.expense_date, expense.category, expense.payment_method, expense.description, expense_id),
-        )
-        if cur.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Expense not found")
-        conn.commit()
-        cur.execute(
-            f"""
-            SELECT e.id, e.title, e.amount, e.paid_by, e.expense_date, e.category, e.payment_method,
-                   e.description, e.created_at, e.updated_at, u.full_name as paid_by_name
-            FROM expenses e
-            LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-            WHERE e.id = {PLACEHOLDER}
-            """,
-            (expense_id,),
-        )
-        row = cur.fetchone()
-        return ExpenseOut(**serialize_expense(dict(row)))
-
-@app.delete("/api/expenses/{expense_id}")
-def delete_expense(expense_id: int, current_user: dict = Depends(get_current_user)):
-    if not is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Admins only")
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(f"DELETE FROM expenses WHERE id = {PLACEHOLDER}", (expense_id,))
-        if cur.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Expense not found")
-        conn.commit()
-        return {"message": "Expense deleted"}
-
-@app.get("/api/events/likes/me")
-def get_my_event_likes(current_user: dict = Depends(get_current_user)):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"SELECT event_id FROM event_likes WHERE user_email = {PLACEHOLDER}",
-            (current_user["email"],),
-        )
-        return [row["event_id"] for row in cur.fetchall()]
-
-@app.get("/api/events/{event_id}/comments", response_model=List[EventComment])
-def get_event_comments(event_id: int):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"SELECT * FROM event_comments WHERE event_id = {PLACEHOLDER} ORDER BY created_at ASC",
-            (event_id,),
-        )
-        comments = []
-        for row in cur.fetchall():
-            comment_dict = dict(row)
-            # Convert datetime to ISO string if needed
-            if hasattr(comment_dict.get("created_at"), 'isoformat'):
-                comment_dict["created_at"] = comment_dict["created_at"].isoformat()
-            comments.append(EventComment(**comment_dict))
-        return comments
-
-@app.post("/api/events/{event_id}/comments", response_model=EventComment)
-def create_event_comment(event_id: int, comment: dict, current_user: dict = Depends(get_current_user)):
-    # Validate comment length (max 100 characters for security)
-    if len(comment["comment"]) > 100:
-        raise HTTPException(status_code=400, detail="Comment must be 100 characters or less")
-    
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"INSERT INTO event_comments (event_id, user_email, user_full_name, comment) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (event_id, current_user["email"], current_user["full_name"], comment["comment"]),
-        )
-        conn.commit()
-        return EventComment(id=cur.lastrowid, user_email=current_user["email"], comment=comment["comment"], created_at=datetime.utcnow().isoformat())
-
-# --- Forum endpoints ---
-@app.get("/api/forum", response_model=List[ForumPostOut])
-def get_forum_posts():
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM forum_posts ORDER BY created_at DESC")
-        posts = []
-        for row in cur.fetchall():
-            post = dict(row)
-            post["content"] = sanitize_forum_post_html(post.get("content") or "")
-            # Use stored user_full_name, fallback to email if not set (for old posts)
-            post_full_name = post.get("user_full_name")
-            if not post_full_name:
-                cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (post["user_email"],))
-                user_row = cur.fetchone()
-                post_full_name = user_row["full_name"] if user_row else post["user_email"]
-            # likes with full names
-            cur.execute(
-                f"SELECT fl.user_email, u.full_name FROM forum_likes fl JOIN users u ON fl.user_email = u.email WHERE fl.post_id = {PLACEHOLDER}",
-                (post["id"],)
-            )
-            likes_list = [dict(r) for r in cur.fetchall()]
-            likes_count = len(likes_list)
-            # comments
-            cur.execute(
-                f"SELECT * FROM forum_comments WHERE post_id = {PLACEHOLDER} ORDER BY created_at ASC",
-                (post["id"],),
-            )
-            comments = []
-            for c in cur.fetchall():
-                cd = dict(c)
-                # Use stored user_full_name, fallback to users table if not set (for old comments)
-                c_full_name = cd.get("user_full_name")
-                if not c_full_name:
-                    cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (cd["user_email"],))
-                    cu = cur.fetchone()
-                    c_full_name = cu["full_name"] if cu else cd["user_email"]
-                # Convert datetime to ISO string if needed
-                created_at_str = cd["created_at"].isoformat() if hasattr(cd["created_at"], 'isoformat') else cd["created_at"]
-                comments.append(
-                    ForumCommentOut(
-                        id=cd["id"],
-                        user_full_name=c_full_name,
-                        comment=cd["comment"],
-                        created_at=created_at_str,
-                    )
-                )
-            # Convert datetime to ISO string if needed
-            post_created_at = post["created_at"].isoformat() if hasattr(post["created_at"], 'isoformat') else post["created_at"]
-            posts.append(
-                ForumPostOut(
-                    id=post["id"],
-                    user_full_name=post_full_name,
-                    user_email=post["user_email"],
-                    content=post["content"],
-                    created_at=post_created_at,
-                    likes_count=likes_count,
-                    likes=likes_list,
-                    comments=comments,
-                )
-            )
-        return posts
-
-@app.post("/api/forum", response_model=ForumPostOut)
-def create_forum_post(post: ForumPostCreate, current_user: dict = Depends(get_current_user)):
-    sanitized_content = sanitize_forum_post_html(post.content)
-    # Validate visible text length instead of generated HTML length so embedded media markup does not fail valid posts
-    plain_text_content = re.sub(r"<[^>]+>", "", sanitized_content or "")
-    if len(html.unescape(plain_text_content).strip()) > 500:
-        raise HTTPException(status_code=400, detail="Post content must be 500 characters or less")
-    if not sanitized_content:
-        raise HTTPException(status_code=400, detail="Post content cannot be empty")
-    
-    with get_connection() as conn:
-        cur = conn.cursor()
-        if USE_POSTGRES:
-            cur.execute(
-                f"INSERT INTO forum_posts (user_email, user_full_name, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) RETURNING id, created_at",
-                (current_user["email"], current_user["full_name"], sanitized_content),
-            )
-            inserted_post = cur.fetchone()
-            post_id = inserted_post["id"]
-            created_at = inserted_post["created_at"].isoformat() if hasattr(inserted_post["created_at"], 'isoformat') else inserted_post["created_at"]
-        else:
-            cur.execute(
-                f"INSERT INTO forum_posts (user_email, user_full_name, content) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-                (current_user["email"], current_user["full_name"], sanitized_content),
-            )
-            post_id = cur.lastrowid
-            created_at = datetime.utcnow().isoformat()
-        conn.commit()
-        
-        deliver_notification(
-            "forum_post",
-            {
-                "author_name": current_user["full_name"],
-                "content": sanitized_content,
-            }
-        )
-        
-        return ForumPostOut(
-            id=post_id,
-            user_full_name=current_user["full_name"],
-            user_email=current_user["email"],
-            content=sanitized_content,
-            created_at=created_at,
-            likes_count=0,
-            comments=[],
-        )
-
-@app.put("/api/forum/{post_id}", response_model=ForumPostOut)
-def update_forum_post(
-    post_id: int,
-    payload: ForumPostUpdate,
-    current_user: dict = Depends(get_current_user),
-):
-    sanitized_content = sanitize_forum_post_html(payload.content)
-    plain_text_content = re.sub(r"<[^>]+>", "", sanitized_content or "")
-    if len(html.unescape(plain_text_content).strip()) > 500:
-        raise HTTPException(status_code=400, detail="Post content must be 500 characters or less")
-    if not sanitized_content:
-        raise HTTPException(status_code=400, detail="Post content cannot be empty")
-
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(f"SELECT * FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Post not found")
-
-        if row["user_email"] != current_user["email"] and not is_admin(current_user):
-            raise HTTPException(status_code=403, detail="You can only edit your own posts")
-
-        cur.execute(f"UPDATE forum_posts SET content = {PLACEHOLDER} WHERE id = {PLACEHOLDER}", (sanitized_content, post_id))
-        conn.commit()
-
-        post = dict(row)
-        post["content"] = sanitized_content
-
-        # Use stored user_full_name, fallback to users table if not set (for old posts)
-        post_full_name = post.get("user_full_name")
-        if not post_full_name:
-            cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (post["user_email"],))
-            user_row = cur.fetchone()
-            post_full_name = user_row["full_name"] if user_row else post["user_email"]
-
-        cur.execute(f"SELECT COUNT(*) as cnt FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post_id,))
-        likes = cur.fetchone()["cnt"]
-
-        cur.execute(
-            f"SELECT * FROM forum_comments WHERE post_id = {PLACEHOLDER} ORDER BY created_at ASC",
-            (post_id,),
-        )
-        comments = []
-        for c in cur.fetchall():
-            cd = dict(c)
-            # Use stored user_full_name, fallback to users table if not set (for old comments)
-            c_full_name = cd.get("user_full_name")
-            if not c_full_name:
-                cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (cd["user_email"],))
-                cu = cur.fetchone()
-                c_full_name = cu["full_name"] if cu else cd["user_email"]
-            # Convert datetime to ISO string if needed
-            created_at_str = cd["created_at"].isoformat() if hasattr(cd["created_at"], 'isoformat') else cd["created_at"]
-            comments.append(
-                ForumCommentOut(
-                    id=cd["id"],
-                    user_full_name=c_full_name,
-                    comment=cd["comment"],
-                    created_at=created_at_str,
-                )
-            )
-
-        # Convert datetime to ISO string if needed
-        post_created_at = post["created_at"].isoformat() if hasattr(post["created_at"], 'isoformat') else post["created_at"]
-        return ForumPostOut(
-            id=post_id,
-            user_full_name=post_full_name,
-            user_email=post["user_email"],
-            content=sanitized_content,
-            created_at=post_created_at,
-            likes_count=likes,
-            comments=comments,
-        )
-
-
-@app.delete("/api/forum/{post_id}")
-def delete_forum_post(post_id: int, current_user: dict = Depends(get_current_user)):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(f"SELECT user_email FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
-        post = cur.fetchone()
-        if not post:
-            raise HTTPException(status_code=404, detail="Post not found")
-        
-        # Allow deletion if user owns the post OR is admin
-        if post["user_email"] != current_user["email"] and not is_admin(current_user):
-            raise HTTPException(status_code=403, detail="You can only delete your own posts")
-
-        cur.execute(f"DELETE FROM forum_likes WHERE post_id = {PLACEHOLDER}", (post_id,))
-        cur.execute(f"DELETE FROM forum_comments WHERE post_id = {PLACEHOLDER}", (post_id,))
-        cur.execute(f"DELETE FROM forum_posts WHERE id = {PLACEHOLDER}", (post_id,))
-        conn.commit()
-        return {"message": "Post deleted"}
-
-@app.post("/api/forum/{post_id}/like")
-def like_forum_post(post_id: int, current_user: dict = Depends(get_current_user)):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"INSERT INTO forum_likes (post_id, user_email) VALUES ({PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT DO NOTHING",
-            (post_id, current_user["email"]),
-        )
-        conn.commit()
-        return {"message": "Liked"}
-
-@app.delete("/api/forum/{post_id}/like")
-def unlike_forum_post(post_id: int, current_user: dict = Depends(get_current_user)):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"DELETE FROM forum_likes WHERE post_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-            (post_id, current_user["email"]),
-        )
-        conn.commit()
-        return {"message": "Unliked"}
-
-@app.get("/api/forum/likes/me")
-def get_my_forum_likes(current_user: dict = Depends(get_current_user)):
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"SELECT post_id FROM forum_likes WHERE user_email = {PLACEHOLDER}",
-            (current_user["email"],),
-        )
-        return [row["post_id"] for row in cur.fetchall()]
-
-@app.post("/api/forum/{post_id}/comments", response_model=ForumCommentOut)
-def create_forum_comment(post_id: int, comment: ForumComment, current_user: dict = Depends(get_current_user)):
-    sanitized_comment = sanitize_forum_comment_text(comment.comment)
-    # Validate comment length (max 100 characters for security)
-    if len(sanitized_comment) > 100:
-        raise HTTPException(status_code=400, detail="Comment must be 100 characters or less")
-    if not sanitized_comment:
-        raise HTTPException(status_code=400, detail="Comment cannot be empty")
-
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"INSERT INTO forum_comments (post_id, user_email, user_full_name, comment) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (post_id, current_user["email"], current_user["full_name"], sanitized_comment),
-        )
-        conn.commit()
-        return ForumCommentOut(id=cur.lastrowid, user_full_name=current_user["full_name"], comment=sanitized_comment, created_at=datetime.utcnow().isoformat())
-
-@app.delete("/api/practice/{date_str}")
-def delete_practice(date_str: str, current_user: dict = Depends(get_current_user)):
+@app.delete("/api/calendar/events/{date_str}")
+def delete_calendar_event(date_str: str, current_user: dict = Depends(get_current_user)):
     # Admin only
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(
-            f"SELECT payment_requested FROM practice_sessions WHERE date = {PLACEHOLDER}",
-            (date_str,),
-        )
-        existing_session = cur.fetchone()
-        if not existing_session:
+        session_id = get_calendar_event_id_by_date(cur, date_str)
+        if not session_id:
             raise HTTPException(status_code=404, detail="Practice session not found")
-        if existing_session["payment_requested"]:
-            raise HTTPException(status_code=400, detail="Practice session cannot be deleted after payment has been requested")
-        cur.execute(f"DELETE FROM event_media WHERE event_id IN (SELECT id FROM events WHERE practice_session_date = {PLACEHOLDER})", (date_str,))
-        cur.execute(f"DELETE FROM event_likes WHERE event_id IN (SELECT id FROM events WHERE practice_session_date = {PLACEHOLDER})", (date_str,))
-        cur.execute(f"DELETE FROM event_comments WHERE event_id IN (SELECT id FROM events WHERE practice_session_date = {PLACEHOLDER})", (date_str,))
-        cur.execute(f"DELETE FROM events WHERE practice_session_date = {PLACEHOLDER}", (date_str,))
-        cur.execute(f"DELETE FROM practice_payments WHERE date = {PLACEHOLDER}", (date_str,))
-        cur.execute(f"DELETE FROM practice_availability WHERE date = {PLACEHOLDER}", (date_str,))
-        cur.execute(
-            f"DELETE FROM notifications WHERE related_date = {PLACEHOLDER} AND type IN ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (date_str, "practice", "match", "practice_slot_available", "session_capacity_reached", "payment_request"),
-        )
-        cur.execute(f"DELETE FROM practice_sessions WHERE date = {PLACEHOLDER}", (date_str,))
-        conn.commit()
-        return {"message": "Practice session deleted"}
+    return delete_calendar_event_by_id(session_id, current_user)
 
-# --- Practice endpoints ---
+@app.delete("/api/practice/{date_str}")
+@app.delete("/api/practice/sessions/{date_str}")
+def delete_practice(date_str: str, current_user: dict = Depends(get_current_user)):
+    return delete_calendar_event(date_str, current_user)
+
+@app.get("/api/event-availability")
 @app.get("/api/practice/availability")
 def get_my_practice_availability(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
@@ -5171,6 +5067,7 @@ def get_my_practice_availability(current_user: dict = Depends(get_current_user))
                 result[str(row_dict["practice_session_id"])] = row_dict["status"]
         return result
 
+@app.post("/api/calendar/events/{date}/availability")
 @app.post("/api/practice/{date}/availability")
 def set_practice_availability_by_date(date: str, status: dict, current_user: dict = Depends(get_current_user)):
     avail = PracticeAvailability(
@@ -5180,6 +5077,7 @@ def set_practice_availability_by_date(date: str, status: dict, current_user: dic
     )
     return set_my_practice_availability(avail, current_user)
 
+@app.post("/api/event-availability")
 @app.post("/api/practice/availability")
 def set_my_practice_availability(avail: PracticeAvailability, current_user: dict = Depends(get_current_user)):
     try:
@@ -5189,10 +5087,10 @@ def set_my_practice_availability(avail: PracticeAvailability, current_user: dict
 
     with get_connection() as conn:
         cur = conn.cursor()
-        session = get_practice_session_basic(cur, avail.date)
+        session = get_calendar_event_basic(cur, avail.date)
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
-        return set_practice_availability_for_session_id(cur, conn, session["id"], current_user["email"], current_user["full_name"], avail.status, avail.option_choice)
+        return set_calendar_event_availability_for_session_id(cur, conn, session["id"], current_user["email"], current_user["full_name"], avail.status, avail.option_choice)
 
 @app.post("/api/admin/practice/availability")
 def admin_set_practice_availability(avail: AdminPracticeAvailability, current_user: dict = Depends(get_current_user)):
@@ -5217,19 +5115,54 @@ def admin_set_practice_availability(avail: AdminPracticeAvailability, current_us
         user_row = cur.fetchone()
         if not user_row:
             raise HTTPException(status_code=404, detail="User not found")
-        session = get_practice_session_with_capacity(cur, avail.date)
+        session = get_calendar_event_with_capacity(cur, avail.date)
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
-        return set_practice_availability_for_session_id(cur, conn, session["id"], avail.user_email, user_row["full_name"], avail.status, avail.option_choice)
+        return set_calendar_event_availability_for_session_id(cur, conn, session["id"], avail.user_email, user_row["full_name"], avail.status, avail.option_choice)
 
+@app.get("/api/event-availability/{date_str}")
 @app.get("/api/practice/availability/{date_str}")
 def get_practice_availability_summary(date_str: str):
     with get_connection() as conn:
         cur = conn.cursor()
-        session = get_practice_session_with_capacity(cur, date_str)
-        if not session:
+        session = get_calendar_event_with_capacity(cur, date_str)
+        if session:
+            return get_practice_availability_summary_by_session(cur, session)
+
+        cur.execute(
+            f"SELECT user_email, user_full_name, status FROM practice_availability WHERE date = {PLACEHOLDER}",
+            (date_str,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        if not rows:
             raise HTTPException(status_code=404, detail="Practice session not found")
-        return get_practice_availability_summary_by_session(cur, session)
+
+        available = []
+        tentative = []
+        not_available = []
+        for r in rows:
+            name = r.get("user_full_name") or "[OldData]"
+            if r["status"] == "available":
+                available.append(name)
+            elif r["status"] == "tentative":
+                tentative.append(name)
+            elif r["status"] == "not_available":
+                not_available.append(name)
+
+        return {
+            "available": available,
+            "tentative": tentative,
+            "not_available": not_available,
+            "option_a": [],
+            "option_b": [],
+            "option_a_text": None,
+            "option_b_text": None,
+            "user_emails": {((r.get("user_full_name") or "[OldData]")): r["user_email"] for r in rows},
+            "maximum_capacity": 100,
+            "available_count": len(available),
+            "remaining_slots": max(100 - len(available), 0),
+            "capacity_reached": len(available) >= 100,
+        }
 
 # --- Notifications ---
 def create_notification(user_email: str, notif_type: str, message: str, related_date: str = None, practice_session_id: int = None):
@@ -5612,6 +5545,179 @@ def mark_notifications_read(current_user: dict = Depends(get_current_user)):
         conn.commit()
         return {"message": "Notifications marked as read"}
 
+@app.get("/api/expenses", response_model=List[ExpenseOut])
+def list_expenses(current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Manual expenses (editable)
+        cur.execute(
+            f"""
+            SELECT e.id, e.title, e.amount, e.paid_by, e.expense_date, e.category, e.payment_method,
+                   e.description, e.created_at, e.updated_at, u.full_name as paid_by_name,
+                   'expense' as source, FALSE as is_booking_expense, NULL as practice_session_date,
+                   NULL as linked_practice_time, NULL as linked_practice_location, TRUE as can_edit,
+                   TRUE as can_delete
+            FROM expenses e
+            LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            ORDER BY e.expense_date DESC, e.id DESC
+            """
+        )
+        manual_rows = [dict(row) for row in cur.fetchall()]
+        
+        # Practice session booking costs (read-only)
+        cur.execute(
+            f"""
+            SELECT 
+                ps.id,
+                ps.event_title as title,
+                ps.session_cost as amount,
+                ps.paid_by,
+                ps.date as expense_date,
+                'Event Booking' as category,
+                NULL as payment_method,
+                NULL as description,
+                NULL as created_at,
+                NULL as updated_at,
+                u.full_name as paid_by_name,
+                'booking' as source,
+                TRUE as is_booking_expense,
+                ps.date as practice_session_date,
+                ps.time as linked_practice_time,
+                ps.location as linked_practice_location,
+                FALSE as can_edit,
+                FALSE as can_delete
+            FROM practice_sessions ps
+            LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            WHERE ps.session_cost IS NOT NULL AND ps.session_cost > 0
+            ORDER BY ps.date DESC, ps.id DESC
+            """
+        )
+        booking_rows = [dict(row) for row in cur.fetchall()]
+        
+        # Combine and sort
+        all_rows = manual_rows + booking_rows
+        all_rows.sort(
+            key=lambda r: (
+                r.get("expense_date") or "",
+                r.get("created_at") or "",
+                r.get("title") or "",
+            ),
+            reverse=True
+        )
+        
+        return [serialize_expense(row) for row in all_rows]
+
+@app.post("/api/expenses", response_model=ExpenseOut)
+def create_expense(expense: ExpenseCreate, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"INSERT INTO expenses (title, amount, paid_by, expense_date, category, payment_method, description) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (expense.title, expense.amount, expense.paid_by, expense.expense_date, expense.category, expense.payment_method, expense.description),
+        )
+        expense_id = cur.lastrowid if not USE_POSTGRES else None
+        if USE_POSTGRES:
+            cur.execute(
+                f"SELECT id FROM expenses WHERE title = {PLACEHOLDER} AND expense_date = {PLACEHOLDER} ORDER BY id DESC LIMIT 1",
+                (expense.title, expense.expense_date),
+            )
+            created_row = cur.fetchone()
+            expense_id = created_row["id"] if created_row else None
+        conn.commit()
+        cur.execute(
+            f"""
+            SELECT e.id, e.title, e.amount, e.paid_by, e.expense_date, e.category, e.payment_method,
+                   e.description, e.created_at, e.updated_at, u.full_name as paid_by_name
+            FROM expenses e
+            LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            WHERE e.id = {PLACEHOLDER}
+            """,
+            (expense_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=500, detail="Failed to load updated expense")
+        return serialize_expense(dict(row))
+
+@app.put("/api/expenses/{expense_id}", response_model=ExpenseOut)
+def update_expense(expense_id: int, expense: ExpenseCreate, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if expense exists
+        cur.execute(
+            f"SELECT id FROM expenses WHERE id = {PLACEHOLDER}",
+            (expense_id,)
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Expense not found")
+        
+        # Update expense
+        cur.execute(
+            f"""
+            UPDATE expenses SET 
+                title = {PLACEHOLDER}, 
+                amount = {PLACEHOLDER}, 
+                paid_by = {PLACEHOLDER}, 
+                expense_date = {PLACEHOLDER}, 
+                category = {PLACEHOLDER}, 
+                payment_method = {PLACEHOLDER}, 
+                description = {PLACEHOLDER},
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = {PLACEHOLDER}
+            """,
+            (
+                expense.title,
+                expense.amount,
+                expense.paid_by,
+                expense.expense_date,
+                expense.category,
+                expense.payment_method,
+                expense.description,
+                expense_id
+            )
+        )
+        
+        conn.commit()
+        
+        # Return updated expense
+        cur.execute(
+            f"""
+            SELECT e.id, e.title, e.amount, e.paid_by, e.expense_date, e.category, e.payment_method,
+                   e.description, e.created_at, e.updated_at, u.full_name as paid_by_name
+            FROM expenses e
+            LEFT JOIN users u ON e.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
+            WHERE e.id = {PLACEHOLDER}
+            """,
+            (expense_id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=500, detail="Failed to load updated expense")
+        return serialize_expense(dict(row))
+
+@app.delete("/api/expenses/{expense_id}")
+def delete_expense(expense_id: int, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT id FROM expenses WHERE id = {PLACEHOLDER}", (expense_id,))
+        existing = cur.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Expense not found")
+        cur.execute(f"DELETE FROM expenses WHERE id = {PLACEHOLDER}", (expense_id,))
+        conn.commit()
+        return {"message": "Expense deleted"}
+
 # --- Reports ---
 @app.get("/api/reports/booking")
 def generate_booking_report(from_date: str, to_date: str, current_user: dict = Depends(get_current_user)):
@@ -5871,10 +5977,37 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 pp.paid,
                 pp.created_at as payment_date
             FROM practice_sessions ps
-            LEFT JOIN practice_availability pa ON ps.id = pa.practice_session_id
+            LEFT JOIN practice_availability pa ON (
+                ps.id = pa.practice_session_id
+                OR (
+                    pa.practice_session_id IS NULL
+                    AND pa.date = ps.date
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM practice_sessions ps2
+                        WHERE ps2.date = ps.date
+                          AND ps2.id <> ps.id
+                    )
+                )
+            )
             LEFT JOIN users u ON pa.user_email = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
             LEFT JOIN users payer ON ps.paid_by = payer.email AND (payer.is_deleted = FALSE OR payer.is_deleted IS NULL)
-            LEFT JOIN practice_payments pp ON ps.id = pp.practice_session_id AND pa.user_email = pp.user_email
+            LEFT JOIN practice_payments pp ON (
+                (
+                    ps.id = pp.practice_session_id
+                    OR (
+                        pp.practice_session_id IS NULL
+                        AND pp.date = ps.date
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM practice_sessions ps3
+                            WHERE ps3.date = ps.date
+                              AND ps3.id <> ps.id
+                        )
+                    )
+                )
+                AND pa.user_email = pp.user_email
+            )
             WHERE ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
                 AND pa.status IS NOT NULL
             ORDER BY ps.date ASC, ps.time ASC, ps.payment_requested_at ASC, u.full_name ASC
@@ -6039,14 +6172,10 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
         cur.execute(
             f"""
             SELECT ps.id, ps.date, ps.time, ps.location, ps.event_type, ps.event_title, ps.session_cost, ps.paid_by,
-                   COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
-                   pa.status as user_status
+                   COALESCE(ps.maximum_capacity, 100) as maximum_capacity
             FROM practice_sessions ps
-            LEFT JOIN practice_availability pa 
-                ON ps.id = pa.practice_session_id AND pa.user_email = {PLACEHOLDER}
             ORDER BY ps.date ASC, COALESCE(ps.time, '') ASC, ps.id ASC
-            """,
-            (current_user["email"],)
+            """
         )
         
         rows = cur.fetchall()
@@ -6058,6 +6187,7 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
                 continue
             available_count = get_available_count_for_session_id(cur, row_dict["id"])
             maximum_capacity = normalize_maximum_capacity(row_dict["maximum_capacity"])
+            user_status = get_session_user_availability_status(cur, row_dict, current_user["email"])
             sessions.append({
                 "id": row_dict["id"],
                 "date": row_dict["date"],
@@ -6067,7 +6197,7 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
                 "event_title": normalize_event_title(row_dict.get("event_title"), normalize_event_type(row_dict.get("event_type")) if row_dict.get("event_type") else "practice"),
                 "session_cost": row_dict["session_cost"],
                 "paid_by": row_dict["paid_by"],
-                "user_status": row_dict["user_status"],
+                "user_status": user_status,
                 "maximum_capacity": maximum_capacity,
                 "available_count": available_count,
                 "remaining_slots": max(maximum_capacity - available_count, 0),
@@ -6088,77 +6218,50 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                    u.bank_name as paid_by_bank_name,
                    u.sort_code as paid_by_sort_code,
                    u.account_number as paid_by_account_number,
-                   pa.status,
-                   COALESCE(pp.paid, {PLACEHOLDER}) as paid
+                   COALESCE(ps.maximum_capacity, 100) as maximum_capacity
             FROM practice_sessions ps
-            INNER JOIN practice_availability pa 
-                ON ps.id = pa.practice_session_id AND pa.user_email = {PLACEHOLDER}
-            LEFT JOIN practice_payments pp 
-                ON ps.id = pp.practice_session_id AND pp.user_email = {PLACEHOLDER}
             LEFT JOIN users u ON ps.paid_by = u.email
-            WHERE pa.status = 'available' 
-              AND ps.payment_requested = {PLACEHOLDER}
-              AND (pp.paid IS NULL OR pp.paid = {PLACEHOLDER})
+            WHERE ps.payment_requested = {PLACEHOLDER}
             ORDER BY ps.date DESC, COALESCE(ps.time, '') DESC, ps.id DESC
             """,
             (
-                False if USE_POSTGRES else 0,
-                current_user["email"],
-                current_user["email"],
                 True if USE_POSTGRES else 1,
-                False if USE_POSTGRES else 0,
             )
         )
         
         rows = cur.fetchall()
         payments = []
         for row in rows:
-            if USE_POSTGRES:
-                if not is_practice_datetime_in_past(row["date"], row.get("time")):
-                    continue
-                available_count = get_available_count_for_session_id(cur, row["id"])
-                session_cost = float(row["session_cost"]) if row["session_cost"] is not None else 0
-                individual_amount = session_cost / available_count if available_count > 0 and session_cost > 0 else 0
-                
-                payments.append({
-                    "id": row["id"],
-                    "date": row["date"],
-                    "time": row["time"],
-                    "location": row["location"],
-                    "event_type": normalize_event_type(row.get("event_type")) if row.get("event_type") else "practice",
-                    "event_title": normalize_event_title(row.get("event_title"), normalize_event_type(row.get("event_type")) if row.get("event_type") else "practice"),
-                    "session_cost": session_cost,
-                    "individual_amount": round(individual_amount, 2),
-                    "paid_by": row["paid_by"],
-                    "paid_by_name": row["paid_by_name"],
-                    "paid_by_bank_name": row["paid_by_bank_name"],
-                    "paid_by_sort_code": row["paid_by_sort_code"],
-                    "paid_by_account_number": row["paid_by_account_number"],
-                    "paid": row["paid"]
-                })
-            else:
-                if not is_practice_datetime_in_past(row[1], row[2]):
-                    continue
-                available_count = get_available_count_for_session_id(cur, row[0])
-                session_cost = float(row[6]) if row[6] is not None else 0
-                individual_amount = session_cost / available_count if available_count > 0 and session_cost > 0 else 0
-                
-                payments.append({
-                    "id": row[0],
-                    "date": row[1],
-                    "time": row[2],
-                    "location": row[3],
-                    "event_type": normalize_event_type(row[4]) if row[4] else "practice",
-                    "event_title": normalize_event_title(row[5], normalize_event_type(row[4]) if row[4] else "practice"),
-                    "session_cost": session_cost,
-                    "individual_amount": round(individual_amount, 2),
-                    "paid_by": row[7],
-                    "paid_by_name": row[8],
-                    "paid_by_bank_name": row[9],
-                    "paid_by_sort_code": row[10],
-                    "paid_by_account_number": row[11],
-                    "paid": row[13],
-                })
+            row_dict = dict(row)
+            if not is_practice_datetime_in_past(row_dict["date"], row_dict.get("time")):
+                continue
+            status = get_session_user_availability_status(cur, row_dict, current_user["email"])
+            if status != "available":
+                continue
+            paid_status = get_session_user_payment_status(cur, row_dict, current_user["email"])
+            paid = bool(paid_status) if paid_status is not None else False
+            if paid:
+                continue
+            available_count = get_available_count_for_session_id(cur, row_dict["id"])
+            session_cost = float(row_dict["session_cost"]) if row_dict["session_cost"] is not None else 0
+            individual_amount = session_cost / available_count if available_count > 0 and session_cost > 0 else 0
+            
+            payments.append({
+                "id": row_dict["id"],
+                "date": row_dict["date"],
+                "time": row_dict["time"],
+                "location": row_dict["location"],
+                "event_type": normalize_event_type(row_dict.get("event_type")) if row_dict.get("event_type") else "practice",
+                "event_title": normalize_event_title(row_dict.get("event_title"), normalize_event_type(row_dict.get("event_type")) if row_dict.get("event_type") else "practice"),
+                "session_cost": session_cost,
+                "individual_amount": round(individual_amount, 2),
+                "paid_by": row_dict["paid_by"],
+                "paid_by_name": row_dict["paid_by_name"],
+                "paid_by_bank_name": row_dict["paid_by_bank_name"],
+                "paid_by_sort_code": row_dict["paid_by_sort_code"],
+                "paid_by_account_number": row_dict["paid_by_account_number"],
+                "paid": paid,
+            })
         
         return {"payments": payments}
 

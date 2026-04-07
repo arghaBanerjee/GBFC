@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi.testclient import TestClient
 
-from api import app, get_connection, init_db, PLACEHOLDER, hash_password
+from api import app, get_connection, init_db, PLACEHOLDER, hash_password, SESSIONS
 
 client = TestClient(app)
 
@@ -32,8 +32,10 @@ def auth_headers(email, password):
 
 def reset_test_state():
     init_db()
+    SESSIONS.clear()
     with get_connection() as conn:
         cur = conn.cursor()
+        cur.execute('DELETE FROM auth_sessions')
         cur.execute('DELETE FROM practice_payments')
         cur.execute('DELETE FROM practice_availability')
         cur.execute('DELETE FROM event_comments')
@@ -139,6 +141,71 @@ def test_list_practice_sessions_returns_numeric_id():
     assert matching is not None
     assert isinstance(matching['id'], int)
     assert matching['id'] > 0
+
+
+def test_calendar_event_alias_routes_match_practice_session_routes():
+    reset_test_state()
+    session_date = (date.today() + timedelta(days=8)).strftime('%Y-%m-%d')
+    headers = auth_headers(ADMIN_EMAIL, ADMIN_PASSWORD)
+
+    create_response = client.post(
+        '/api/calendar-events',
+        json={
+            'date': session_date,
+            'time': '18:45',
+            'location': 'Alias Ground',
+            'event_type': 'practice',
+            'event_title': 'Alias Session',
+            'maximum_capacity': 22,
+        },
+        headers=headers,
+    )
+    assert create_response.status_code == 200, create_response.text
+    created_payload = create_response.json()
+    session_id = created_payload['id']
+
+    list_response = client.get('/api/calendar-events')
+    assert list_response.status_code == 200, list_response.text
+    sessions = list_response.json()
+    matching = next((session for session in sessions if session['id'] == session_id), None)
+    assert matching is not None
+    assert matching['event_title'] == 'Alias Session'
+
+    detail_response = client.get(f'/api/calendar-events/id/{session_id}')
+    assert detail_response.status_code == 200, detail_response.text
+    detail_payload = detail_response.json()
+    assert detail_payload['id'] == session_id
+    assert detail_payload['event_title'] == 'Alias Session'
+
+
+def test_event_availability_alias_routes_match_practice_availability_routes():
+    reset_test_state()
+    session_date = (date.today() + timedelta(days=10)).strftime('%Y-%m-%d')
+    create_session(session_date, event_title='Availability Alias Session')
+    session_id = get_session_id(session_date)
+    member_headers = auth_headers(MEMBER_EMAIL, MEMBER_PASSWORD)
+
+    set_response = client.post(
+        f'/api/calendar-events/id/{session_id}/availability',
+        json={'status': 'available'},
+        headers=member_headers,
+    )
+    assert set_response.status_code == 200, set_response.text
+
+    summary_response = client.get(f'/api/calendar-events/id/{session_id}/availability')
+    assert summary_response.status_code == 200, summary_response.text
+    summary_payload = summary_response.json()
+    assert 'Member Session' in summary_payload['available']
+
+    my_availability_response = client.get('/api/event-availability', headers=member_headers)
+    assert my_availability_response.status_code == 200, my_availability_response.text
+    availability_map = my_availability_response.json()
+    assert availability_map[str(session_id)] == 'available'
+
+    date_summary_response = client.get(f'/api/event-availability/{session_date}')
+    assert date_summary_response.status_code == 200, date_summary_response.text
+    date_summary_payload = date_summary_response.json()
+    assert 'Member Session' in date_summary_payload['available']
 
 
 def test_admin_create_allows_multiple_sessions_on_same_date():
@@ -352,7 +419,7 @@ def test_events_endpoint_deduplicates_match_rows_by_session_id():
         )
         conn.commit()
 
-    response = client.get('/api/events')
+    response = client.get('/api/matches')
     assert response.status_code == 200, response.text
     events = response.json()
 
