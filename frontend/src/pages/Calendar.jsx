@@ -721,7 +721,7 @@ export default function Calendar({ user }) {
       const isSelected = Boolean(day) && formatDateStr(selectedDate) === dateStr
       const cellDate = day ? new Date(currentDate.getFullYear(), currentDate.getMonth(), day, 12, 0, 0, 0) : null
       const isPastDate = Boolean(cellDate) && cellDate < today
-      const shouldHighlightToday = !selectedDate && Boolean(day) && dateStr === formatDateStr(today)
+      const shouldHighlightToday = Boolean(day) && dateStr === formatDateStr(today)
       const uniqueEventTypes = [...new Set(calendarEventsForDate.map((session) => session.event_type || 'practice'))]
 
       let background = '#ffffff'
@@ -742,7 +742,7 @@ export default function Calendar({ user }) {
           key={`cal-${index}`}
           onClick={() => day && handleDateClick(day)}
           style={{
-            border: isSelected ? '2px solid var(--theme-accent-strong)' : shouldHighlightToday ? '2px dashed var(--theme-accent)' : '1px solid #e5e7eb',
+            border: isSelected ? '2px solid var(--theme-accent-strong)' : shouldHighlightToday ? '1px solid color-mix(in srgb, var(--theme-accent) 58%, white)' : '1px solid #e5e7eb',
             padding: '0.5rem',
             margin: '2px',
             minHeight: '40px',
@@ -1282,8 +1282,7 @@ export default function Calendar({ user }) {
                   <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
                 </div>
                 {!user && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)' }}>Log in to vote your availability.</p>}
-                {user && !selectedSession?.payment_requested && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after event time has passed.</p>}
-                {user && selectedSession?.payment_requested && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability after payment requested.</p>}
+                {user && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability for past events.</p>}
                 {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
                   <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>
                     Maximum capacity reached. Available is temporarily disabled until a slot opens up.
