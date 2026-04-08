@@ -711,7 +711,7 @@ export default function Calendar({ user }) {
   }
 
   const renderCalendar = () => {
-    const blanks = Array(firstDayOfWeek).fill(null)
+    const blanks = Array.from({ length: firstDayOfWeek }, (_, i) => null)
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
     const calendar = [...blanks, ...days]
 
@@ -719,6 +719,9 @@ export default function Calendar({ user }) {
       const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const calendarEventsForDate = adminCalendarEvents.filter(s => s.date === dateStr)
       const isSelected = Boolean(day) && formatDateStr(selectedDate) === dateStr
+      const cellDate = day ? new Date(currentDate.getFullYear(), currentDate.getMonth(), day, 12, 0, 0, 0) : null
+      const isPastDate = Boolean(cellDate) && cellDate < today
+      const shouldHighlightToday = !selectedDate && Boolean(day) && dateStr === formatDateStr(today)
       const uniqueEventTypes = [...new Set(calendarEventsForDate.map((session) => session.event_type || 'practice'))]
 
       let background = '#ffffff'
@@ -739,17 +742,20 @@ export default function Calendar({ user }) {
           key={`cal-${index}`}
           onClick={() => day && handleDateClick(day)}
           style={{
-            border: isSelected ? '2px solid var(--theme-accent-strong)' : '1px solid #e5e7eb',
+            border: isSelected ? '2px solid var(--theme-accent-strong)' : shouldHighlightToday ? '2px dashed var(--theme-accent)' : '1px solid #e5e7eb',
             padding: '0.5rem',
             margin: '2px',
             minHeight: '40px',
             background,
             cursor: day ? 'pointer' : 'default',
             borderRadius: '6px',
-            boxShadow: isSelected ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 0 3px color-mix(in srgb, var(--theme-accent) 24%, transparent), 0 8px 20px rgba(0, 0, 0, 0.14)' : 'none',
-            transform: isSelected ? 'scale(1.03)' : 'scale(1)',
+            boxShadow: isSelected ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 0 3px color-mix(in srgb, var(--theme-accent) 24%, transparent), 0 8px 20px rgba(0, 0, 0, 0.14)' : shouldHighlightToday ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.45), 0 0 0 2px color-mix(in srgb, var(--theme-accent) 14%, transparent)' : 'none',
+            transform: isSelected ? 'scale(1.03)' : shouldHighlightToday ? 'scale(1.01)' : 'scale(1)',
             transition: 'all 0.2s ease',
-            fontWeight: isSelected ? '700' : '400',
+            fontWeight: isSelected ? '700' : shouldHighlightToday ? '600' : '400',
+            opacity: isPastDate ? 0.58 : 1,
+            filter: isPastDate ? 'grayscale(0.28)' : 'none',
+            color: isPastDate ? 'var(--theme-text-muted)' : 'var(--theme-text)',
           }}
         >
           <div>{day}</div>
