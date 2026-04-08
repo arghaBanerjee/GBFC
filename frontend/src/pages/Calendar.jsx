@@ -717,6 +717,7 @@ export default function Calendar({ user }) {
 
     return calendar.map((day, index) => {
       const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      const isBlankCell = !day
       const calendarEventsForDate = adminCalendarEvents.filter(s => s.date === dateStr)
       const isSelected = Boolean(day) && formatDateStr(selectedDate) === dateStr
       const cellDate = day ? new Date(currentDate.getFullYear(), currentDate.getMonth(), day, 12, 0, 0, 0) : null
@@ -753,9 +754,9 @@ export default function Calendar({ user }) {
             transform: isSelected ? 'scale(1.03)' : shouldHighlightToday ? 'scale(1.01)' : 'scale(1)',
             transition: 'all 0.2s ease',
             fontWeight: isSelected ? '700' : shouldHighlightToday ? '600' : '400',
-            opacity: isPastDate ? 0.58 : 1,
-            filter: isPastDate ? 'grayscale(0.28)' : 'none',
-            color: isPastDate ? 'var(--theme-text-muted)' : 'var(--theme-text)',
+            opacity: isPastDate || isBlankCell ? 0.58 : 1,
+            filter: isPastDate || isBlankCell ? 'grayscale(0.28)' : 'none',
+            color: isPastDate || isBlankCell ? 'var(--theme-text-muted)' : 'var(--theme-text)',
           }}
         >
           <div>{day}</div>
