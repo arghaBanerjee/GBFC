@@ -1410,7 +1410,7 @@ export default function Calendar({ user }) {
               <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <strong>Member Availability</strong>
-                  {!selectedSession?.payment_requested && (
+                  {!isCalendarEventPast(selectedSession.date, selectedSession?.time) && (
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', fontWeight: '700', color: sessionRemainingSlots > 0 ? 'var(--theme-success-strong)' : 'var(--theme-warning-strong)' }}>
                     <span style={{ display: 'inline-flex', width: '1.5rem', height: '1.5rem', borderRadius: '999px', alignItems: 'center', justifyContent: 'center', background: sessionRemainingSlots > 0 ? 'var(--theme-success-soft)' : 'var(--theme-warning-soft)', border: `1px solid ${sessionRemainingSlots > 0 ? 'color-mix(in srgb, var(--theme-success) 28%, white)' : 'color-mix(in srgb, var(--theme-warning) 28%, white)'}` }}>+</span>
                     <span>{sessionRemainingSlots} slot{sessionRemainingSlots === 1 ? '' : 's'} available</span>
