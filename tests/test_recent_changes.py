@@ -69,7 +69,7 @@ def test_admin_create_event():
         "youtube_url": ""
     }
 
-    response = client.post(f"/api/events", json=event_data, headers=headers)
+    response = client.post(f"/api/matches", json=event_data, headers=headers)
     assert response.status_code == 200, response.text
     result = response.json()
     assert result.get("id")
@@ -82,13 +82,17 @@ def test_non_admin_create_event():
         "time": "15:00",
         "location": "Test Stadium",
         "type": "match",
-        "description": "Should fail",
+        "description": "This should fail",
         "image_url": "",
         "youtube_url": ""
     }
 
-    response = client.post(f"/api/events", json=event_data)
-    assert response.status_code == 401
+    # Login as regular user
+    token = login("member@test.com", "pass123")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(f"/api/matches", json=event_data, headers=headers)
+    assert response.status_code == 403, response.text
 
 def test_update_user_name():
     """Test that admin can update user names"""

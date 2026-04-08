@@ -93,45 +93,57 @@ def cleanup_test_database():
 
 
 def run_test_file(test_file):
-    """Run a single test file and return results"""
+    """Run a single test file using pytest and return results"""
     print_info(f"Running: {test_file}")
     
     try:
-        # Run the test file from tests directory
+        # Run the test file using pytest
         test_path = os.path.join(TESTS_DIR, test_file)
         result = subprocess.run(
-            [sys.executable, test_path],
+            [sys.executable, '-m', 'pytest', test_path, '-v', '--tb=short', '--no-header'],
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=120,  # Increased timeout for pytest
             cwd=os.path.dirname(os.path.abspath(__file__))
         )
         
         # Parse output for results
         output = result.stdout + result.stderr
         
-        # Check if test passed
+        # Check if test passed by looking for pytest success indicators
         passed = result.returncode == 0
+        
+        # Extract test count information from pytest output
+        test_count = "0"
+        if passed:
+            # Look for "X passed" in output
+            import re
+            match = re.search(r'(\d+)\s+passed', output)
+            if match:
+                test_count = match.group(1)
         
         return {
             'file': test_file,
             'passed': passed,
             'output': output,
-            'returncode': result.returncode
+            'returncode': result.returncode,
+            'test_count': test_count
         }
     except subprocess.TimeoutExpired:
         return {
             'file': test_file,
             'passed': False,
-            'output': 'Test timed out after 60 seconds',
-            'returncode': -1
+            'output': 'Test timed out after 120 seconds',
+            'returncode': -1,
+            'test_count': '0'
         }
     except Exception as e:
         return {
             'file': test_file,
             'passed': False,
             'output': str(e),
-            'returncode': -1
+            'returncode': -1,
+            'test_count': '0'
         }
 
 
@@ -142,17 +154,13 @@ def main():
     print_header("Football Club Application - Test Suite")
     print(f"{Colors.BOLD}Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}{Colors.ENDC}\n")
     
-    # List of test files to run (in tests/ directory)
-    test_files = [
-        'test_database_compatibility.py',
-        'test_practice_session_id_foundation.py',
-        'test_payment_request_comprehensive.py',
-        'test_payment_notifications.py',
-        'test_forum_crud.py',
-        'test_events_crud.py',
-        # 'test_user_actions.py',  # TODO: Fix test database integration
-        # 'test_reports.py',  # TODO: Fix test database integration
-    ]
+    # Auto-discover all test files in tests/ directory
+    test_files = []
+    for file in sorted(os.listdir(TESTS_DIR)):
+        if file.startswith('test_') and file.endswith('.py'):
+            # Skip utility files only
+            if file not in ['setup_test_db.py', 'run_tests.py', '__init__.py']:
+                test_files.append(file)
     
     # Check if test files exist in tests directory
     existing_test_files = []
@@ -184,33 +192,41 @@ def main():
         results.append(result)
         
         if result['passed']:
-            print_success(f"{test_file} - PASSED")
+            test_count = result.get('test_count', '0')
+            print_success(f"{test_file} - PASSED ({test_count} tests)")
         else:
             print_error(f"{test_file} - FAILED")
     
     # Step 3: Display consolidated results
     print_header("Step 3: Test Results Summary")
     
-    total_tests = len(results)
-    passed_tests = sum(1 for r in results if r['passed'])
-    failed_tests = total_tests - passed_tests
+    total_files = len(results)
+    passed_files = sum(1 for r in results if r['passed'])
+    failed_files = total_files - passed_files
     
-    print(f"{Colors.BOLD}Total Test Files: {total_tests}{Colors.ENDC}")
-    print(f"{Colors.OKGREEN}Passed: {passed_tests}{Colors.ENDC}")
-    print(f"{Colors.FAIL}Failed: {failed_tests}{Colors.ENDC}\n")
+    # Calculate total individual tests
+    total_tests = 0
+    for result in results:
+        if result['passed']:
+            total_tests += int(result.get('test_count', '0'))
+    
+    print(f"{Colors.BOLD}Total Test Files: {total_files}{Colors.ENDC}")
+    print(f"{Colors.OKGREEN}Passed Files: {passed_files}{Colors.ENDC}")
+    print(f"{Colors.FAIL}Failed Files: {failed_files}{Colors.ENDC}")
+    print(f"{Colors.OKCYAN}Total Individual Tests: {total_tests}{Colors.ENDC}\n")
     
     # Show details for failed tests
-    if failed_tests > 0:
+    if failed_files > 0:
         print(f"{Colors.WARNING}{Colors.BOLD}Failed Test Details:{Colors.ENDC}\n")
         for result in results:
             if not result['passed']:
-                print(f"{Colors.FAIL}{'─' * 80}{Colors.ENDC}")
+                print(f"{Colors.FAIL}{'=' * 80}{Colors.ENDC}")
                 print(f"{Colors.FAIL}{Colors.BOLD}File: {result['file']}{Colors.ENDC}")
                 print(f"{Colors.FAIL}Return Code: {result['returncode']}{Colors.ENDC}")
                 print(f"\n{result['output'][:500]}")  # Show first 500 chars
                 if len(result['output']) > 500:
                     print(f"{Colors.WARNING}... (output truncated){Colors.ENDC}")
-                print(f"{Colors.FAIL}{'─' * 80}{Colors.ENDC}\n")
+                print(f"{Colors.FAIL}{'=' * 80}{Colors.ENDC}\n")
     
     # Step 4: Cleanup test database
     print_header("Step 4: Cleaning Up Test Database")
@@ -224,11 +240,11 @@ def main():
     print(f"{Colors.BOLD}Finished at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}{Colors.ENDC}")
     print(f"{Colors.BOLD}Duration: {duration:.2f} seconds{Colors.ENDC}\n")
     
-    if failed_tests == 0:
-        print(f"{Colors.OKGREEN}{Colors.BOLD}{'🎉 ALL TESTS PASSED! 🎉'.center(80)}{Colors.ENDC}\n")
+    if failed_files == 0:
+        print(f"{Colors.OKGREEN}{Colors.BOLD}{'ALL TESTS PASSED!'.center(80)}{Colors.ENDC}\n")
         return 0
     else:
-        print(f"{Colors.FAIL}{Colors.BOLD}{'❌ SOME TESTS FAILED ❌'.center(80)}{Colors.ENDC}\n")
+        print(f"{Colors.FAIL}{Colors.BOLD}{'SOME TESTS FAILED'.center(80)}{Colors.ENDC}\n")
         return 1
 
 

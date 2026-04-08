@@ -30,14 +30,24 @@ from local_env import load_local_env
 
 load_local_env()
 
+# Test database configuration - use separate database for testing
+TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
+
 from whatsapp_notifier import (
     find_group_chat_id,
     get_instance_state,
     keep_whatsapp_instance_alive,
     resolve_group_chat_id,
-    send_group_message,
     whatsapp_is_configured,
 )
+
+# Import send_group_message conditionally based on test mode
+if TEST_MODE:
+    def send_group_message(message):
+        """Mock function for test mode - never sends actual WhatsApp messages"""
+        return {"success": True, "message": "TEST MODE: WhatsApp message suppressed", "test_mode": True}
+else:
+    from whatsapp_notifier import send_group_message
 
 # --- Database helpers (supports both SQLite and Postgres) ---
 DATABASE_URL = os.environ.get("DATABASE_URL")  # Render provides this
@@ -46,9 +56,6 @@ USE_POSTGRES = DATABASE_URL is not None
 CALENDAR_EVENTS_TABLE = "practice_sessions"
 EVENT_AVAILABILITY_TABLE = "practice_availability"
 EVENT_PAYMENTS_TABLE = "practice_payments"
-
-# Test database configuration - use separate database for testing
-TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
 
 if USE_POSTGRES:
     import psycopg2
@@ -1447,6 +1454,10 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
         return False
 
 def send_whatsapp_notification(message: str) -> bool:
+    # Never send WhatsApp messages in test mode
+    if TEST_MODE:
+        print(f"TEST MODE: WhatsApp message suppressed: {message[:100]}...")
+        return False
     if not WHATSAPP_NOTIFICATIONS_ENABLED:
         return False
     result = send_group_message(message)
@@ -5260,6 +5271,9 @@ def whatsapp_status(current_user: dict = Depends(get_current_user)):
 def send_test_whatsapp_message(data: WhatsAppMessageRequest, current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
+    # Prevent WhatsApp messages in test mode
+    if TEST_MODE:
+        return {"success": True, "message": "TEST MODE: WhatsApp test message suppressed", "test_mode": True}
     message = data.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message is required")

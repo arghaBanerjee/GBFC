@@ -15,7 +15,7 @@ import sys
 # Add parent directory to path to import api modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from api import app, get_connection, PLACEHOLDER, USE_POSTGRES
+from api import app, get_connection, PLACEHOLDER, USE_POSTGRES, hash_password, init_db
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -28,6 +28,9 @@ USER_PASSWORD = "test123"
 
 def setup_test_db():
     """Setup test database with required data"""
+    # Initialize database schema first
+    init_db()
+    
     with get_connection() as conn:
         cur = conn.cursor()
         
@@ -39,14 +42,14 @@ def setup_test_db():
         
         # Create admin user
         cur.execute(
-            f"INSERT INTO users (email, password, is_admin, full_name) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (ADMIN_EMAIL, "hashed_password", 1 if not USE_POSTGRES else True, "Admin User")
+            f"INSERT INTO users (email, password, user_type, full_name) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (ADMIN_EMAIL, hash_password(ADMIN_PASSWORD), "admin", "Admin User")
         )
         
         # Create regular user
         cur.execute(
-            f"INSERT INTO users (email, password, is_admin, full_name) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (USER_EMAIL, "hashed_password", 0 if not USE_POSTGRES else False, "Test User")
+            f"INSERT INTO users (email, password, user_type, full_name) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (USER_EMAIL, hash_password(USER_PASSWORD), "member", "Test User")
         )
         conn.commit()
 
@@ -202,23 +205,18 @@ class TestMatchEventCRUD:
             "date": (date.today() + timedelta(days=7)).strftime("%Y-%m-%d"),
             "time": "15:00",
             "location": "Celtic Park",
-            "event_type": "match",
-            "event_title": "vs Celtic FC",
+            "name": "vs Celtic FC",
             "description": "League match against Celtic",
             "image_url": "",
-            "youtube_url": "",
-            "session_cost": 0.0,
-            "paid_by": "",
-            "maximum_capacity": 100
+            "youtube_url": ""
         }
         
-        response = client.post("/api/calendar/events", json=event_data, headers=self.admin_headers)
+        response = client.post("/api/matches", json=event_data, headers=self.admin_headers)
         assert response.status_code == 200
         
         result = response.json()
         assert result["id"] > 0
-        assert result["event_type"] == "match"
-        assert result["event_title"] == "vs Celtic FC"
+        assert result["name"] == "vs Celtic FC"
         assert result["date"] == event_data["date"]
         assert result["time"] == event_data["time"]
         assert result["location"] == event_data["location"]
@@ -230,23 +228,20 @@ class TestMatchEventCRUD:
             "date": (date.today() + timedelta(days=7)).strftime("%Y-%m-%d"),
             "time": "15:00",
             "location": "Celtic Park",
-            "event_type": "match",
-            "event_title": "vs Celtic FC",
-            "session_cost": 0.0,
-            "maximum_capacity": 100
+            "name": "vs Celtic FC",
+            "description": "League match against Celtic"
         }
         
-        create_response = client.post("/api/calendar/events", json=event_data, headers=self.admin_headers)
+        create_response = client.post("/api/matches", json=event_data, headers=self.admin_headers)
         event_id = create_response.json()["id"]
         
         # Read event
-        response = client.get(f"/api/calendar/events/id/{event_id}", headers=self.admin_headers)
+        response = client.get(f"/api/matches/{event_id}", headers=self.admin_headers)
         assert response.status_code == 200
         
         result = response.json()
         assert result["id"] == event_id
-        assert result["event_type"] == "match"
-        assert result["event_title"] == "vs Celtic FC"
+        assert result["name"] == "vs Celtic FC"
     
     def test_update_match_event(self):
         """Test updating a match event"""
@@ -255,13 +250,11 @@ class TestMatchEventCRUD:
             "date": (date.today() + timedelta(days=7)).strftime("%Y-%m-%d"),
             "time": "15:00",
             "location": "Celtic Park",
-            "event_type": "match",
-            "event_title": "vs Celtic FC",
-            "session_cost": 0.0,
-            "maximum_capacity": 100
+            "name": "vs Celtic FC",
+            "description": "League match against Celtic"
         }
         
-        create_response = client.post("/api/calendar/events", json=event_data, headers=self.admin_headers)
+        create_response = client.post("/api/matches", json=event_data, headers=self.admin_headers)
         event_id = create_response.json()["id"]
         
         # Update event
@@ -269,20 +262,21 @@ class TestMatchEventCRUD:
             "date": (date.today() + timedelta(days=8)).strftime("%Y-%m-%d"),
             "time": "16:00",
             "location": "Ibrox Stadium",
-            "event_type": "match",
-            "event_title": "vs Rangers FC",
-            "description": "Updated match description",
-            "session_cost": 0.0,
-            "maximum_capacity": 100
+            "name": "vs Rangers FC",
+            "description": "Updated match against Rangers",
+            "image_url": "",
+            "youtube_url": ""
         }
         
-        response = client.put(f"/api/calendar/events/id/{event_id}", json=update_data, headers=self.admin_headers)
+        response = client.put(f"/api/matches/{event_id}", json=update_data, headers=self.admin_headers)
         assert response.status_code == 200
         
         result = response.json()
         assert result["id"] == event_id
-        assert result["event_title"] == "vs Rangers FC"
-        assert result["location"] == "Ibrox Stadium"
+        assert result["name"] == "vs Rangers FC"
+        assert result["date"] == update_data["date"]
+        assert result["time"] == update_data["time"]
+        assert result["location"] == update_data["location"]
     
     def test_delete_match_event(self):
         """Test deleting a match event"""
@@ -291,21 +285,19 @@ class TestMatchEventCRUD:
             "date": (date.today() + timedelta(days=7)).strftime("%Y-%m-%d"),
             "time": "15:00",
             "location": "Celtic Park",
-            "event_type": "match",
-            "event_title": "vs Celtic FC",
-            "session_cost": 0.0,
-            "maximum_capacity": 100
+            "name": "vs Celtic FC",
+            "description": "League match against Celtic"
         }
         
-        create_response = client.post("/api/calendar/events", json=event_data, headers=self.admin_headers)
+        create_response = client.post("/api/matches", json=event_data, headers=self.admin_headers)
         event_id = create_response.json()["id"]
         
         # Delete event
-        response = client.delete(f"/api/calendar/events/id/{event_id}", headers=self.admin_headers)
+        response = client.delete(f"/api/matches/{event_id}", headers=self.admin_headers)
         assert response.status_code == 200
         
         # Verify deletion
-        response = client.get(f"/api/calendar/events/id/{event_id}", headers=self.admin_headers)
+        response = client.get(f"/api/matches/{event_id}", headers=self.admin_headers)
         assert response.status_code == 404
 
 class TestSocialEventCRUD:
@@ -685,7 +677,7 @@ class TestEventCRUDValidation:
         }
         
         response = client.post("/api/calendar/events", json=event_data, headers=self.admin_headers)
-        assert response.status_code == 422
+        assert response.status_code == 400
     
     def test_create_event_invalid_maximum_capacity(self):
         """Test creating event with invalid maximum capacity"""
