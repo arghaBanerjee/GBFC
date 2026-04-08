@@ -132,7 +132,7 @@ def test_list_practice_sessions_returns_numeric_id():
     session_date = (date.today() + timedelta(days=7)).strftime('%Y-%m-%d')
     create_session(session_date, event_title='ID Visible Session')
 
-    response = client.get('/api/practice/sessions')
+    response = client.get('/api/calendar/events')
     assert response.status_code == 200, response.text
     sessions = response.json()
     assert len(sessions) >= 1
@@ -143,13 +143,13 @@ def test_list_practice_sessions_returns_numeric_id():
     assert matching['id'] > 0
 
 
-def test_calendar_event_alias_routes_match_practice_session_routes():
+def test_calendar_event_routes_support_create_list_and_detail_by_id():
     reset_test_state()
     session_date = (date.today() + timedelta(days=8)).strftime('%Y-%m-%d')
     headers = auth_headers(ADMIN_EMAIL, ADMIN_PASSWORD)
 
     create_response = client.post(
-        '/api/calendar-events',
+        '/api/calendar/events',
         json={
             'date': session_date,
             'time': '18:45',
@@ -164,21 +164,21 @@ def test_calendar_event_alias_routes_match_practice_session_routes():
     created_payload = create_response.json()
     session_id = created_payload['id']
 
-    list_response = client.get('/api/calendar-events')
+    list_response = client.get('/api/calendar/events')
     assert list_response.status_code == 200, list_response.text
     sessions = list_response.json()
     matching = next((session for session in sessions if session['id'] == session_id), None)
     assert matching is not None
     assert matching['event_title'] == 'Alias Session'
 
-    detail_response = client.get(f'/api/calendar-events/id/{session_id}')
+    detail_response = client.get(f'/api/calendar/events/id/{session_id}')
     assert detail_response.status_code == 200, detail_response.text
     detail_payload = detail_response.json()
     assert detail_payload['id'] == session_id
     assert detail_payload['event_title'] == 'Alias Session'
 
 
-def test_event_availability_alias_routes_match_practice_availability_routes():
+def test_calendar_event_availability_routes_support_id_and_summary_queries():
     reset_test_state()
     session_date = (date.today() + timedelta(days=10)).strftime('%Y-%m-%d')
     create_session(session_date, event_title='Availability Alias Session')
@@ -186,23 +186,23 @@ def test_event_availability_alias_routes_match_practice_availability_routes():
     member_headers = auth_headers(MEMBER_EMAIL, MEMBER_PASSWORD)
 
     set_response = client.post(
-        f'/api/calendar-events/id/{session_id}/availability',
+        f'/api/calendar/events/id/{session_id}/availability',
         json={'status': 'available'},
         headers=member_headers,
     )
     assert set_response.status_code == 200, set_response.text
 
-    summary_response = client.get(f'/api/calendar-events/id/{session_id}/availability')
+    summary_response = client.get(f'/api/calendar/events/id/{session_id}/availability')
     assert summary_response.status_code == 200, summary_response.text
     summary_payload = summary_response.json()
     assert 'Member Session' in summary_payload['available']
 
-    my_availability_response = client.get('/api/event-availability', headers=member_headers)
+    my_availability_response = client.get('/api/calendar/events/availability', headers=member_headers)
     assert my_availability_response.status_code == 200, my_availability_response.text
     availability_map = my_availability_response.json()
     assert availability_map[str(session_id)] == 'available'
 
-    date_summary_response = client.get(f'/api/event-availability/{session_date}')
+    date_summary_response = client.get(f'/api/calendar/events/availability/{session_date}')
     assert date_summary_response.status_code == 200, date_summary_response.text
     date_summary_payload = date_summary_response.json()
     assert 'Member Session' in date_summary_payload['available']
@@ -214,7 +214,7 @@ def test_admin_create_allows_multiple_sessions_on_same_date():
     headers = auth_headers(ADMIN_EMAIL, ADMIN_PASSWORD)
 
     first_response = client.post(
-        '/api/practice/sessions',
+        '/api/calendar/events',
         json={
             'date': session_date,
             'time': '18:00',
@@ -228,7 +228,7 @@ def test_admin_create_allows_multiple_sessions_on_same_date():
     assert first_response.status_code == 200, first_response.text
 
     second_response = client.post(
-        '/api/practice/sessions',
+        '/api/calendar/events',
         json={
             'date': session_date,
             'time': '20:00',
@@ -261,7 +261,7 @@ def test_same_day_sessions_keep_availability_isolated_by_session_id():
     admin_headers = auth_headers(ADMIN_EMAIL, ADMIN_PASSWORD)
 
     first_response = client.post(
-        '/api/practice/sessions',
+        '/api/calendar/events',
         json={
             'date': session_date,
             'time': '18:30',
@@ -276,7 +276,7 @@ def test_same_day_sessions_keep_availability_isolated_by_session_id():
     first_session_id = first_response.json()['id']
 
     second_response = client.post(
-        '/api/practice/sessions',
+        '/api/calendar/events',
         json={
             'date': session_date,
             'time': '20:30',
@@ -292,23 +292,23 @@ def test_same_day_sessions_keep_availability_isolated_by_session_id():
 
     member_headers = auth_headers(MEMBER_EMAIL, MEMBER_PASSWORD)
     availability_response = client.post(
-        f'/api/practice/sessions/id/{first_session_id}/availability',
+        f'/api/calendar/events/id/{first_session_id}/availability',
         json={'status': 'available'},
         headers=member_headers,
     )
     assert availability_response.status_code == 200, availability_response.text
 
-    first_summary = client.get(f'/api/practice/sessions/id/{first_session_id}/availability')
+    first_summary = client.get(f'/api/calendar/events/id/{first_session_id}/availability')
     assert first_summary.status_code == 200, first_summary.text
     first_payload = first_summary.json()
     assert 'Member Session' in first_payload['available']
 
-    second_summary = client.get(f'/api/practice/sessions/id/{second_session_id}/availability')
+    second_summary = client.get(f'/api/calendar/events/id/{second_session_id}/availability')
     assert second_summary.status_code == 200, second_summary.text
     second_payload = second_summary.json()
     assert 'Member Session' not in second_payload['available']
 
-    my_availability = client.get('/api/practice/availability', headers=member_headers)
+    my_availability = client.get('/api/calendar/events/availability', headers=member_headers)
     assert my_availability.status_code == 200, my_availability.text
     availability_map = my_availability.json()
     assert availability_map[str(first_session_id)] == 'available'
@@ -321,7 +321,7 @@ def test_user_actions_upcoming_sessions_keeps_same_day_status_isolated():
     admin_headers = auth_headers(ADMIN_EMAIL, ADMIN_PASSWORD)
 
     first_response = client.post(
-        '/api/practice/sessions',
+        '/api/calendar/events',
         json={
             'date': session_date,
             'time': '18:15',
@@ -336,7 +336,7 @@ def test_user_actions_upcoming_sessions_keeps_same_day_status_isolated():
     first_session_id = first_response.json()['id']
 
     second_response = client.post(
-        '/api/practice/sessions',
+        '/api/calendar/events',
         json={
             'date': session_date,
             'time': '19:45',
@@ -352,13 +352,13 @@ def test_user_actions_upcoming_sessions_keeps_same_day_status_isolated():
 
     member_headers = auth_headers(MEMBER_EMAIL, MEMBER_PASSWORD)
     availability_response = client.post(
-        f'/api/practice/sessions/id/{first_session_id}/availability',
+        f'/api/calendar/events/id/{first_session_id}/availability',
         json={'status': 'tentative'},
         headers=member_headers,
     )
     assert availability_response.status_code == 200, availability_response.text
 
-    response = client.get('/api/user-actions/upcoming-sessions', headers=member_headers)
+    response = client.get('/api/user/upcoming-sessions', headers=member_headers)
     assert response.status_code == 200, response.text
     sessions = response.json()['sessions']
 
@@ -377,7 +377,7 @@ def test_practice_notifications_include_session_id_for_deep_links():
     admin_headers = auth_headers(ADMIN_EMAIL, ADMIN_PASSWORD)
 
     create_response = client.post(
-        '/api/practice/sessions',
+        '/api/calendar/events',
         json={
             'date': session_date,
             'time': '19:15',
@@ -451,7 +451,7 @@ def test_admin_id_based_availability_update_allows_past_session_changes():
 
     admin_headers = auth_headers(ADMIN_EMAIL, ADMIN_PASSWORD)
     response = client.post(
-        f'/api/admin/practice/sessions/id/{session_id}/availability',
+        f'/api/admin/calendar/events/id/{session_id}/availability',
         json={
             'user_email': MEMBER_EMAIL,
             'status': 'available',
@@ -479,7 +479,7 @@ def test_member_availability_write_populates_practice_session_id():
 
     headers = auth_headers(MEMBER_EMAIL, MEMBER_PASSWORD)
     response = client.post(
-        '/api/practice/availability',
+        '/api/calendar/events/availability',
         json={'date': session_date, 'status': 'available'},
         headers=headers,
     )
@@ -516,9 +516,12 @@ def test_member_payment_write_populates_practice_session_id():
         )
         conn.commit()
 
+    session_id = get_session_id(session_date)
+    assert session_id is not None
+
     headers = auth_headers(MEMBER_EMAIL, MEMBER_PASSWORD)
     response = client.post(
-        f'/api/practice/{session_date}/payment',
+        f'/api/calendar/events/id/{session_id}/payment',
         json={'paid': True},
         headers=headers,
     )
@@ -544,7 +547,7 @@ def test_get_practice_session_by_id_route_returns_session():
     create_session(session_date, event_title='Canonical ID Session')
     session_id = get_session_id(session_date)
 
-    response = client.get(f'/api/practice/sessions/id/{session_id}')
+    response = client.get(f'/api/calendar/events/id/{session_id}')
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload['id'] == session_id
@@ -559,7 +562,7 @@ def test_id_based_availability_route_updates_same_record_model():
 
     headers = auth_headers(MEMBER_EMAIL, MEMBER_PASSWORD)
     response = client.post(
-        f'/api/practice/sessions/id/{session_id}/availability',
+        f'/api/calendar/events/id/{session_id}/availability',
         json={'status': 'available'},
         headers=headers,
     )
@@ -598,14 +601,14 @@ def test_id_based_payment_route_dual_writes_payment_record():
 
     headers = auth_headers(MEMBER_EMAIL, MEMBER_PASSWORD)
     response = client.post(
-        f'/api/practice/sessions/id/{session_id}/payment',
+        f'/api/calendar/events/id/{session_id}/payment',
         json={'paid': True},
         headers=headers,
     )
     assert response.status_code == 200, response.text
 
     payments_response = client.get(
-        f'/api/practice/sessions/id/{session_id}/payments',
+        f'/api/calendar/events/id/{session_id}/payments',
         headers=headers,
     )
     assert payments_response.status_code == 200, payments_response.text
@@ -662,7 +665,7 @@ def test_id_based_payment_confirmation_isolated_from_same_date_sessions():
 
     headers = auth_headers(MEMBER_EMAIL, MEMBER_PASSWORD)
     response = client.post(
-        f'/api/practice/sessions/id/{target_session_id}/payment',
+        f'/api/calendar/events/id/{target_session_id}/payment',
         json={'paid': True},
         headers=headers,
     )
@@ -749,7 +752,7 @@ def test_id_based_request_payment_route_sets_payment_requested():
 
     admin_headers = auth_headers(ADMIN_EMAIL, ADMIN_PASSWORD)
     response = client.post(
-        f'/api/practice/sessions/id/{session_id}/request-payment',
+        f'/api/calendar/events/id/{session_id}/request-payment',
         headers=admin_headers,
     )
     assert response.status_code == 200, response.text
@@ -794,7 +797,7 @@ def test_id_based_request_payment_route_isolated_from_same_date_sessions():
 
     admin_headers = auth_headers(ADMIN_EMAIL, ADMIN_PASSWORD)
     response = client.post(
-        f'/api/practice/sessions/id/{target_session_id}/request-payment',
+        f'/api/calendar/events/id/{target_session_id}/request-payment',
         headers=admin_headers,
     )
     assert response.status_code == 200, response.text
@@ -818,7 +821,7 @@ def test_delete_practice_by_id_removes_session():
     session_id = get_session_id(session_date)
 
     headers = auth_headers(ADMIN_EMAIL, ADMIN_PASSWORD)
-    response = client.delete(f'/api/practice/sessions/id/{session_id}', headers=headers)
+    response = client.delete(f'/api/calendar/events/id/{session_id}', headers=headers)
     assert response.status_code == 200, response.text
 
     with get_connection() as conn:

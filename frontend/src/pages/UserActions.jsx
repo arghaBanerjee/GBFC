@@ -64,7 +64,7 @@ function UserActions({ user, loading }) {
       }
       
       // Fetch upcoming sessions
-      const upcomingRes = await fetch(`${API_URL}/api/user-actions/upcoming-sessions`, {
+      const upcomingRes = await fetch(`${API_URL}/api/user/upcoming-sessions`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       
@@ -89,7 +89,7 @@ function UserActions({ user, loading }) {
       }
       
       // Fetch pending payments
-      const paymentsRes = await fetch(`${API_URL}/api/user-actions/payments`, {
+      const paymentsRes = await fetch(`${API_URL}/api/user/payments`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       
@@ -124,7 +124,7 @@ function UserActions({ user, loading }) {
     const token = localStorage.getItem('token')
     if (!token) return
 
-    const upcomingRes = await fetch(`${API_URL}/api/user-actions/upcoming-sessions`, {
+    const upcomingRes = await fetch(`${API_URL}/api/user/upcoming-sessions`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
 
@@ -138,7 +138,7 @@ function UserActions({ user, loading }) {
     const token = localStorage.getItem('token')
     if (!token) return
 
-    const paymentsRes = await fetch(`${API_URL}/api/user-actions/payments`, {
+    const paymentsRes = await fetch(`${API_URL}/api/user/payments`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
 

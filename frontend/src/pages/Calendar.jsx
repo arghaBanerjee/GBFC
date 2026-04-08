@@ -243,7 +243,7 @@ export default function Calendar({ user }) {
     
     // Fetch user availability
     if (user && token) {
-      fetch(apiUrl('/api/event-availability'), {
+      fetch(apiUrl('/api/calendar/events/availability'), {
         headers: {
           Authorization: `Bearer ${token}`,
         },

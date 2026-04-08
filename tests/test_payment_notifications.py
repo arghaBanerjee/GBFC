@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['USE_POSTGRES'] = 'false'
 os.environ['TEST_MODE'] = 'true'  # Use test_football_club.db instead of football_club.db
 
-from api import app, get_connection, PLACEHOLDER, hash_password, build_notification_context, init_db
+from api import app, get_connection, PLACEHOLDER, hash_password, build_notification_context, init_db, USE_POSTGRES
 
 client = TestClient(app)
 
@@ -434,7 +434,7 @@ def test_request_payment_endpoint_succeeds_and_creates_notifications():
         conn.commit()
     
     response = client.post(
-        f"/api/practice/sessions/id/{session_id}/request-payment",
+        f"/api/calendar/events/id/{session_id}/request-payment",
         headers={"Authorization": f"Bearer {admin_token}"}
     )
 
@@ -471,6 +471,13 @@ def test_confirm_payment_endpoint_succeeds_and_notifies_admins():
             f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, session_cost, paid_by, payment_requested) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
             (past_date, "20:00", "City Ground", "match", "Cup Tie", 24.0, TEST_ADMIN1["email"], 1)
         )
+        session_id = cur.lastrowid if not USE_POSTGRES else None
+        if USE_POSTGRES:
+            cur.execute(
+                f"SELECT id FROM practice_sessions WHERE date = {PLACEHOLDER} AND COALESCE(time, '') = {PLACEHOLDER} ORDER BY id DESC LIMIT 1",
+                (past_date, "20:00")
+            )
+            session_id = cur.fetchone()["id"]
         cur.execute(
             f"INSERT INTO practice_availability (date, user_email, user_full_name, status) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
             (past_date, TEST_MEMBER1["email"], TEST_MEMBER1["full_name"], "available")
@@ -479,7 +486,7 @@ def test_confirm_payment_endpoint_succeeds_and_notifies_admins():
 
     member_token = login(TEST_MEMBER1["email"])
     response = client.post(
-        f"/api/practice/sessions/{past_date}/payment",
+        f"/api/calendar/events/id/{session_id}/payment",
         json={"paid": True},
         headers={"Authorization": f"Bearer {member_token}"}
     )

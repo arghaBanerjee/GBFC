@@ -195,7 +195,7 @@ def test_reactivated_user_doesnt_see_old_selections():
     # Jane logs in and checks her availability
     jane_token = login_user("john@test.com", "newpassword")
     response = client.get(
-        "/api/practice/availability",
+        "/api/calendar/events/availability",
         headers={"Authorization": f"Bearer {jane_token}"}
     )
     assert response.status_code == 200
@@ -220,7 +220,7 @@ def test_historical_practice_records_show_original_username():
     set_practice_availability("john@test.com", "John Smith", past_date, "available")
     
     # Get practice availability summary
-    response = client.get(f"/api/practice/availability/{past_date}")
+    response = client.get(f"/api/calendar/events/availability/{past_date}")
     assert response.status_code == 200
     summary = response.json()
     
@@ -234,7 +234,7 @@ def test_historical_practice_records_show_original_username():
         conn.commit()
     
     # Get practice availability summary again
-    response = client.get(f"/api/practice/availability/{past_date}")
+    response = client.get(f"/api/calendar/events/availability/{past_date}")
     assert response.status_code == 200
     summary = response.json()
     
@@ -257,7 +257,7 @@ def test_old_records_without_user_full_name_show_placeholder():
     set_practice_availability_without_name("john@test.com", past_date, "available")
     
     # Get practice availability summary
-    response = client.get(f"/api/practice/availability/{past_date}")
+    response = client.get(f"/api/calendar/events/availability/{past_date}")
     assert response.status_code == 200
     summary = response.json()
     
@@ -281,7 +281,7 @@ def test_old_records_placeholder_not_affected_by_reactivation():
     set_practice_availability_without_name("john@test.com", past_date, "available")
     
     # Verify it shows [OldData]
-    response = client.get(f"/api/practice/availability/{past_date}")
+    response = client.get(f"/api/calendar/events/availability/{past_date}")
     assert response.status_code == 200
     assert "[OldData]" in response.json()["available"]
     
@@ -299,7 +299,7 @@ def test_old_records_placeholder_not_affected_by_reactivation():
     )
     
     # Check practice availability summary again
-    response = client.get(f"/api/practice/availability/{past_date}")
+    response = client.get(f"/api/calendar/events/availability/{past_date}")
     assert response.status_code == 200
     summary = response.json()
     
@@ -364,7 +364,7 @@ def test_new_practice_availability_stores_user_full_name():
     # John votes via API
     john_token = login_user("john@test.com")
     response = client.post(
-        "/api/practice/availability",
+        "/api/calendar/events/availability",
         json={"date": future_date, "status": "available"},
         headers={"Authorization": f"Bearer {john_token}"}
     )

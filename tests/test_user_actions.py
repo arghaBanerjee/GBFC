@@ -110,6 +110,16 @@ def setup_test_data():
         
         conn.commit()
 
+def get_session_id_by_date(target_date: str):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id FROM practice_sessions WHERE date = {PLACEHOLDER} ORDER BY id ASC LIMIT 1",
+            (target_date,)
+        )
+        row = cur.fetchone()
+        return row["id"] if row else None
+
 def test_get_upcoming_sessions():
     """Test getting upcoming practice sessions"""
     print("Testing get upcoming sessions...")
@@ -126,7 +136,7 @@ def test_get_upcoming_sessions():
     
     # Get upcoming sessions
     response = client.get(
-        "/api/user-actions/upcoming-sessions",
+        "/api/user/upcoming-sessions",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -170,7 +180,7 @@ def test_get_pending_payments():
     
     # Get pending payments
     response = client.get(
-        "/api/user-actions/pending-payments",
+        "/api/user/payments",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -206,7 +216,7 @@ def test_upcoming_sessions_ordered_correctly():
     
     # Get upcoming sessions
     response = client.get(
-        "/api/user-actions/upcoming-sessions",
+        "/api/user/upcoming-sessions",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -235,7 +245,7 @@ def test_pending_payments_ordered_correctly():
     
     # Get pending payments
     response = client.get(
-        "/api/user-actions/pending-payments",
+        "/api/user/payments",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -264,10 +274,12 @@ def test_set_availability_from_user_actions():
     
     today = datetime.now().date()
     future_date = str(today + timedelta(days=10))
+    future_session_id = get_session_id_by_date(future_date)
+    assert future_session_id is not None
     
     # Set availability to tentative
     response = client.post(
-        f"/api/practice/{future_date}/availability",
+        f"/api/calendar/events/id/{future_session_id}/availability",
         headers={"Authorization": f"Bearer {token}"},
         json={"status": "tentative"}
     )
@@ -276,7 +288,7 @@ def test_set_availability_from_user_actions():
     
     # Verify it's reflected in upcoming sessions
     response = client.get(
-        "/api/user-actions/upcoming-sessions",
+        "/api/user/upcoming-sessions",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -302,10 +314,12 @@ def test_confirm_payment_from_user_actions():
     
     today = datetime.now().date()
     past_date = str(today - timedelta(days=5))
+    past_session_id = get_session_id_by_date(past_date)
+    assert past_session_id is not None
     
     # Confirm payment
     response = client.post(
-        f"/api/practice/{past_date}/payment",
+        f"/api/calendar/events/id/{past_session_id}/payment",
         headers={"Authorization": f"Bearer {token}"},
         json={"paid": True}
     )
@@ -314,7 +328,7 @@ def test_confirm_payment_from_user_actions():
     
     # Verify it's no longer in pending payments
     response = client.get(
-        "/api/user-actions/pending-payments",
+        "/api/user/payments",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -355,7 +369,7 @@ def test_same_day_past_time_payment_request_shows_in_pending_payments():
         conn.commit()
 
     response = client.get(
-        "/api/user-actions/pending-payments",
+        "/api/user/payments",
         headers={"Authorization": f"Bearer {token}"}
     )
 
@@ -417,7 +431,7 @@ def test_individual_amount_calculation():
     
     # Get pending payments
     response = client.get(
-        "/api/user-actions/pending-payments",
+        "/api/user/payments",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -441,9 +455,11 @@ def test_cannot_mark_available_when_capacity_reached():
 
     today = datetime.now().date()
     full_session_date = str(today + timedelta(days=10))
+    full_session_id = get_session_id_by_date(full_session_date)
+    assert full_session_id is not None
 
     response = client.post(
-        f"/api/practice/{full_session_date}/availability",
+        f"/api/calendar/events/id/{full_session_id}/availability",
         headers={"Authorization": f"Bearer {token}"},
         json={"status": "available"}
     )
@@ -457,6 +473,8 @@ def test_reopening_slot_does_not_send_realtime_notification_and_allows_new_avail
 
     today = datetime.now().date()
     full_session_date = str(today + timedelta(days=10))
+    full_session_id = get_session_id_by_date(full_session_date)
+    assert full_session_id is not None
 
     user2_login = client.post("/api/login", data={
         "username": "user2@test.com",
@@ -465,7 +483,7 @@ def test_reopening_slot_does_not_send_realtime_notification_and_allows_new_avail
     user2_token = user2_login.json()["access_token"]
 
     response = client.post(
-        f"/api/practice/{full_session_date}/availability",
+        f"/api/calendar/events/id/{full_session_id}/availability",
         headers={"Authorization": f"Bearer {user2_token}"},
         json={"status": "none"}
     )
@@ -487,14 +505,14 @@ def test_reopening_slot_does_not_send_realtime_notification_and_allows_new_avail
     user1_token = user1_login.json()["access_token"]
 
     response = client.post(
-        f"/api/practice/{full_session_date}/availability",
+        f"/api/calendar/events/id/{full_session_id}/availability",
         headers={"Authorization": f"Bearer {user1_token}"},
         json={"status": "available"}
     )
     assert response.status_code == 200
 
     response = client.get(
-        "/api/user-actions/upcoming-sessions",
+        "/api/user/upcoming-sessions",
         headers={"Authorization": f"Bearer {user1_token}"}
     )
     sessions = response.json()["sessions"]
@@ -615,23 +633,26 @@ def test_same_day_passed_session_removed_from_upcoming_and_member_changes_blocke
         conn.commit()
 
     response = client.get(
-        "/api/user-actions/upcoming-sessions",
+        "/api/user/upcoming-sessions",
         headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 200
     sessions = response.json()["sessions"]
     assert next((s for s in sessions if s["date"] == today_str), None) is None
 
+    today_session_id = get_session_id_by_date(today_str)
+    assert today_session_id is not None
+
     response = client.post(
-        "/api/practice/availability",
+        f"/api/calendar/events/id/{today_session_id}/availability",
         headers={"Authorization": f"Bearer {token}"},
-        json={"date": today_str, "status": "available"}
+        json={"status": "available"}
     )
     assert response.status_code == 403
     assert "date and time has passed" in response.json()["detail"]
 
     response = client.post(
-        f"/api/practice/{today_str}/availability",
+        f"/api/calendar/events/id/{today_session_id}/availability",
         headers={"Authorization": f"Bearer {token}"},
         json={"status": "tentative"}
     )
@@ -661,7 +682,7 @@ def test_same_day_future_time_session_still_shows_in_upcoming():
         conn.commit()
 
     response = client.get(
-        "/api/user-actions/upcoming-sessions",
+        "/api/user/upcoming-sessions",
         headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 200
@@ -691,10 +712,13 @@ def test_capacity_reached_creates_notification_record():
     })
     token = response.json()["access_token"]
 
+    limited_session_id = get_session_id_by_date(limited_session_date)
+    assert limited_session_id is not None
+
     response = client.post(
-        "/api/practice/availability",
+        f"/api/calendar/events/id/{limited_session_id}/availability",
         headers={"Authorization": f"Bearer {token}"},
-        json={"date": limited_session_date, "status": "available"}
+        json={"status": "available"}
     )
     assert response.status_code == 200
 

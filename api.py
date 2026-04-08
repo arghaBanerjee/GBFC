@@ -4609,16 +4609,9 @@ async def upload_forum_image(file: UploadFile = File(...), current_user: dict = 
             shutil.copyfileobj(file.file, buffer)
         return {"image_url": f"http://localhost:8000/{UPLOAD_DIR}/{filename}"}
 
-@app.get("/uploads/{filename}")
-def get_uploaded_file(filename: str):
-    path = os.path.join(UPLOAD_DIR, filename)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(path)
 
 # --- Practice Sessions (admin-managed) ---
 @app.get("/api/calendar/events", response_model=List[PracticeSessionOut])
-@app.get("/api/practice/sessions", response_model=List[PracticeSessionOut])
 def list_calendar_events():
     with get_connection() as conn:
         cur = conn.cursor()
@@ -4632,7 +4625,6 @@ def list_calendar_events():
         return sessions
 
 @app.get("/api/calendar/events/id/{session_id}", response_model=PracticeSessionOut)
-@app.get("/api/practice/sessions/id/{session_id}", response_model=PracticeSessionOut)
 def get_calendar_event_by_id(session_id: int):
     with get_connection() as conn:
         cur = conn.cursor()
@@ -4642,7 +4634,6 @@ def get_calendar_event_by_id(session_id: int):
         return PracticeSessionOut(**session)
 
 @app.post("/api/calendar/events", response_model=PracticeSessionOut)
-@app.post("/api/practice/sessions", response_model=PracticeSessionOut)
 def create_calendar_event(session: CalendarEventCreate, current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
@@ -4697,7 +4688,6 @@ def create_calendar_event(session: CalendarEventCreate, current_user: dict = Dep
         return PracticeSessionOut(**created_session)
 
 @app.put("/api/calendar/events/id/{session_id}", response_model=PracticeSessionOut)
-@app.put("/api/practice/sessions/id/{session_id}", response_model=PracticeSessionOut)
 def update_calendar_event_by_id(session_id: int, session: CalendarEventCreate, current_user: dict = Depends(get_current_user)):
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
@@ -4732,23 +4722,10 @@ def update_calendar_event_by_id(session_id: int, session: CalendarEventCreate, c
         updated_session = get_practice_session_with_capacity_by_id(cur, session_id)
         return PracticeSessionOut(**updated_session)
 
-@app.put("/api/calendar/events/{date_str}", response_model=PracticeSessionOut)
-@app.put("/api/practice/sessions/{date_str}", response_model=PracticeSessionOut)
-def update_calendar_event(date_str: str, session: CalendarEventCreate, current_user: dict = Depends(get_current_user)):
-    if not is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Admins only")
-    with get_connection() as conn:
-        cur = conn.cursor()
-        session_id = get_practice_session_id_by_date(cur, date_str)
-        if not session_id:
-            raise HTTPException(status_code=404, detail="Practice session not found")
-    return update_calendar_event_by_id(session_id, session, current_user)
-
 list_practice_sessions = list_calendar_events
 get_practice_session_by_id = get_calendar_event_by_id
 create_practice_session = create_calendar_event
 update_practice_session_by_id = update_calendar_event_by_id
-update_practice_session = update_calendar_event
 
 @app.post("/api/calendar/events/id/{session_id}/request-payment")
 def request_calendar_event_payment_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
@@ -4795,36 +4772,6 @@ def request_calendar_event_payment_by_id(session_id: int, current_user: dict = D
 
         return {"message": "Payment requested successfully"}
 
-@app.post("/api/practice/sessions/id/{session_id}/request-payment")
-def request_payment_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
-    return request_calendar_event_payment_by_id(session_id, current_user)
-
-@app.post("/api/calendar/events/{date_str}/request-payment")
-def request_calendar_event_payment(date_str: str, current_user: dict = Depends(get_current_user)):
-    """Admin endpoint to enable payment request for a practice session"""
-    if not is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Admins only")
-
-    try:
-        datetime.strptime(date_str, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"SELECT id FROM practice_sessions WHERE date = {PLACEHOLDER} ORDER BY id ASC LIMIT 1",
-            (date_str,),
-        )
-        session = cur.fetchone()
-    if not session:
-        raise HTTPException(status_code=404, detail="Practice session not found")
-    return request_calendar_event_payment_by_id(session["id"], current_user)
-
-@app.post("/api/practice/sessions/{date_str}/request-payment")
-def request_payment(date_str: str, current_user: dict = Depends(get_current_user)):
-    return request_calendar_event_payment(date_str, current_user)
-
 @app.get("/api/calendar/events/id/{session_id}/payments")
 def get_calendar_event_payments_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
@@ -4841,38 +4788,6 @@ def get_calendar_event_payments_by_id(session_id: int, current_user: dict = Depe
             row_dict = dict(row)
             payments[row_dict["user_email"]] = row_dict["paid"]
         return payments
-
-@app.get("/api/practice/sessions/id/{session_id}/payments")
-def get_session_payments_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
-    return get_calendar_event_payments_by_id(session_id, current_user)
-
-@app.get("/api/calendar/events/{date_str}/payments")
-def get_calendar_event_payments(date_str: str, current_user: dict = Depends(get_current_user)):
-    """Get payment status for all users in a practice session"""
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"SELECT user_email, paid FROM practice_payments WHERE date = {PLACEHOLDER}",
-            (date_str,),
-        )
-        payments = {}
-        for row in cur.fetchall():
-            row_dict = dict(row)
-            payments[row_dict["user_email"]] = row_dict["paid"]
-        return payments
-
-@app.post("/api/practice/sessions/{date_str}/payment")
-def confirm_payment_by_date(date_str: str, data: dict, current_user: dict = Depends(get_current_user)):
-    return confirm_calendar_event_payment_by_date(date_str, data, current_user)
-
-def confirm_calendar_event_payment_by_date(date_str: str, data: dict, current_user: dict = Depends(get_current_user)):
-    """User endpoint to confirm or unconfirm payment for a practice session (used by User Actions page)"""
-    with get_connection() as conn:
-        cur = conn.cursor()
-        session_id = get_calendar_event_id_by_date(cur, date_str)
-        if not session_id:
-            raise HTTPException(status_code=404, detail="Practice session not found")
-    return confirm_calendar_event_payment_by_id(session_id, data, current_user)
 
 @app.post("/api/calendar/events/id/{session_id}/payment")
 def confirm_calendar_event_payment_by_id(session_id: int, data: dict, current_user: dict = Depends(get_current_user)):
@@ -4943,25 +4858,13 @@ def confirm_calendar_event_payment_by_id(session_id: int, data: dict, current_us
             )
         return {"message": "Payment confirmation updated", "paid": paid}
 
-@app.post("/api/practice/sessions/id/{session_id}/payment")
-def confirm_payment_by_id(session_id: int, data: dict, current_user: dict = Depends(get_current_user)):
-    return confirm_calendar_event_payment_by_id(session_id, data, current_user)
-
-@app.post("/api/calendar/events/{date_str}/payment")
-@app.post("/api/practice/{date_str}/payment")
-@app.post("/api/practice/sessions/{date_str}/payment")
-def confirm_payment(date_str: str, data: dict, current_user: dict = Depends(get_current_user)):
-    return confirm_calendar_event_payment_by_date(date_str, data, current_user)
-
 @app.post("/api/calendar/events/id/{session_id}/availability")
-@app.post("/api/practice/sessions/id/{session_id}/availability")
 def set_calendar_event_availability_by_session_id(session_id: int, status: dict, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         return set_calendar_event_availability_for_session_id(cur, conn, session_id, current_user["email"], current_user["full_name"], status.get("status", ""), status.get("option_choice"))
 
 @app.post("/api/admin/calendar/events/id/{session_id}/availability")
-@app.post("/api/admin/practice/sessions/id/{session_id}/availability")
 def admin_set_practice_availability_by_session_id(session_id: int, payload: dict, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
@@ -4998,10 +4901,6 @@ def get_calendar_event_availability_summary_by_session_id(session_id: int):
             raise HTTPException(status_code=404, detail="Practice session not found")
         return get_practice_availability_summary_by_session(cur, session)
 
-@app.get("/api/practice/sessions/id/{session_id}/availability")
-def get_practice_availability_summary_by_session_id(session_id: int):
-    return get_calendar_event_availability_summary_by_session_id(session_id)
-
 @app.delete("/api/calendar/events/id/{session_id}")
 def delete_calendar_event_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
@@ -5023,29 +4922,7 @@ def delete_calendar_event_by_id(session_id: int, current_user: dict = Depends(ge
         conn.commit()
         return {"message": "Practice session deleted"}
 
-@app.delete("/api/practice/sessions/id/{session_id}")
-def delete_practice_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
-    return delete_calendar_event_by_id(session_id, current_user)
-
-@app.delete("/api/calendar/events/{date_str}")
-def delete_calendar_event(date_str: str, current_user: dict = Depends(get_current_user)):
-    # Admin only
-    if not is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Admins only")
-    with get_connection() as conn:
-        cur = conn.cursor()
-        session_id = get_calendar_event_id_by_date(cur, date_str)
-        if not session_id:
-            raise HTTPException(status_code=404, detail="Practice session not found")
-    return delete_calendar_event_by_id(session_id, current_user)
-
-@app.delete("/api/practice/{date_str}")
-@app.delete("/api/practice/sessions/{date_str}")
-def delete_practice(date_str: str, current_user: dict = Depends(get_current_user)):
-    return delete_calendar_event(date_str, current_user)
-
-@app.get("/api/event-availability")
-@app.get("/api/practice/availability")
+@app.get("/api/calendar/events/availability")
 def get_my_practice_availability(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
@@ -5067,18 +4944,7 @@ def get_my_practice_availability(current_user: dict = Depends(get_current_user))
                 result[str(row_dict["practice_session_id"])] = row_dict["status"]
         return result
 
-@app.post("/api/calendar/events/{date}/availability")
-@app.post("/api/practice/{date}/availability")
-def set_practice_availability_by_date(date: str, status: dict, current_user: dict = Depends(get_current_user)):
-    avail = PracticeAvailability(
-        date=date,
-        status=status.get("status", ""),
-        option_choice=status.get("option_choice"),
-    )
-    return set_my_practice_availability(avail, current_user)
-
-@app.post("/api/event-availability")
-@app.post("/api/practice/availability")
+@app.post("/api/calendar/events/availability")
 def set_my_practice_availability(avail: PracticeAvailability, current_user: dict = Depends(get_current_user)):
     try:
         datetime.strptime(avail.date, '%Y-%m-%d')
@@ -5092,36 +4958,8 @@ def set_my_practice_availability(avail: PracticeAvailability, current_user: dict
             raise HTTPException(status_code=404, detail="Practice session not found")
         return set_calendar_event_availability_for_session_id(cur, conn, session["id"], current_user["email"], current_user["full_name"], avail.status, avail.option_choice)
 
-@app.post("/api/admin/practice/availability")
-def admin_set_practice_availability(avail: AdminPracticeAvailability, current_user: dict = Depends(get_current_user)):
-    # Only admins can use this endpoint
-    if not is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Admins only")
-    
-    with get_connection() as conn:
-        cur = conn.cursor()
-        
-        # If status is 'delete', remove the availability record
-        if avail.status == 'delete':
-            cur.execute(
-                f"DELETE FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
-                (avail.date, avail.user_email)
-            )
-            conn.commit()
-            return {"message": "Availability removed"}
-        
-        # Get user's full name
-        cur.execute(f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}", (avail.user_email,))
-        user_row = cur.fetchone()
-        if not user_row:
-            raise HTTPException(status_code=404, detail="User not found")
-        session = get_calendar_event_with_capacity(cur, avail.date)
-        if not session:
-            raise HTTPException(status_code=404, detail="Practice session not found")
-        return set_calendar_event_availability_for_session_id(cur, conn, session["id"], avail.user_email, user_row["full_name"], avail.status, avail.option_choice)
 
-@app.get("/api/event-availability/{date_str}")
-@app.get("/api/practice/availability/{date_str}")
+@app.get("/api/calendar/events/availability/{date_str}")
 def get_practice_availability_summary(date_str: str):
     with get_connection() as conn:
         cur = conn.cursor()
@@ -6164,7 +6002,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
-@app.get("/api/user-actions/upcoming-sessions")
+@app.get("/api/user/upcoming-sessions")
 def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
     """Get all upcoming bookable events for user to set availability"""
     with get_connection() as conn:
@@ -6206,7 +6044,7 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
         
         return {"sessions": sessions}
 
-@app.get("/api/user-actions/payments")
+@app.get("/api/user/payments")
 def get_pending_payments(current_user: dict = Depends(get_current_user)):
     """Get all events where user was available but hasn't confirmed payment"""
     with get_connection() as conn:
@@ -6264,10 +6102,6 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
             })
         
         return {"payments": payments}
-
-@app.get("/api/user-actions/pending-payments")
-def get_pending_payments_alias(current_user: dict = Depends(get_current_user)):
-    return get_pending_payments(current_user)
 
 # --- About Us ---
 @app.get("/api/about")
