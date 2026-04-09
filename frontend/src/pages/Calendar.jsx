@@ -743,19 +743,19 @@ export default function Calendar({ user }) {
           key={`cal-${index}`}
           onClick={() => day && handleDateClick(day)}
           style={{
-            border: isSelected ? '2px solid var(--theme-accent-strong)' : shouldHighlightToday ? '1px solid color-mix(in srgb, var(--theme-accent) 58%, white)' : '1px solid #e5e7eb',
+            border: isSelected ? '2px solid var(--theme-accent-strong)' : '1px solid #e5e7eb',
             padding: '0.5rem',
             margin: '2px',
             minHeight: '40px',
             background,
             cursor: day ? 'pointer' : 'default',
             borderRadius: '6px',
-            boxShadow: isSelected ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 0 3px color-mix(in srgb, var(--theme-accent) 24%, transparent), 0 8px 20px rgba(0, 0, 0, 0.14)' : shouldHighlightToday ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.45), 0 0 0 2px color-mix(in srgb, var(--theme-accent) 14%, transparent)' : 'none',
-            transform: isSelected ? 'scale(1.03)' : shouldHighlightToday ? 'scale(1.01)' : 'scale(1)',
+            boxShadow: isSelected ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.65), 0 0 0 3px color-mix(in srgb, var(--theme-accent) 24%, transparent), 0 8px 20px rgba(0, 0, 0, 0.14)' : 'none',
+            transform: isSelected ? 'scale(1.03)' : 'scale(1)',
             transition: 'all 0.2s ease',
-            fontWeight: isSelected ? '700' : shouldHighlightToday ? '600' : '400',
-            opacity: isPastDate || isBlankCell ? 0.58 : 1,
-            filter: isPastDate || isBlankCell ? 'grayscale(0.28)' : 'none',
+            fontWeight: isSelected ? '700' : '400',
+            opacity: isPastDate || isBlankCell ? 0.4 : 1,
+            filter: isPastDate || isBlankCell ? 'grayscale(0.6)' : 'none',
             color: isPastDate || isBlankCell ? 'var(--theme-text-muted)' : 'var(--theme-text)',
           }}
         >
@@ -1346,7 +1346,7 @@ export default function Calendar({ user }) {
                     </button>
                   </div>
                   {selectedStatus !== 'available' && (
-                    <p style={{ marginTop: '0.5rem', color: 'var(--theme-text-muted)', fontSize: '0.875rem' }}>Set your availability to Available to choose an option.</p>
+                    <p style={{ marginTop: '0.5rem', color: 'var(--theme-text-muted)', fontSize: '0.875rem' }}>Set yourself available to choose an event option.</p>
                   )}
                   {(voteSummary?.option_a?.length || voteSummary?.option_b?.length) > 0 && (
                     <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.75rem' }}>

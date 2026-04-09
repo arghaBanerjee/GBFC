@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, B
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
@@ -3405,6 +3406,10 @@ def normalize_event_title(event_title: Optional[str], event_type: str) -> str:
 
 # --- FastAPI app ---
 app = FastAPI(title="Glasgow Bengali FC API", version="1.0")
+
+# Mount static files for uploads
+if not TEST_MODE:
+    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # CORS configuration - MUST be before startup event
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN")
