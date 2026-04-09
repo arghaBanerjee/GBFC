@@ -3409,6 +3409,8 @@ app = FastAPI(title="Glasgow Bengali FC API", version="1.0")
 
 # Mount static files for uploads
 if not TEST_MODE:
+    # Ensure uploads directory exists before mounting
+    os.makedirs("uploads", exist_ok=True)
     app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # CORS configuration - MUST be before startup event
