@@ -8,6 +8,10 @@ from datetime import date, timedelta
 import os
 import sys
 
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
+
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

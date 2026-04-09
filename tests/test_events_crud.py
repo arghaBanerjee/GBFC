@@ -12,6 +12,10 @@ import json
 import os
 import sys
 
+# Set test mode before importing anything else
+os.environ['USE_POSTGRES'] = 'false'
+os.environ['TEST_MODE'] = 'true'
+
 # Add parent directory to path to import api modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
