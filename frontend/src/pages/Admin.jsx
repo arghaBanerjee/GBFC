@@ -1169,45 +1169,47 @@ export default function Admin({ user, loading }) {
               <label>Maximum Capacity</label>
               <input type="number" min="1" value={calendarEventMaximumCapacity} onChange={(e) => setCalendarEventMaximumCapacity(e.target.value)} style={{ width: '100%' }} />
             </div>
+            <hr style={{ margin: '1rem 0' }} />
             <div>
-              <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="radio"
-                    name="costType"
-                    value="Total"
-                    checked={calendarEventCostType === 'Total'}
-                    onChange={(e) => setCalendarEventCostType(e.target.value)}
-                  />
-                  Total Cost
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input
-                    type="radio"
-                    name="costType"
-                    value="Individual"
-                    checked={calendarEventCostType === 'Individual'}
-                    onChange={(e) => setCalendarEventCostType(e.target.value)}
-                  />
-                  Per Person Cost
-                </label>
-              </div>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="costType"
+                      value="Total"
+                      checked={calendarEventCostType === 'Total'}
+                      onChange={(e) => setCalendarEventCostType(e.target.value)}
+                    />
+                    Total Event Cost
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="costType"
+                      value="Individual"
+                      checked={calendarEventCostType === 'Individual'}
+                      onChange={(e) => setCalendarEventCostType(e.target.value)}
+                    />
+                    Per Person Cost
+                  </label>
+                </div>
             </div>
             <div>
-              <label>Cost</label>
-              <input type="number" min="0" step="0.01" value={calendarEventSessionCost} onChange={(e) => setCalendarEventSessionCost(e.target.value)} style={{ width: '100%' }} />
+                <label>Cost</label>
+                <input type="number" min="0" step="0.01" value={calendarEventSessionCost} onChange={(e) => setCalendarEventSessionCost(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div>
-              <label>Paid By</label>
-              <select value={calendarEventPaidBy} onChange={(e) => setCalendarEventPaidBy(e.target.value)} style={{ width: '100%' }}>
-                <option value="">Not specified</option>
-                {users.map((u) => (
-                  <option key={u.email} value={u.email}>
-                    {u.full_name || u.email}
-                  </option>
-                ))}
-              </select>
+                <label>Paid By</label>
+                <select value={calendarEventPaidBy} onChange={(e) => setCalendarEventPaidBy(e.target.value)} style={{ width: '100%' }}>
+                  <option value="">Not specified</option>
+                  {users.map((u) => (
+                    <option key={u.email} value={u.email}>
+                      {u.full_name || u.email}
+                    </option>
+                  ))}
+                </select>
             </div>
+            <hr/>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="nav-btn" type="submit" disabled={isSubmittingCalendarEvent} style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600', opacity: isSubmittingCalendarEvent ? 0.7 : 1, cursor: isSubmittingCalendarEvent ? 'not-allowed' : 'pointer' }}>{isSubmittingCalendarEvent ? (editingCalendarEventId ? 'Updating Event...' : 'Adding Event...') : (editingCalendarEventId ? 'Update Event' : 'Add Event')}</button>
               {(editingCalendarEventId || calendarEventDate || calendarEventTime !== '21:00' || calendarEventLocation || calendarEventEventType !== 'practice' || calendarEventTitle !== 'Session' || calendarEventDescription || calendarEventImageUrl || calendarEventYoutubeUrl || calendarEventOptionAText || calendarEventOptionBText || calendarEventSessionCost || calendarEventCostType !== 'Total' || calendarEventPaidBy || calendarEventMaximumCapacity !== '18') && (
