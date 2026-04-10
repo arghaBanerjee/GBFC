@@ -278,6 +278,9 @@ def init_db():
                 sort_code VARCHAR(20),
                 account_number VARCHAR(20),
                 theme_preference VARCHAR(50) DEFAULT 'nordic_neutral',
+                payment_mode VARCHAR(20) DEFAULT 'Daily',
+                payment_mode_edit_at TIMESTAMP,
+                payment_mode_edit_by VARCHAR(255),
                 is_deleted BOOLEAN DEFAULT FALSE,
                 deleted_at TIMESTAMP,
                 deleted_by VARCHAR(255)
@@ -475,6 +478,68 @@ def init_db():
                 conn.commit()
             except Exception as e:
                 print(f"Warning: Could not add theme_preference column: {e}")
+                conn.rollback()
+            
+            # Add payment_mode column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='payment_mode'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN payment_mode VARCHAR(20) DEFAULT 'Daily';
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add payment_mode column: {e}")
+                conn.rollback()
+            
+            # Update existing users to have default payment_mode
+            try:
+                cur.execute("UPDATE users SET payment_mode = 'Daily' WHERE payment_mode IS NULL")
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not update existing users payment_mode: {e}")
+                conn.rollback()
+            
+            # Add payment_mode_edit_at column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='payment_mode_edit_at'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN payment_mode_edit_at TIMESTAMP;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add payment_mode_edit_at column: {e}")
+                conn.rollback()
+            
+            # Add payment_mode_edit_by column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='users' AND column_name='payment_mode_edit_by'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN payment_mode_edit_by VARCHAR(255);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add payment_mode_edit_by column: {e}")
                 conn.rollback()
             
             # Add session_cost column to practice_sessions if it doesn't exist
@@ -1030,6 +1095,9 @@ def init_db():
                 sort_code TEXT,
                 account_number TEXT,
                 theme_preference TEXT DEFAULT 'nordic_neutral',
+                payment_mode TEXT DEFAULT 'Daily',
+                payment_mode_edit_at TIMESTAMP,
+                payment_mode_edit_by TEXT,
                 is_deleted BOOLEAN DEFAULT 0,
                 deleted_at TIMESTAMP,
                 deleted_by TEXT
@@ -1121,6 +1189,29 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add account_number column: {e}")
+            # Add payment_mode column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN payment_mode TEXT DEFAULT 'Daily'")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add payment_mode column: {e}")
+            # Update existing users to have default payment_mode
+            try:
+                cur.execute("UPDATE users SET payment_mode = 'Daily' WHERE payment_mode IS NULL")
+            except sqlite3.OperationalError as e:
+                print(f"Warning: Could not update existing users payment_mode: {e}")
+            # Add payment_mode_edit_at column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN payment_mode_edit_at TIMESTAMP")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add payment_mode_edit_at column: {e}")
+            # Add payment_mode_edit_by column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN payment_mode_edit_by TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add payment_mode_edit_by column: {e}")
             # Add session_cost column to practice_sessions if it doesn't exist
             try:
                 cur.execute("ALTER TABLE practice_sessions ADD COLUMN session_cost REAL")
@@ -3012,6 +3103,9 @@ class UserOut(BaseModel):
     id: int
     email: str
     full_name: str
+    payment_mode: str = "Daily"
+    payment_mode_edit_at: Optional[str] = None
+    payment_mode_edit_by: Optional[str] = None
     user_type: str = "member"
     created_at: Optional[str] = None
     last_login: Optional[str] = None
@@ -3762,7 +3856,7 @@ def me(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"SELECT full_name, user_type, is_deleted, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference FROM users WHERE email = {PLACEHOLDER}", 
+            f"SELECT full_name, user_type, is_deleted, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference, payment_mode, payment_mode_edit_at, payment_mode_edit_by FROM users WHERE email = {PLACEHOLDER}", 
             (current_user["email"],)
         )
         row = cur.fetchone()
@@ -3797,10 +3891,21 @@ def me(current_user: dict = Depends(get_current_user)):
                     birthday = row_dict["birthday"].isoformat()
                 else:
                     birthday = str(row_dict["birthday"])
+            
+            # Convert payment_mode_edit_at datetime to ISO string
+            payment_mode_edit_at = None
+            if row_dict.get("payment_mode_edit_at"):
+                if hasattr(row_dict["payment_mode_edit_at"], 'isoformat'):
+                    payment_mode_edit_at = row_dict["payment_mode_edit_at"].isoformat()
+                else:
+                    payment_mode_edit_at = str(row_dict["payment_mode_edit_at"])
+            
             bank_name = row_dict.get("bank_name")
             sort_code = row_dict.get("sort_code")
             account_number = row_dict.get("account_number")
             theme_preference = row_dict.get("theme_preference") or "nordic_neutral"
+            payment_mode = row_dict.get("payment_mode") or "Daily"
+            payment_mode_edit_by = row_dict.get("payment_mode_edit_by")
         else:
             full_name = current_user["full_name"]
             user_type = "member"
@@ -3811,6 +3916,9 @@ def me(current_user: dict = Depends(get_current_user)):
             sort_code = None
             account_number = None
             theme_preference = "nordic_neutral"
+            payment_mode = "Daily"
+            payment_mode_edit_at = None
+            payment_mode_edit_by = None
     
     return UserOut(
         id=current_user["id"], 
@@ -3824,6 +3932,9 @@ def me(current_user: dict = Depends(get_current_user)):
         sort_code=sort_code,
         account_number=account_number,
         theme_preference=theme_preference,
+        payment_mode=payment_mode,
+        payment_mode_edit_at=payment_mode_edit_at,
+        payment_mode_edit_by=payment_mode_edit_by,
     )
 
 @app.post("/api/logout")
@@ -3839,7 +3950,7 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
     
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
+        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference, payment_mode, payment_mode_edit_at, payment_mode_edit_by FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
         users = []
         for row in cur.fetchall():
             user_dict = dict(row)
@@ -3863,6 +3974,13 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
                     user_dict["birthday"] = user_dict["birthday"].isoformat()
                 else:
                     user_dict["birthday"] = user_dict.get("birthday") or None
+            
+            # Convert payment_mode_edit_at datetime to ISO string if needed, or set to None
+            if user_dict.get("payment_mode_edit_at"):
+                if hasattr(user_dict["payment_mode_edit_at"], 'isoformat'):
+                    user_dict["payment_mode_edit_at"] = user_dict["payment_mode_edit_at"].isoformat()
+                else:
+                    user_dict["payment_mode_edit_at"] = str(user_dict["payment_mode_edit_at"])
             user_dict["bank_name"] = user_dict.get("bank_name") or None
             user_dict["sort_code"] = user_dict.get("sort_code") or None
             user_dict["account_number"] = user_dict.get("account_number") or None
@@ -3933,6 +4051,7 @@ def update_user_name(email: str, data: dict, current_user: dict = Depends(get_cu
         conn.commit()
         
         return {"message": "User name updated successfully"}
+
 
 @app.get("/api/matches/likes/me")
 def get_my_match_likes(current_user: dict = Depends(get_current_user)):
@@ -4064,6 +4183,88 @@ def get_match_comments(match_id: int):
             comment["created_at"] = comment["created_at"].isoformat()
             comments.append(comment)
         return comments
+
+@app.put("/api/users/me/theme")
+def update_theme_preference(data: dict, current_user: dict = Depends(get_current_user)):
+    """Update user's theme preference"""
+    theme_preference = data.get("theme_preference")
+    if not theme_preference:
+        raise HTTPException(status_code=400, detail="Theme preference is required")
+    
+    # Validate theme preference
+    valid_themes = ["nordic_neutral", "dark", "light", "blue", "green", "purple", "orange"]
+    if theme_preference not in valid_themes:
+        raise HTTPException(status_code=400, detail=f"Invalid theme preference. Must be one of: {valid_themes}")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Update user's theme preference
+        cur.execute(
+            f"UPDATE users SET theme_preference = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+            (theme_preference, current_user["email"])
+        )
+        conn.commit()
+        
+        return {"message": "Theme preference updated successfully", "theme_preference": theme_preference}
+
+@app.put("/api/users/me/payment-mode")
+def update_payment_mode(data: dict, current_user: dict = Depends(get_current_user)):
+    """Update user's payment mode"""
+    payment_mode = data.get("payment_mode")
+    if not payment_mode:
+        raise HTTPException(status_code=400, detail="Payment mode is required")
+    
+    # Validate payment mode
+    valid_payment_modes = ["Monthly", "Daily"]
+    if payment_mode not in valid_payment_modes:
+        raise HTTPException(status_code=400, detail=f"Invalid payment mode. Must be one of: {valid_payment_modes}")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Update user's payment mode with tracking information
+        cur.execute(
+            f"UPDATE users SET payment_mode = {PLACEHOLDER}, payment_mode_edit_at = CURRENT_TIMESTAMP, payment_mode_edit_by = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+            (payment_mode, current_user["email"], current_user["email"])
+        )
+        conn.commit()
+        
+        return {"message": "Payment mode updated successfully", "payment_mode": payment_mode}
+
+@app.put("/api/users/{email}/payment-mode")
+def update_user_payment_mode(email: str, data: dict, current_user: dict = Depends(get_current_user)):
+    # Admin only
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    payment_mode = data.get("payment_mode")
+    if not payment_mode:
+        raise HTTPException(status_code=400, detail="Payment mode is required")
+    
+    # Validate payment mode
+    valid_payment_modes = ["Monthly", "Daily"]
+    if payment_mode not in valid_payment_modes:
+        raise HTTPException(status_code=400, detail=f"Invalid payment mode. Must be one of: {valid_payment_modes}")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        
+        # Check if user exists
+        cur.execute(f"SELECT id FROM users WHERE email = {PLACEHOLDER}", (email,))
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Update user's payment mode with tracking information
+        cur.execute(
+            f"UPDATE users SET payment_mode = {PLACEHOLDER}, payment_mode_edit_at = CURRENT_TIMESTAMP, payment_mode_edit_by = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+            (payment_mode, current_user["email"], email)
+        )
+        conn.commit()
+        
+        return {"message": f"User payment mode updated to {payment_mode}"}
+
 
 @app.put("/api/profile/name")
 def update_own_name(data: dict, current_user: dict = Depends(get_current_user)):

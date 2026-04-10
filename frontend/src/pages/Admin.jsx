@@ -66,6 +66,7 @@ export default function Admin({ user, loading }) {
   const [editingUserName, setEditingUserName] = useState('')
   const [userSearchTerm, setUserSearchTerm] = useState('')
   const [userTypeStatusByEmail, setUserTypeStatusByEmail] = useState({})
+  const [paymentModeStatusByEmail, setPaymentModeStatusByEmail] = useState({})
 
   // Expenses
   const [expenses, setExpenses] = useState([])
@@ -797,10 +798,18 @@ export default function Admin({ user, loading }) {
     setUserTypeStatusByEmail((prev) => ({
       ...prev,
       [email]: userType === 'admin'
-        ? 'Updated user to Admin'
-        : 'Updated user to Member'
+        ? 'User type updated to Admin'
+        : 'User type updated to Member'
     }))
     refreshTabData('users')
+    // Clear status message after 3 seconds
+    setTimeout(() => {
+      setUserTypeStatusByEmail((prev) => {
+        const newStatus = { ...prev }
+        delete newStatus[email]
+        return newStatus
+      })
+    }, 3000)
   }
 
   const handleSaveUserName = async (email) => {
@@ -826,6 +835,35 @@ export default function Admin({ user, loading }) {
     setEditingUserId(null)
     setEditingUserName('')
     refreshTabData('users')
+  }
+
+  const handleUpdateUserPaymentMode = async (email, paymentMode) => {
+    const res = await fetch(apiUrl(`/api/users/${encodeURIComponent(email)}/payment-mode`), {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}` 
+      },
+      body: JSON.stringify({ payment_mode: paymentMode })
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMessage(data?.detail || 'Failed to update user payment mode')
+      return
+    }
+    setPaymentModeStatusByEmail((prev) => ({
+      ...prev,
+      [email]: `Payment mode updated to ${paymentMode}`
+    }))
+    refreshTabData('users')
+    // Clear status message after 3 seconds
+    setTimeout(() => {
+      setPaymentModeStatusByEmail((prev) => {
+        const newStatus = { ...prev }
+        delete newStatus[email]
+        return newStatus
+      })
+    }, 3000)
   }
 
   const handleDeleteUser = async (email) => {
@@ -1434,31 +1472,92 @@ export default function Admin({ user, loading }) {
                         🎉 Upcoming birthday
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: '#374151' }}>
-                        <input
-                          type="radio"
-                          name={`user-type-${u.email}`}
-                          checked={u.user_type === 'member'}
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: '600', color: '#374151', minWidth: '5rem' }}>
+                          User:
+                        </span>
+                        <span style={{ fontSize: '0.85rem', color: '#6b7280', minWidth: '3rem' }}>Member</span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateUserType(u.email, u.user_type === 'admin' ? 'member' : 'admin')}
                           disabled={u.email === user?.email}
-                          onChange={() => handleUpdateUserType(u.email, 'member')}
-                        />
-                        Member
-                      </label>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: '#374151' }}>
-                        <input
-                          type="radio"
-                          name={`user-type-${u.email}`}
-                          checked={u.user_type === 'admin'}
+                          style={{
+                            position: 'relative',
+                            width: '3rem',
+                            height: '1.5rem',
+                            backgroundColor: u.user_type === 'admin' ? '#f97316' : '#3b82f6',
+                            border: 'none',
+                            borderRadius: '0.75rem',
+                            cursor: u.email === user?.email ? 'not-allowed' : 'pointer',
+                            transition: 'background-color 0.2s',
+                            padding: 0
+                          }}
+                        >
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: '0.125rem',
+                              left: u.user_type === 'admin' ? '1.625rem' : '0.125rem',
+                              width: '1.25rem',
+                              height: '1.25rem',
+                              backgroundColor: 'white',
+                              borderRadius: '50%',
+                              transition: 'transform 0.2s',
+                              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                            }}
+                          />
+                        </button>
+                        <span style={{ fontSize: '0.85rem', color: '#6b7280', minWidth: '3rem' }}>Admin</span>
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: '600', color: '#374151', minWidth: '5rem' }}>
+                          Payment:
+                        </span>
+                        <span style={{ fontSize: '0.85rem', color: '#6b7280', minWidth: '3rem' }}>Daily</span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateUserPaymentMode(u.email, u.payment_mode === 'Monthly' ? 'Daily' : 'Monthly')}
                           disabled={u.email === user?.email}
-                          onChange={() => handleUpdateUserType(u.email, 'admin')}
-                        />
-                        Admin
-                      </label>
+                          style={{
+                            position: 'relative',
+                            width: '3rem',
+                            height: '1.5rem',
+                            backgroundColor: u.payment_mode === 'Monthly' ? '#10b981' : '#06b6d4',
+                            border: 'none',
+                            borderRadius: '0.75rem',
+                            cursor: u.email === user?.email ? 'not-allowed' : 'pointer',
+                            transition: 'background-color 0.2s',
+                            padding: 0
+                          }}
+                        >
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: '0.125rem',
+                              left: u.payment_mode === 'Monthly' ? '1.625rem' : '0.125rem',
+                              width: '1.25rem',
+                              height: '1.25rem',
+                              backgroundColor: 'white',
+                              borderRadius: '50%',
+                              transition: 'transform 0.2s',
+                              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                            }}
+                          />
+                        </button>
+                        <span style={{ fontSize: '0.85rem', color: '#6b7280', minWidth: '3rem' }}>Monthly</span>
+                      </div>
                     </div>
                     {userTypeStatusByEmail[u.email] && (
                       <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.75rem' }}>
                         {userTypeStatusByEmail[u.email]}
+                      </div>
+                    )}
+                    {paymentModeStatusByEmail[u.email] && (
+                      <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.75rem' }}>
+                        {paymentModeStatusByEmail[u.email]}
                       </div>
                     )}
                   </div>

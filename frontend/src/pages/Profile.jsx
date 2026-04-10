@@ -10,6 +10,7 @@ export default function Profile({ user, setUser, loading }) {
   const [sortCode, setSortCode] = useState('')
   const [accountNumber, setAccountNumber] = useState('')
   const [themePreference, setThemePreference] = useState('nordic_neutral')
+  const [paymentMode, setPaymentMode] = useState('Daily')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -55,6 +56,7 @@ export default function Profile({ user, setUser, loading }) {
       setSortCode(user.sort_code || '')
       setAccountNumber(user.account_number || '')
       setThemePreference(user.theme_preference || 'nordic_neutral')
+      setPaymentMode(user.payment_mode || 'Daily')
     }
   }, [user, loading, navigate])
 
@@ -150,6 +152,38 @@ export default function Profile({ user, setUser, loading }) {
       }
     } catch (err) {
       setError('Failed to update theme. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleUpdatePaymentMode = async () => {
+    setSubmitting(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(apiUrl('/api/users/me/payment-mode'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ payment_mode: paymentMode }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setUser({ ...user, payment_mode: data.payment_mode })
+        setSuccess('Payment mode updated successfully!')
+        setEditMode(null)
+      } else {
+        const data = await res.json()
+        setError(data.detail || 'Failed to update payment mode')
+      }
+    } catch (err) {
+      setError('Failed to update payment mode. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -515,7 +549,129 @@ export default function Profile({ user, setUser, loading }) {
                 className="nav-btn theme-secondary-btn"
                 style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', flexShrink: 0 }}
               >
-                Change Theme
+                Edit
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Payment Mode Section */}
+        <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid var(--theme-border-soft)' }}>
+          <label className="theme-section-title" style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+            Payment Mode
+          </label>
+          {editMode === 'payment-mode' ? (
+            <div>
+              <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMode('Daily')}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '1rem',
+                    borderRadius: '0.875rem',
+                    border: paymentMode === 'Daily' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                    background: paymentMode === 'Daily' ? 'var(--theme-surface-alt)' : 'var(--theme-surface)',
+                    cursor: 'pointer',
+                    boxShadow: paymentMode === 'Daily' ? '0 0 0 4px color-mix(in srgb, var(--theme-accent) 12%, transparent)' : 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                    <div>
+                      <div style={{ fontWeight: '700', color: 'var(--theme-heading)', marginBottom: '0.2rem' }}>Daily</div>
+                      <div className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>Pay for each practice session individually</div>
+                    </div>
+                    <div style={{ 
+                      width: '20px', 
+                      height: '20px', 
+                      borderRadius: '50%', 
+                      background: paymentMode === 'Daily' ? 'var(--theme-accent)' : 'var(--theme-border)',
+                      border: paymentMode === 'Daily' ? '2px solid var(--theme-accent)' : '2px solid var(--theme-border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      {paymentMode === 'Daily' && (
+                        <span style={{ color: 'white', fontSize: '12px' }}>×</span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMode('Monthly')}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '1rem',
+                    borderRadius: '0.875rem',
+                    border: paymentMode === 'Monthly' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                    background: paymentMode === 'Monthly' ? 'var(--theme-surface-alt)' : 'var(--theme-surface)',
+                    cursor: 'pointer',
+                    boxShadow: paymentMode === 'Monthly' ? '0 0 0 4px color-mix(in srgb, var(--theme-accent) 12%, transparent)' : 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                    <div>
+                      <div style={{ fontWeight: '700', color: 'var(--theme-heading)', marginBottom: '0.2rem' }}>Monthly</div>
+                      <div className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>Pay a fixed monthly amount for all sessions</div>
+                    </div>
+                    <div style={{ 
+                      width: '20px', 
+                      height: '20px', 
+                      borderRadius: '50%', 
+                      background: paymentMode === 'Monthly' ? 'var(--theme-accent)' : 'var(--theme-border)',
+                      border: paymentMode === 'Monthly' ? '2px solid var(--theme-accent)' : '2px solid var(--theme-border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      {paymentMode === 'Monthly' && (
+                        <span style={{ color: 'white', fontSize: '12px' }}>×</span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={handleUpdatePaymentMode}
+                  disabled={submitting}
+                  className="nav-btn theme-primary-btn"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+                >
+                  {submitting ? 'Saving...' : 'Save Payment Mode'}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditMode(null)
+                    setPaymentMode(user.payment_mode || 'Daily')
+                    setError('')
+                  }}
+                  className="nav-btn theme-secondary-btn"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '1rem', fontWeight: '600', color: 'var(--theme-heading)' }}>
+                  {user.payment_mode === 'Monthly' ? 'Monthly Payments' : 'Daily Payments'}
+                </div>
+                <div className="theme-subtle-text" style={{ fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                  {user.payment_mode === 'Monthly' ? 'Pay a fixed monthly amount for all practice sessions' : 'Pay for each practice session individually'}
+                </div>
+              </div>
+              <button
+                onClick={() => setEditMode('payment-mode')}
+                className="nav-btn theme-secondary-btn"
+                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', flexShrink: 0 }}
+              >
+                Edit
               </button>
             </div>
           )}
