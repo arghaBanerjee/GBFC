@@ -1236,12 +1236,12 @@ export default function Calendar({ user }) {
                         )}
                       </div>
 
-                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', opacity: selectedSession?.payment_requested ? 0.6 : 1, pointerEvents: selectedSession?.payment_requested ? 'none' : 'auto' }}>
+                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', opacity: (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 0.6 : 1, pointerEvents: (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 'none' : 'auto' }}>
                         <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Set Player Availability</div>
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
                           <div style={{ flex: '0 0 140px' }}>
                             <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Availability</label>
-                            <select value={adminSelectedStatus} onChange={(e) => setAdminSelectedStatus(e.target.value)} disabled={selectedSession?.payment_requested || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}>
+                            <select value={adminSelectedStatus} onChange={(e) => setAdminSelectedStatus(e.target.value)} disabled={(selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}>
                               <option value="available">Available</option>
                               <option value="tentative">Tentative</option>
                               <option value="not_available">Unavailable</option>
@@ -1249,7 +1249,7 @@ export default function Calendar({ user }) {
                           </div>
                           <div style={{ flex: '1' }}>
                             <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Select Player</label>
-                            <select value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)} disabled={selectedSession?.payment_requested || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}>
+                            <select value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)} disabled={(selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}>
                               <option value="">Select a user...</option>
                               {allUsers.map((u) => (
                                 <option key={u.email} value={u.email}>{u.full_name}</option>
@@ -1257,7 +1257,7 @@ export default function Calendar({ user }) {
                             </select>
                           </div>
                         </div>
-                        <button onClick={handleAdminSetAvailability} disabled={!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity} style={{ width: '100%', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'var(--theme-border)' : 'var(--theme-accent)', color: (!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'var(--theme-text-muted)' : 'var(--theme-accent-contrast)', border: 'none', cursor: (!selectedUserEmail || selectedSession?.payment_requested || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                        <button onClick={handleAdminSetAvailability} disabled={!selectedUserEmail || (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating || adminAvailableBlockedByCapacity} style={{ width: '100%', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!selectedUserEmail || (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'var(--theme-border)' : 'var(--theme-accent)', color: (!selectedUserEmail || (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'var(--theme-text-muted)' : 'var(--theme-accent-contrast)', border: 'none', cursor: (!selectedUserEmail || (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
                           {adminAvailabilityUpdating ? 'Updating...' : 'Set Availability'}
                         </button>
                         {adminAvailableBlockedByCapacity && !selectedSession?.payment_requested && (
@@ -1267,7 +1267,7 @@ export default function Calendar({ user }) {
                         )}
                         {adminAvailabilityError && <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-danger)' }}>{adminAvailabilityError}</p>}
                         <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                          {selectedSession?.payment_requested ? 'Cannot change availability after payment request.' : 'Admins can add or modify any player\'s availability.'}
+                          {(selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 'Cannot change availability after payment request.' : 'Admins can add or modify any player\'s availability.'}
                         </p>
                       </div>
                     </div>
@@ -1367,7 +1367,7 @@ export default function Calendar({ user }) {
                 <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)' }}>
                   <strong style={{ color: 'var(--theme-warning-strong)' }}>Payment Request</strong>
                   <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-warning-strong)' }}>
-                    Total Cost £ {selectedSession.session_cost != null ? Number(selectedSession.session_cost).toFixed(2) : '0.00'}
+                    {selectedSession.cost_type} Cost £ {selectedSession.session_cost != null ? Number(selectedSession.session_cost).toFixed(2) : '0.00'}
                   </p>
                   {hasPaidByBankDetails && (
                     <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 26%, white)' }}>
@@ -1392,7 +1392,7 @@ export default function Calendar({ user }) {
                       />
                       <label htmlFor="payment-checkbox" style={{ fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>
                         {selectedSession.session_cost != null && availablePlayersForPayment > 0 ? (
-                          <>Paid £{(selectedSession.session_cost / availablePlayersForPayment).toFixed(2)} to {selectedSession.paid_by_name || selectedSession.paid_by || 'Unknown User'}</>
+                          <>Paid £{selectedSession.cost_type=="Individual" ? selectedSession.session_cost.toFixed(2) : (selectedSession.session_cost / availablePlayersForPayment).toFixed(2)} to {selectedSession.paid_by_name || selectedSession.paid_by || 'Unknown User'}</>
                         ) : (
                           'Confirm payment made'
                         )}

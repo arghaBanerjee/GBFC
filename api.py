@@ -866,6 +866,7 @@ def init_db():
                 option_a_text TEXT,
                 option_b_text TEXT,
                 session_cost DECIMAL(10, 2),
+                cost_type VARCHAR(20) DEFAULT 'Total',
                 paid_by VARCHAR(255),
                 payment_requested BOOLEAN DEFAULT FALSE,
                 payment_requested_at TIMESTAMP,
@@ -927,6 +928,24 @@ def init_db():
                             ALTER TABLE practice_sessions ADD COLUMN option_b_text TEXT;
                         END IF;
                     END $$;
+                """)
+                # Add cost_type column to practice_sessions if it doesn't exist
+                cur.execute("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name='practice_sessions' AND column_name='cost_type'
+                        ) THEN
+                            ALTER TABLE practice_sessions ADD COLUMN cost_type VARCHAR(20) DEFAULT 'Total';
+                        END IF;
+                    END $$;
+                """)
+                # Update existing records to have cost_type='Total'
+                cur.execute("""
+                    UPDATE practice_sessions 
+                    SET cost_type = 'Total' 
+                    WHERE cost_type IS NULL
                 """)
                 cur.execute("""
                     DO $$ 
@@ -1253,6 +1272,17 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add option_b_text column: {e}")
+            # Add cost_type column to practice_sessions if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE practice_sessions ADD COLUMN cost_type TEXT DEFAULT 'Total'")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add cost_type column: {e}")
+            # Update existing records to have cost_type='Total'
+            try:
+                cur.execute("UPDATE practice_sessions SET cost_type = 'Total' WHERE cost_type IS NULL")
+            except sqlite3.OperationalError as e:
+                print(f"Warning: Could not update cost_type values: {e}")
             # Add paid_by column to practice_sessions if it doesn't exist
             try:
                 cur.execute("ALTER TABLE practice_sessions ADD COLUMN paid_by TEXT")
@@ -1375,6 +1405,7 @@ def init_db():
                 option_a_text TEXT,
                 option_b_text TEXT,
                 session_cost REAL,
+                cost_type TEXT DEFAULT 'Total',
                 paid_by TEXT,
                 payment_requested INTEGER DEFAULT 0,
                 payment_requested_at TIMESTAMP,
@@ -2540,6 +2571,7 @@ def get_calendar_event_with_capacity_by_id(cur, session_id: int) -> Optional[dic
             ps.option_a_text,
             ps.option_b_text,
             ps.session_cost,
+            ps.cost_type,
             ps.paid_by,
             ps.payment_requested,
             ps.payment_requested_at,
@@ -2842,6 +2874,11 @@ def admin_set_practice_availability_for_session_id(cur, conn, session_id: int, u
     session = get_practice_session_with_capacity_by_id(cur, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Practice session not found")
+
+    # Allow admin to modify availability for Individual events even after payment request
+    cost_type = session.get("cost_type", "Total")
+    if cost_type != "Individual" and session["payment_requested"]:
+        raise HTTPException(status_code=403, detail="Cannot modify availability after payment request has been enabled for Total cost events.")
 
     option_choice = (option_choice_value or "").strip().upper() or None
     option_a_text, option_b_text = normalize_option_pair(session.get("option_a_text"), session.get("option_b_text"))
@@ -3233,6 +3270,7 @@ class CalendarEventCreate(BaseModel):
     option_a_text: Optional[str] = None
     option_b_text: Optional[str] = None
     session_cost: Optional[float] = None
+    cost_type: str = "Total"
     paid_by: Optional[str] = None
     maximum_capacity: int = 100
 
@@ -3249,6 +3287,7 @@ class CalendarEventOut(BaseModel):
     option_a_text: Optional[str] = None
     option_b_text: Optional[str] = None
     session_cost: Optional[float] = None
+    cost_type: str = "Total"
     paid_by: Optional[str] = None
     maximum_capacity: int = 100
     available_count: Optional[int] = 0
@@ -4864,8 +4903,8 @@ def create_calendar_event(session: CalendarEventCreate, current_user: dict = Dep
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, description, image_url, youtube_url, option_a_text, option_b_text, session_cost, paid_by, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.paid_by, maximum_capacity),
+            f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, description, image_url, youtube_url, option_a_text, option_b_text, session_cost, cost_type, paid_by, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.cost_type, session.paid_by, maximum_capacity),
         )
         created_session_id = cur.lastrowid if not USE_POSTGRES else None
         if USE_POSTGRES:
@@ -4923,8 +4962,8 @@ def update_calendar_event_by_id(session_id: int, session: CalendarEventCreate, c
         if existing_session["payment_requested"]:
             raise HTTPException(status_code=400, detail="Practice session cannot be edited after payment has been requested")
         cur.execute(
-            f"UPDATE practice_sessions SET date = {PLACEHOLDER}, time = {PLACEHOLDER}, location = {PLACEHOLDER}, event_type = {PLACEHOLDER}, event_title = {PLACEHOLDER}, description = {PLACEHOLDER}, image_url = {PLACEHOLDER}, youtube_url = {PLACEHOLDER}, option_a_text = {PLACEHOLDER}, option_b_text = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER} WHERE id = {PLACEHOLDER}",
-            (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.paid_by, maximum_capacity, session_id),
+            f"UPDATE practice_sessions SET date = {PLACEHOLDER}, time = {PLACEHOLDER}, location = {PLACEHOLDER}, event_type = {PLACEHOLDER}, event_title = {PLACEHOLDER}, description = {PLACEHOLDER}, image_url = {PLACEHOLDER}, youtube_url = {PLACEHOLDER}, option_a_text = {PLACEHOLDER}, option_b_text = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, cost_type = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER} WHERE id = {PLACEHOLDER}",
+            (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.cost_type, session.paid_by, maximum_capacity, session_id),
         )
         sync_match_session_to_events(cur, {
             "id": session_id,
@@ -5895,6 +5934,7 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
                    ps.event_type,
                    ps.event_title,
                    ps.session_cost as amount,
+                   ps.cost_type,
                    NULL as payment_method,
                    ps.time,
                    ps.location,
@@ -5954,7 +5994,7 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
         header_font = Font(bold=True, color="FFFFFF")
         header_alignment = Alignment(horizontal="center", vertical="center")
 
-        headers = ["Expense Date", "Title", "Category", "Amount (£)", "Paid By", "Payment Method", "Description", "Created Date"]
+        headers = ["Expense Date", "Title", "Category", "Cost Type", "Amount (£)", "Paid By", "Payment Method", "Description", "Created Date"]
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_num, value=header)
             cell.fill = header_fill
@@ -5966,10 +6006,11 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
             ws.cell(row=row_num, column=1, value=row_dict.get("expense_date"))
             ws.cell(row=row_num, column=2, value=row_dict.get("title"))
             ws.cell(row=row_num, column=3, value=row_dict.get("category") or "")
-            ws.cell(row=row_num, column=4, value=float(row_dict.get("amount") or 0))
-            ws.cell(row=row_num, column=5, value=row_dict.get("paid_by_name") or row_dict.get("paid_by") or "")
-            ws.cell(row=row_num, column=6, value=row_dict.get("payment_method") or "")
-            ws.cell(row=row_num, column=7, value=row_dict.get("description") or "")
+            ws.cell(row=row_num, column=4, value=row_dict.get("cost_type") or "")
+            ws.cell(row=row_num, column=5, value=float(row_dict.get("amount") or 0))
+            ws.cell(row=row_num, column=6, value=row_dict.get("paid_by_name") or row_dict.get("paid_by") or "")
+            ws.cell(row=row_num, column=7, value=row_dict.get("payment_method") or "")
+            ws.cell(row=row_num, column=8, value=row_dict.get("description") or "")
             created_at = row_dict.get("created_at")
             created_date_value = None
             if isinstance(created_at, datetime):
@@ -5984,7 +6025,7 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
                         created_date_value = datetime.strptime(str(created_at)[:10], "%Y-%m-%d").date()
                     except ValueError:
                         created_date_value = None
-            created_date_cell = ws.cell(row=row_num, column=8, value=created_date_value if created_date_value else (str(created_at)[:10] if created_at else ""))
+            created_date_cell = ws.cell(row=row_num, column=9, value=created_date_value if created_date_value else (str(created_at)[:10] if created_at else ""))
             if created_date_value:
                 created_date_cell.number_format = "yyyy-mm-dd"
 
@@ -6028,6 +6069,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 ps.time,
                 ps.location,
                 ps.session_cost,
+                ps.cost_type,
                 ps.paid_by,
                 ps.payment_requested_at,
                 pa.user_email,
@@ -6069,9 +6111,9 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 AND pa.user_email = pp.user_email
             )
             WHERE ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
-                AND pa.status IS NOT NULL
+                AND ps.payment_requested = {PLACEHOLDER}
             ORDER BY ps.date ASC, ps.time ASC, ps.payment_requested_at ASC, u.full_name ASC
-        """, (from_date, to_date))
+        """, (from_date, to_date, True))
         
         rows = cur.fetchall()
         
@@ -6086,7 +6128,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
         header_alignment = Alignment(horizontal="center", vertical="center")
         
         # Headers
-        headers = ["Event Date", "Event Type", "Event Title", "Time", "Place", "Total Cost (£)", "Paid By", "Payment Requested Date", "Player Name", "Availability", 
+        headers = ["Event Date", "Event Type", "Event Title", "Time", "Place", "Cost Type", "Amount (£)", "Paid By", "Payment Requested Date", "Player Name", "Availability", 
                    "Individual Amount (£)", "Paid", "Payment Acknowledgement Date"]
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_num, value=header)
@@ -6106,9 +6148,9 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 session_cost = row["session_cost"]
                 paid_by = row["paid_by_name"] or row["paid_by"]
                 payment_requested_at = row["payment_requested_at"]
-                user_email = row["user_email"]
-                full_name = row["full_name"] or user_email
-                status = row["status"]
+                user_email = row["user_email"] or ""
+                full_name = row["full_name"] or user_email or "No members"
+                status = row["status"] or "no_availability"
                 paid = row["paid"]
                 payment_date = row["payment_date"]
             else:
@@ -6118,21 +6160,23 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 time = row[4] or "TBD"
                 location = row[5] or "TBD"
                 session_cost = row[6]
-                paid_by = row[11] or row[7]
-                payment_requested_at = row[8]
-                user_email = row[9]
-                full_name = row[10] or user_email
-                status = row[12]
-                paid = row[13]
-                payment_date = row[14]
+                # cost_type is row[7] and is now used in Excel export
+                paid_by = row[12] or row[8]
+                payment_requested_at = row[9]
+                user_email = row[10] or ""
+                full_name = row[11] or user_email or "No members"
+                status = row[13] or "no_availability"
+                paid = row[14]
+                payment_date = row[15]
             
             ws.cell(row=row_num, column=1, value=event_date)
             ws.cell(row=row_num, column=2, value=default_event_type_label(event_type))
             ws.cell(row=row_num, column=3, value=event_title)
             ws.cell(row=row_num, column=4, value=time)
             ws.cell(row=row_num, column=5, value=location)
-            ws.cell(row=row_num, column=6, value=float(session_cost) if session_cost else 0)
-            ws.cell(row=row_num, column=7, value=paid_by)
+            ws.cell(row=row_num, column=6, value=row.get("cost_type", "Total") if USE_POSTGRES else row[7] if len(row) > 7 else "Total")
+            ws.cell(row=row_num, column=7, value=float(session_cost) if session_cost else 0)
+            ws.cell(row=row_num, column=8, value=paid_by)
             if payment_requested_at:
                 payment_requested_date_value = None
                 if isinstance(payment_requested_at, datetime):
@@ -6147,13 +6191,13 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                             payment_requested_date_value = datetime.strptime(str(payment_requested_at)[:10], "%Y-%m-%d").date()
                         except ValueError:
                             payment_requested_date_value = None
-                payment_requested_cell = ws.cell(row=row_num, column=8, value=payment_requested_date_value if payment_requested_date_value else str(payment_requested_at)[:10])
+                payment_requested_cell = ws.cell(row=row_num, column=9, value=payment_requested_date_value if payment_requested_date_value else str(payment_requested_at)[:10])
                 if payment_requested_date_value:
                     payment_requested_cell.number_format = "yyyy-mm-dd"
             else:
-                ws.cell(row=row_num, column=8, value="")
-            ws.cell(row=row_num, column=9, value=full_name)
-            ws.cell(row=row_num, column=10, value=status.capitalize() if status else "")
+                ws.cell(row=row_num, column=9, value="")
+            ws.cell(row=row_num, column=10, value=full_name)
+            ws.cell(row=row_num, column=11, value="No Availability" if status == "no_availability" else status.capitalize() if status else "")
 
             individual_amount = 0.0
             if status == "available" and session_cost:
@@ -6175,9 +6219,13 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                 available_count = count_row["count"] if USE_POSTGRES else count_row[0]
                 
                 if available_count > 0:
-                    individual_amount = float(session_cost) / available_count
-            ws.cell(row=row_num, column=11, value=round(individual_amount, 2))
-            ws.cell(row=row_num, column=12, value="Yes" if (paid if USE_POSTGRES else bool(paid)) else "No")
+                    cost_type = row.get("cost_type", "Total") if USE_POSTGRES else row[7] if len(row) > 7 else "Total"
+                    if cost_type == "Individual":
+                        individual_amount = float(session_cost)
+                    else:
+                        individual_amount = float(session_cost) / available_count
+            ws.cell(row=row_num, column=12, value=round(individual_amount, 2))
+            ws.cell(row=row_num, column=13, value="Yes" if (paid if USE_POSTGRES else bool(paid)) else "No")
             payment_ack_date_value = None
             if isinstance(payment_date, datetime):
                 payment_ack_date_value = payment_date.date()
@@ -6191,7 +6239,7 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                         payment_ack_date_value = datetime.strptime(str(payment_date)[:10], "%Y-%m-%d").date()
                     except ValueError:
                         payment_ack_date_value = None
-            payment_ack_cell = ws.cell(row=row_num, column=13, value=payment_ack_date_value if payment_ack_date_value else ((str(payment_date)[:10]) if payment_date else ''))
+            payment_ack_cell = ws.cell(row=row_num, column=14, value=payment_ack_date_value if payment_ack_date_value else ((str(payment_date)[:10]) if payment_date else ''))
             if payment_ack_date_value:
                 payment_ack_cell.number_format = "yyyy-mm-dd"
             row_num += 1
@@ -6273,7 +6321,7 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
         cur = conn.cursor()
         cur.execute(
             f"""
-            SELECT ps.id, ps.date, ps.time, ps.location, ps.event_type, ps.event_title, ps.session_cost, ps.paid_by,
+            SELECT ps.id, ps.date, ps.time, ps.location, ps.event_type, ps.event_title, ps.session_cost, ps.cost_type, ps.paid_by,
                    u.full_name as paid_by_name,
                    u.bank_name as paid_by_bank_name,
                    u.sort_code as paid_by_sort_code,
@@ -6304,7 +6352,11 @@ def get_pending_payments(current_user: dict = Depends(get_current_user)):
                 continue
             available_count = get_available_count_for_session_id(cur, row_dict["id"])
             session_cost = float(row_dict["session_cost"]) if row_dict["session_cost"] is not None else 0
-            individual_amount = session_cost / available_count if available_count > 0 and session_cost > 0 else 0
+            cost_type = row_dict.get("cost_type", "Total")
+            if cost_type == "Individual":
+                individual_amount = session_cost if session_cost > 0 else 0
+            else:
+                individual_amount = session_cost / available_count if available_count > 0 and session_cost > 0 else 0
             
             payments.append({
                 "id": row_dict["id"],

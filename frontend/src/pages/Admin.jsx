@@ -54,6 +54,7 @@ export default function Admin({ user, loading }) {
   const [calendarEventOptionAText, setCalendarEventOptionAText] = useState('')
   const [calendarEventOptionBText, setCalendarEventOptionBText] = useState('')
   const [calendarEventSessionCost, setCalendarEventSessionCost] = useState('')
+  const [calendarEventCostType, setCalendarEventCostType] = useState('Total')
   const [calendarEventPaidBy, setCalendarEventPaidBy] = useState('')
   const [calendarEventMaximumCapacity, setCalendarEventMaximumCapacity] = useState('18')
   const [calendarEventInlineStatus, setCalendarEventInlineStatus] = useState('')
@@ -508,6 +509,7 @@ export default function Admin({ user, loading }) {
     setCalendarEventOptionAText('')
     setCalendarEventOptionBText('')
     setCalendarEventSessionCost('')
+    setCalendarEventCostType('Total')
     setCalendarEventPaidBy('')
     setCalendarEventMaximumCapacity('18')
     setCalendarEventInlineStatus('')
@@ -629,6 +631,7 @@ export default function Admin({ user, loading }) {
       option_a_text: trimmedOptionA || null,
       option_b_text: trimmedOptionB || null,
       session_cost: calendarEventSessionCost !== '' ? parseFloat(calendarEventSessionCost) : null,
+      cost_type: calendarEventCostType || 'Total',
       paid_by: calendarEventPaidBy || null,
       maximum_capacity: calendarEventMaximumCapacity ? parseInt(calendarEventMaximumCapacity, 10) : 100,
     }
@@ -702,6 +705,7 @@ export default function Admin({ user, loading }) {
     setCalendarEventOptionAText(s.option_a_text || '')
     setCalendarEventOptionBText(s.option_b_text || '')
     setCalendarEventSessionCost(s.session_cost != null ? String(s.session_cost) : '')
+    setCalendarEventCostType(s.cost_type || 'Total')
     setCalendarEventPaidBy(s.paid_by || '')
     setCalendarEventMaximumCapacity((s.maximum_capacity || 100).toString())
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -1166,7 +1170,31 @@ export default function Admin({ user, loading }) {
               <input type="number" min="1" value={calendarEventMaximumCapacity} onChange={(e) => setCalendarEventMaximumCapacity(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div>
-              <label>Total Cost</label>
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="costType"
+                    value="Total"
+                    checked={calendarEventCostType === 'Total'}
+                    onChange={(e) => setCalendarEventCostType(e.target.value)}
+                  />
+                  Total Cost
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="costType"
+                    value="Individual"
+                    checked={calendarEventCostType === 'Individual'}
+                    onChange={(e) => setCalendarEventCostType(e.target.value)}
+                  />
+                  Per Person Cost
+                </label>
+              </div>
+            </div>
+            <div>
+              <label>Cost</label>
               <input type="number" min="0" step="0.01" value={calendarEventSessionCost} onChange={(e) => setCalendarEventSessionCost(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div>
@@ -1182,7 +1210,7 @@ export default function Admin({ user, loading }) {
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="nav-btn" type="submit" disabled={isSubmittingCalendarEvent} style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600', opacity: isSubmittingCalendarEvent ? 0.7 : 1, cursor: isSubmittingCalendarEvent ? 'not-allowed' : 'pointer' }}>{isSubmittingCalendarEvent ? (editingCalendarEventId ? 'Updating Event...' : 'Adding Event...') : (editingCalendarEventId ? 'Update Event' : 'Add Event')}</button>
-              {(editingCalendarEventId || calendarEventDate || calendarEventTime !== '21:00' || calendarEventLocation || calendarEventEventType !== 'practice' || calendarEventTitle !== 'Session' || calendarEventDescription || calendarEventImageUrl || calendarEventYoutubeUrl || calendarEventOptionAText || calendarEventOptionBText || calendarEventSessionCost || calendarEventPaidBy || calendarEventMaximumCapacity !== '18') && (
+              {(editingCalendarEventId || calendarEventDate || calendarEventTime !== '21:00' || calendarEventLocation || calendarEventEventType !== 'practice' || calendarEventTitle !== 'Session' || calendarEventDescription || calendarEventImageUrl || calendarEventYoutubeUrl || calendarEventOptionAText || calendarEventOptionBText || calendarEventSessionCost || calendarEventCostType !== 'Total' || calendarEventPaidBy || calendarEventMaximumCapacity !== '18') && (
                 <button className="nav-btn" type="button" onClick={resetCalendarEventForm} disabled={isSubmittingCalendarEvent} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600', opacity: isSubmittingCalendarEvent ? 0.7 : 1, cursor: isSubmittingCalendarEvent ? 'not-allowed' : 'pointer' }}>
                   Clear
                 </button>
@@ -1298,7 +1326,7 @@ export default function Admin({ user, loading }) {
                   </div>
                   <hr style={{ border: 'none', borderTop: '1px solid color-mix(in srgb, var(--theme-text) 15%, transparent)' }} />
                   <div style={{ opacity: 0.8 }}>Max Capacity: {s.maximum_capacity || 100}</div>
-                  <div style={{ opacity: 0.8 }}>Total Cost: {s.session_cost != null ? `£${Number(s.session_cost).toFixed(2)}` : 'Not set'}</div>
+                  <div style={{ opacity: 0.8 }}>{s.cost_type} Cost: {s.session_cost != null ? `£${Number(s.session_cost).toFixed(2)}` : 'Not set'}</div>
                   <div style={{ opacity: 0.8 }}>Paid By: {s.paid_by_name || s.paid_by || 'Not set'}</div>
                   {(s.option_a_text && s.option_b_text) && (
                     <div style={{ opacity: 0.8 }}>Options: {s.option_a_text} / {s.option_b_text}</div>
