@@ -6007,7 +6007,8 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
             ws.cell(row=row_num, column=2, value=row_dict.get("title"))
             ws.cell(row=row_num, column=3, value=row_dict.get("category") or "")
             ws.cell(row=row_num, column=4, value=row_dict.get("cost_type") or "")
-            ws.cell(row=row_num, column=5, value=float(row_dict.get("amount") or 0))
+            amount_cell = ws.cell(row=row_num, column=5, value=float(row_dict.get("amount") or 0))
+            amount_cell.number_format = "0.00"
             ws.cell(row=row_num, column=6, value=row_dict.get("paid_by_name") or row_dict.get("paid_by") or "")
             ws.cell(row=row_num, column=7, value=row_dict.get("payment_method") or "")
             ws.cell(row=row_num, column=8, value=row_dict.get("description") or "")
@@ -6175,7 +6176,8 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
             ws.cell(row=row_num, column=4, value=time)
             ws.cell(row=row_num, column=5, value=location)
             ws.cell(row=row_num, column=6, value=row.get("cost_type", "Total") if USE_POSTGRES else row[7] if len(row) > 7 else "Total")
-            ws.cell(row=row_num, column=7, value=float(session_cost) if session_cost else 0)
+            session_cost_cell = ws.cell(row=row_num, column=7, value=float(session_cost) if session_cost else 0)
+            session_cost_cell.number_format = "0.00"
             ws.cell(row=row_num, column=8, value=paid_by)
             if payment_requested_at:
                 payment_requested_date_value = None
@@ -6224,7 +6226,8 @@ def generate_player_payment_report(from_date: str, to_date: str, current_user: d
                         individual_amount = float(session_cost)
                     else:
                         individual_amount = float(session_cost) / available_count
-            ws.cell(row=row_num, column=12, value=round(individual_amount, 2))
+            individual_amount_cell = ws.cell(row=row_num, column=12, value=round(individual_amount, 2))
+            individual_amount_cell.number_format = "0.00"
             ws.cell(row=row_num, column=13, value="Yes" if (paid if USE_POSTGRES else bool(paid)) else "No")
             payment_ack_date_value = None
             if isinstance(payment_date, datetime):
