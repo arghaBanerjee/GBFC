@@ -490,6 +490,7 @@ export default function Calendar({ user }) {
         session_cost: calendarEventCost ? parseFloat(calendarEventCost) : null,
         paid_by: paidBy || null,
         maximum_capacity: maximumCapacity ? parseInt(maximumCapacity, 10) : 100,
+        cost_type: selectedSession.cost_type,
       }),
     })
       .then(r => {
