@@ -5690,7 +5690,7 @@ def list_expenses(current_user: dict = Depends(get_current_user)):
                 FALSE as can_delete
             FROM practice_sessions ps
             LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-            WHERE ps.session_cost IS NOT NULL AND ps.session_cost > 0
+            WHERE ps.session_cost IS NOT NULL AND ps.session_cost > 0 AND (ps.cost_type IS NULL OR ps.cost_type != 'Individual')
             ORDER BY ps.date DESC, ps.id DESC
             """
         )
@@ -5944,10 +5944,11 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
                    'Event Booking' as source
             FROM practice_sessions ps
             LEFT JOIN users u ON ps.paid_by = u.email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL)
-            WHERE ps.session_cost IS NOT NULL AND ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
-            """,
-            (from_date, to_date),
-        )
+            WHERE ps.date >= {PLACEHOLDER} AND ps.date <= {PLACEHOLDER}
+                AND ps.session_cost IS NOT NULL
+                AND (ps.cost_type IS NULL OR ps.cost_type != 'Individual')
+            ORDER BY ps.date ASC
+        """, (from_date, to_date))
         booking_rows = []
         for row in cur.fetchall():
             row_dict = dict(row)
@@ -5994,7 +5995,7 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
         header_font = Font(bold=True, color="FFFFFF")
         header_alignment = Alignment(horizontal="center", vertical="center")
 
-        headers = ["Expense Date", "Title", "Category", "Cost Type", "Amount (£)", "Paid By", "Payment Method", "Description", "Created Date"]
+        headers = ["Expense Date", "Title", "Category", "Amount (£)", "Paid By", "Payment Method", "Description", "Created Date"]
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_num, value=header)
             cell.fill = header_fill
@@ -6006,12 +6007,11 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
             ws.cell(row=row_num, column=1, value=row_dict.get("expense_date"))
             ws.cell(row=row_num, column=2, value=row_dict.get("title"))
             ws.cell(row=row_num, column=3, value=row_dict.get("category") or "")
-            ws.cell(row=row_num, column=4, value=row_dict.get("cost_type") or "")
-            amount_cell = ws.cell(row=row_num, column=5, value=float(row_dict.get("amount") or 0))
+            amount_cell = ws.cell(row=row_num, column=4, value=float(row_dict.get("amount") or 0))
             amount_cell.number_format = "0.00"
-            ws.cell(row=row_num, column=6, value=row_dict.get("paid_by_name") or row_dict.get("paid_by") or "")
-            ws.cell(row=row_num, column=7, value=row_dict.get("payment_method") or "")
-            ws.cell(row=row_num, column=8, value=row_dict.get("description") or "")
+            ws.cell(row=row_num, column=5, value=row_dict.get("paid_by_name") or row_dict.get("paid_by") or "")
+            ws.cell(row=row_num, column=6, value=row_dict.get("payment_method") or "")
+            ws.cell(row=row_num, column=7, value=row_dict.get("description") or "")
             created_at = row_dict.get("created_at")
             created_date_value = None
             if isinstance(created_at, datetime):
@@ -6026,7 +6026,7 @@ def generate_expense_report(from_date: str, to_date: str, current_user: dict = D
                         created_date_value = datetime.strptime(str(created_at)[:10], "%Y-%m-%d").date()
                     except ValueError:
                         created_date_value = None
-            created_date_cell = ws.cell(row=row_num, column=9, value=created_date_value if created_date_value else (str(created_at)[:10] if created_at else ""))
+            created_date_cell = ws.cell(row=row_num, column=8, value=created_date_value if created_date_value else (str(created_at)[:10] if created_at else ""))
             if created_date_value:
                 created_date_cell.number_format = "yyyy-mm-dd"
 
