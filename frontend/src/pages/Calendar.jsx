@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
 import '../styles/UserActions.css'
+import CalendarAdmin from './Calendar-Admin'
 
 export default function Calendar({ user }) {
   const navigate = useNavigate()
@@ -20,14 +21,12 @@ export default function Calendar({ user }) {
   const [selectedDate, setSelectedDate] = useState(null)
   const [selectedCalendarEventId, setSelectedCalendarEventId] = useState(null)
   const [availability, setAvailability] = useState({})
-  const [adminCalendarEvents, setAdminCalendarEvents] = useState([])
+  const [calendarEvents, setCalendarEvents] = useState([])
   const [calendarEventsLoading, setCalendarEventsLoading] = useState(true)
   const [calendarEventDetailsLoading, setCalendarEventDetailsLoading] = useState(false)
   const [voteSummary, setVoteSummary] = useState(null)
   const [allUsers, setAllUsers] = useState([])
-  const [isAdmin, setIsAdmin] = useState(false)
   const [selectedUserEmail, setSelectedUserEmail] = useState('')
-  const [adminSelectedStatus, setAdminSelectedStatus] = useState('available')
   const [calendarEventCost, setCalendarEventCost] = useState('')
   const [calendarEventCostType, setCalendarEventCostType] = useState('Total')
   const [paidBy, setPaidBy] = useState('')
@@ -36,13 +35,10 @@ export default function Calendar({ user }) {
   const [paymentUpdatePending, setPaymentUpdatePending] = useState(false)
   const [showPaymentConfirm, setShowPaymentConfirm] = useState(false)
   const [paymentInfoSaved, setPaymentInfoSaved] = useState(false)
-  const [adminControlsOpen, setAdminControlsOpen] = useState(false)
-  const [adminUsersLoading, setAdminUsersLoading] = useState(false)
   const [availabilityUpdating, setAvailabilityUpdating] = useState(false)
-  const [adminAvailabilityUpdating, setAdminAvailabilityUpdating] = useState(false)
   const [availabilityError, setAvailabilityError] = useState('')
-  const [adminAvailabilityError, setAdminAvailabilityError] = useState('')
   const [optionSelectionUpdating, setOptionSelectionUpdating] = useState(false)
+  const [adminSelectedStatus, setAdminSelectedStatus] = useState('available')
   const token = localStorage.getItem('token')
 
   const eventTypeLabelMap = {
@@ -124,9 +120,10 @@ export default function Calendar({ user }) {
     return null
   }
 
+  
   const mergeUpdatedCalendarEvent = (updatedCalendarEvent) => {
     if (!updatedCalendarEvent?.id) return
-    setAdminCalendarEvents((prev) => {
+    setCalendarEvents((prev) => {
       const existingIndex = prev.findIndex((calendarEvent) => calendarEvent.id === updatedCalendarEvent.id)
       if (existingIndex === -1) {
         return [...prev, updatedCalendarEvent].sort((a, b) => {
@@ -153,20 +150,15 @@ export default function Calendar({ user }) {
         capacity_reached: (next.available?.length ?? 0) >= (next.maximum_capacity ?? 100),
       }
     })
-    setAdminCalendarEvents((prev) => prev.map((calendarEvent) => {
+    setCalendarEvents((prev) => prev.map((calendarEvent) => {
       if (calendarEvent.id !== calendarEventId) return calendarEvent
       const availableCount = voteSummary?.available_count ?? calendarEvent.available_count ?? 0
       const maximumCapacityValue = voteSummary?.maximum_capacity ?? calendarEvent.maximum_capacity ?? 100
-      const nextSummary = updater({
-        available: Array.from({ length: availableCount }),
-        maximum_capacity: maximumCapacityValue,
-      })
-      const nextAvailableCount = nextSummary?.available?.length ?? availableCount
+      const capacityReached = availableCount >= maximumCapacityValue
       return {
         ...calendarEvent,
-        available_count: nextAvailableCount,
-        remaining_slots: Math.max(maximumCapacityValue - nextAvailableCount, 0),
-        capacity_reached: nextAvailableCount >= maximumCapacityValue,
+        available_count: availableCount,
+        capacity_reached: capacityReached,
       }
     }))
   }
@@ -238,8 +230,8 @@ export default function Calendar({ user }) {
     setCalendarEventsLoading(true)
     fetch(apiUrl('/api/calendar/events'))
       .then(r => r.json())
-      .then(data => setAdminCalendarEvents(data || []))
-      .catch(() => setAdminCalendarEvents([]))
+      .then(data => setCalendarEvents(data || []))
+      .catch(() => setCalendarEvents([]))
       .finally(() => setCalendarEventsLoading(false))
     
     // Fetch user availability
@@ -257,29 +249,8 @@ export default function Calendar({ user }) {
     }
   }, [user, token])
 
-  useEffect(() => {
-    setIsAdmin(user?.user_type === 'admin')
-    if (user?.user_type !== 'admin') {
-      setAdminControlsOpen(false)
-      setAllUsers([])
-    }
-  }, [user])
-
-  useEffect(() => {
-    if (!isAdmin || !adminControlsOpen || !token || allUsers.length > 0 || adminUsersLoading) return
-
-    setAdminUsersLoading(true)
-    fetch(apiUrl('/api/users'), {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then(r => r.json())
-      .then(data => setAllUsers(data || []))
-      .catch(() => setAllUsers([]))
-      .finally(() => setAdminUsersLoading(false))
-  }, [isAdmin, adminControlsOpen, token, allUsers.length, adminUsersLoading])
-
+  
+  
   const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
   const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
   const firstDayOfWeek = monthStart.getDay()
@@ -317,7 +288,7 @@ export default function Calendar({ user }) {
 
   const handleAvailability = (status) => {
     if (!user || availabilityUpdating) return
-    if (!selectedSession) return
+    if (!selectedSession || !selectedSession.date) return
     
     const dateStr = selectedSession.date
     const calendarEventAvailabilityKey = String(selectedSession.id)
@@ -337,7 +308,7 @@ export default function Calendar({ user }) {
 
     // Clear event options if user is no longer "available"
     const shouldClearOptions = currentStatus === 'available' && newStatus !== 'available'
-    const previousOptionChoice = selectedOptionChoice
+    const previousOptionChoice = currentSelectedOptionChoice
 
     if (isDeselecting) {
       setAvailability(prev => {
@@ -362,10 +333,11 @@ export default function Calendar({ user }) {
           option_b: nextOptionB,
         }
       })
+      setSelectedOptionChoice(null)
     }
 
     if (currentStatus === 'available' || newStatus === 'available') {
-      updateCalendarEventCapacityState(selectedSession.id, (prev) => {
+      updateCalendarEventCapacityState(selectedSession?.id, (prev) => {
         const available = [...(prev.available || [])]
         const currentName = user.full_name || user.email
         const filteredAvailable = available.filter((name) => {
@@ -386,7 +358,7 @@ export default function Calendar({ user }) {
       })
     }
     
-    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/availability`), {
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession?.id}/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -394,7 +366,7 @@ export default function Calendar({ user }) {
       },
       body: JSON.stringify({ 
         status: newStatus, 
-        option_choice: shouldClearOptions ? null : selectedOptionChoice 
+        option_choice: shouldClearOptions ? null : currentSelectedOptionChoice 
       }),
     })
       .then(r => {
@@ -420,7 +392,7 @@ export default function Calendar({ user }) {
   const handleOptionSelection = (optionChoice) => {
     if (!user || !selectedSession || selectedStatus !== 'available' || optionSelectionUpdating) return
 
-    const currentChoice = selectedOptionChoice
+    const currentChoice = currentSelectedOptionChoice
     const nextChoice = currentChoice === optionChoice ? null : optionChoice
     const previousVoteSummary = voteSummary
     const currentName = user.full_name || user.email
@@ -440,7 +412,7 @@ export default function Calendar({ user }) {
       }
     })
 
-    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/availability`), {
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession?.id}/availability`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -471,23 +443,23 @@ export default function Calendar({ user }) {
   const handleSavePaymentInfo = () => {
     if (!selectedSession) return
     
-    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}`), {
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession?.id}`), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        date: selectedSession.date,
-        time: selectedSession.time,
-        location: selectedSession.location,
-        event_type: selectedSession.event_type,
-        event_title: selectedSession.event_title,
-        description: selectedSession.description,
-        image_url: selectedSession.image_url,
-        youtube_url: selectedSession.youtube_url,
-        option_a_text: selectedSession.option_a_text,
-        option_b_text: selectedSession.option_b_text,
+        date: selectedSession?.date,
+        time: selectedSession?.time,
+        location: selectedSession?.location,
+        event_type: selectedSession?.event_type,
+        event_title: selectedSession?.event_title,
+        description: selectedSession?.description,
+        image_url: selectedSession?.image_url,
+        youtube_url: selectedSession?.youtube_url,
+        option_a_text: selectedSession?.option_a_text,
+        option_b_text: selectedSession?.option_b_text,
         session_cost: calendarEventCost ? parseFloat(calendarEventCost) : null,
         paid_by: paidBy || null,
         maximum_capacity: maximumCapacity ? parseInt(maximumCapacity, 10) : 100,
@@ -510,7 +482,7 @@ export default function Calendar({ user }) {
         setPaymentInfoSaved(Boolean(updatedSession.session_cost != null && updatedSession.paid_by))
         return fetch(apiUrl('/api/calendar/events'))
           .then(r => r.json())
-          .then(data => setAdminCalendarEvents(data || []))
+          .then(data => setCalendarEvents(data || []))
       })
       .catch(err => console.error('Failed to save payment info:', err))
   }
@@ -530,7 +502,7 @@ export default function Calendar({ user }) {
       return
     }
     
-    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/request-payment`), {
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession?.id}/request-payment`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -546,10 +518,10 @@ export default function Calendar({ user }) {
         return r.json()
       })
       .then(() => {
-        // Refresh admin sessions
+        // Refresh calendar events
         return fetch(apiUrl('/api/calendar/events'))
           .then(r => r.json())
-          .then(data => setAdminCalendarEvents(data || []))
+          .then(data => setCalendarEvents(data || []))
       })
       .catch(err => console.error('Failed to request payment:', err))
   }
@@ -564,7 +536,7 @@ export default function Calendar({ user }) {
       [user.email]: paid,
     }))
     
-    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/payment`), {
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession?.id}/payment`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -582,7 +554,7 @@ export default function Calendar({ user }) {
       })
       .then(() => {
         // Refresh payment data
-        return fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/payments`), {
+        return fetch(apiUrl(`/api/calendar/events/id/${selectedSession?.id}/payments`), {
           headers: { Authorization: `Bearer ${token}` }
         })
           .then(r => r.json())
@@ -598,81 +570,8 @@ export default function Calendar({ user }) {
       .finally(() => setPaymentUpdatePending(false))
   }
 
-  const handleAdminSetAvailability = () => {
-    if (!selectedUserEmail || adminAvailabilityUpdating || !selectedSession) {
-      return
-    }
-    setAdminAvailabilityError('')
-    setAdminAvailabilityUpdating(true)
-    
-    fetch(apiUrl(`/api/admin/calendar/events/id/${selectedSession.id}/availability`), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        user_email: selectedUserEmail,
-        status: adminSelectedStatus,
-      }),
-    })
-      .then(r => {
-        if (!r.ok) {
-          return r.json().then(err => {
-            throw new Error(err.detail || 'Failed to set availability')
-          })
-        }
-        return r.json()
-      })
-      .then(() => {
-        return refreshSelectedDateData(selectedSession, { refreshAvailabilityMap: selectedUserEmail === user?.email })
-      })
-      .then(() => {
-        setSelectedUserEmail('')
-      })
-      .catch(err => {
-        setAdminAvailabilityError(err.message || 'Failed to set availability')
-        console.error('Failed to set availability:', err)
-      })
-      .finally(() => setAdminAvailabilityUpdating(false))
-  }
-
-  const handleAdminDeleteAvailability = (userEmail) => {
-    if (!selectedSession) return
-    if (!confirm('Are you sure you want to remove this user\'s availability?')) {
-      return
-    }
-    setAdminAvailabilityError('')
-    setAdminAvailabilityUpdating(true)
-    
-    fetch(apiUrl(`/api/admin/calendar/events/id/${selectedSession.id}/availability`), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        user_email: userEmail,
-        status: 'delete',
-      }),
-    })
-      .then(r => {
-        if (!r.ok) {
-          return r.json().then(err => {
-            throw new Error(err.detail || 'Failed to delete availability')
-          })
-        }
-        return r.json()
-      })
-      .then(() => {
-        return refreshSelectedDateData(selectedSession, { refreshAvailabilityMap: userEmail === user?.email })
-      })
-      .catch(err => {
-        setAdminAvailabilityError(err.message || 'Failed to delete availability')
-      })
-      .finally(() => setAdminAvailabilityUpdating(false))
-  }
-
+  
+  
   const voteBtnStyle = (btnStatus) => {
     const isActive = selectedStatus === btnStatus
 
@@ -720,7 +619,7 @@ export default function Calendar({ user }) {
     return calendar.map((day, index) => {
       const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const isBlankCell = !day
-      const calendarEventsForDate = adminCalendarEvents.filter(s => s.date === dateStr)
+      const calendarEventsForDate = calendarEvents.filter(s => s.date === dateStr)
       const isSelected = Boolean(day) && formatDateStr(selectedDate) === dateStr
       const cellDate = day ? new Date(currentDate.getFullYear(), currentDate.getMonth(), day, 12, 0, 0, 0) : null
       const isPastDate = Boolean(cellDate) && cellDate < today
@@ -778,7 +677,7 @@ export default function Calendar({ user }) {
   const requestedSessionId = requestedSessionIdParam != null ? Number(requestedSessionIdParam) : null
   const hasRequestedSessionId = Number.isInteger(requestedSessionId)
   const sessionsForSelectedDate = selectedDateStr
-    ? adminCalendarEvents.filter((session) => session.date === selectedDateStr)
+    ? calendarEvents.filter((session) => session.date === selectedDateStr)
     : []
   const hasMultipleSessionsForSelectedDate = sessionsForSelectedDate.length > 1
   const selectedSession = selectedCalendarEventId == null
@@ -797,7 +696,7 @@ export default function Calendar({ user }) {
   const selectedStatus = getCalendarEventAvailabilityStatus(voteSummary, user)
   const selectedPaidByUser = allUsers.find((u) => u.email === paidBy)
   const selectedEventTypeLabel = getEventTypeLabel(selectedSession?.event_type)
-  const selectedEventTitle = getEventDisplayTitle(selectedSession)
+  const selectedEventTitle = getEventDisplayTitle(selectedSession || null)
   const paidByBankDetails = selectedSession?.payment_requested
     ? {
         full_name: selectedSession?.paid_by_name || selectedSession?.paid_by,
@@ -870,7 +769,7 @@ export default function Calendar({ user }) {
     let cancelled = false
     setCalendarEventDetailsLoading(true)
 
-    const availabilityRequest = fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/availability`))
+    const availabilityRequest = fetch(apiUrl(`/api/calendar/events/id/${selectedSession?.id}/availability`))
       .then(r => r.json())
       .then((data) => {
         if (cancelled) return
@@ -883,7 +782,7 @@ export default function Calendar({ user }) {
     
     let paymentsRequest = Promise.resolve()
     if (token) {
-      paymentsRequest = fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/payments`), {
+      paymentsRequest = fetch(apiUrl(`/api/calendar/events/id/${selectedSession?.id}/payments`), {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(r => r.json())
@@ -963,7 +862,7 @@ export default function Calendar({ user }) {
   const capacityChartRadius = 26
   const capacityChartCircumference = 2 * Math.PI * capacityChartRadius
   const capacityChartOffset = capacityChartCircumference * (1 - sessionCapacityRatio)
-  const hasSelectedSessionPassed = Boolean(selectedSession && isCalendarEventPast(selectedSession.date, selectedSession.time))
+  const hasSelectedSessionPassed = Boolean(selectedSession && isCalendarEventPast(selectedSession?.date, selectedSession?.time))
   const canSelectAvailable = selectedStatus === 'available' || !isCapacityReached
   const optionSectionEnabled = Boolean(selectedSession?.option_a_text && selectedSession?.option_b_text)
   const getDisplayFirstName = (name) => {
@@ -972,7 +871,8 @@ export default function Calendar({ user }) {
     return trimmedName.split(/\s+/)[0]
   }
   const formatDisplayNames = (names = []) => names.map(getDisplayFirstName).filter(Boolean).join(', ')
-  const selectedOptionChoice = user && voteSummary?.user_emails
+  const [selectedOptionChoice, setSelectedOptionChoice] = useState(null)
+  const currentSelectedOptionChoice = user && voteSummary?.user_emails
     ? (voteSummary.option_a || []).some((name) => voteSummary.user_emails[name] === user.email)
       ? 'A'
       : (voteSummary.option_b || []).some((name) => voteSummary.user_emails[name] === user.email)
@@ -1074,7 +974,7 @@ export default function Calendar({ user }) {
             <div id="selected-session-details" style={{ marginBottom: '1rem', padding: '0.875rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem', border: '1px solid var(--theme-border)' }}>
               <h3 style={{ marginBottom: '1rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Select a date'}</h3>
               <div style={{ marginBottom: '0.5rem' }}>
-                <strong style={{ color: eventTypeAccentMap[selectedSession.event_type] || 'var(--theme-heading)', fontSize: '1.25rem' }}>{selectedEventTypeLabel}</strong>
+                <strong style={{ color: eventTypeAccentMap[selectedSession?.event_type] || 'var(--theme-heading)', fontSize: '1.25rem' }}>{selectedEventTypeLabel}</strong>
                 <div style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: '500', color: 'var(--theme-heading)' }}>{selectedEventTitle}</div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -1082,14 +982,14 @@ export default function Calendar({ user }) {
                   <circle cx="12" cy="12" r="10"/>
                   <path d="M12 6v6l4 2"/>
                 </svg>
-                <span>Time: {selectedSession.time || 'TBD'}</span>
+                <span>Time: {selectedSession?.time || 'TBD'}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                   <circle cx="12" cy="10" r="3"/>
                 </svg>
-                <span>Location: {selectedSession.location || 'TBD'}</span>
+                <span>Location: {selectedSession?.location || 'TBD'}</span>
               </div>
               <div style={{ marginTop: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem', borderRadius: '0.875rem', background: 'var(--theme-surface)', border: '1px solid var(--theme-border)' }}>
                 <div style={{ position: 'relative', width: '72px', height: '72px', flex: '0 0 72px' }}>
@@ -1134,201 +1034,96 @@ export default function Calendar({ user }) {
             </div>
           )}
           {selectedSession && (
-            <>
-              {isAdmin && (
-                <div ref={adminControlsRef} style={{ marginTop: '1rem', background: 'color-mix(in srgb, var(--theme-danger) 8%, var(--theme-surface))', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-danger) 24%, white)', overflow: 'hidden', boxShadow: adminControlsOpen ? 'var(--theme-card-shadow)' : 'none', transition: 'all 0.25s ease' }}>
-                  <button
-                    type="button"
-                    onClick={handleToggleAdminControls}
-                    style={{
-                      width: '100%',
-                      padding: '1rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      background: adminControlsOpen ? 'color-mix(in srgb, var(--theme-danger) 12%, white)' : 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'background 0.25s ease',
-                    }}
-                  >
-                    <strong style={{ color: 'var(--theme-danger-strong)' }}>Admin Controls</strong>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--theme-danger-strong)', fontSize: '0.875rem', fontWeight: '600' }}>
-                      {adminControlsOpen ? 'Hide' : 'Show'}
-                      <span style={{ display: 'inline-block', transform: adminControlsOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.25s ease' }}>⌄</span>
-                    </span>
-                  </button>
+            <CalendarAdmin
+              selectedSession={selectedSession}
+              user={user}
+              token={token}
+              onSessionUpdate={(updatedSession) => {
+                setCalendarEventCost(updatedSession.session_cost != null ? updatedSession.session_cost.toString() : '')
+                setPaidBy(updatedSession.paid_by || '')
+                setMaximumCapacity((updatedSession.maximum_capacity || 100).toString())
+                setPaymentInfoSaved(Boolean(updatedSession.session_cost != null && updatedSession.paid_by))
+                refreshSelectedDateData(updatedSession)
+              }}
+              onPaymentRequest={() => {
+                refreshSelectedDateData(selectedSession)
+              }}
+              onRefreshData={refreshSelectedDateData}
+            />
+          )}
+          
+          <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
+            <strong>Your Selection</strong>
+            <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
+              <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
+              <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Tentative</button>
+              <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
+            </div>
+            {!user && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)' }}>Log in to vote your availability.</p>}
+            {user && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability for past events.</p>}
+            {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
+              <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>
+                Maximum capacity reached. Available is temporarily disabled until a slot opens up.
+              </p>
+            )}
+            {availabilityError && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)', fontSize: '0.875rem' }}>{availabilityError}</p>}
+          </div>
 
-                  <div style={{ maxHeight: adminControlsOpen ? '1200px' : '0', opacity: adminControlsOpen ? 1 : 0, overflow: 'hidden', transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
-                    <div style={{ padding: adminControlsOpen ? '0 1rem 1rem 1rem' : '0 1rem', transform: adminControlsOpen ? 'translateY(0)' : 'translateY(-8px)', transition: 'padding 0.25s ease, transform 0.25s ease' }}>
-                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid var(--theme-border)' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Payment Information</div>
-                        <div style={{ marginBottom: '0.75rem' }}>
-                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', color: 'var(--theme-text)' }}>
-                              <input
-                                type="radio"
-                                name="costType"
-                                value="Total"
-                                checked={calendarEventCostType === 'Total'}
-                                onChange={(e) => {
-                                  setCalendarEventCostType(e.target.value)
-                                  setPaymentInfoSaved(false)
-                                }}
-                                disabled={selectedSession?.payment_requested}
-                                style={{ cursor: selectedSession?.payment_requested ? 'not-allowed' : 'pointer' }}
-                              />
-                              Total Event Cost
-                            </label>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', color: 'var(--theme-text)' }}>
-                              <input
-                                type="radio"
-                                name="costType"
-                                value="Individual"
-                                checked={calendarEventCostType === 'Individual'}
-                                onChange={(e) => {
-                                  setCalendarEventCostType(e.target.value)
-                                  setPaymentInfoSaved(false)
-                                }}
-                                disabled={selectedSession?.payment_requested}
-                                style={{ cursor: selectedSession?.payment_requested ? 'not-allowed' : 'pointer' }}
-                              />
-                              Per Person Cost
-                            </label>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
-                          <div style={{ flex: '0 0 100px' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Amount (£)</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={calendarEventCost}
-                              onChange={(e) => {
-                                setCalendarEventCost(e.target.value)
-                                setPaymentInfoSaved(false)
-                              }}
-                              placeholder="0.00"
-                              disabled={selectedSession?.payment_requested}
-                              style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem', opacity: selectedSession?.payment_requested ? 0.6 : 1, cursor: selectedSession?.payment_requested ? 'not-allowed' : 'text' }}
-                            />
-                          </div>
-                          <div style={{ flex: '1' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Paid By</label>
-                            {selectedSession?.payment_requested ? (
-                              <input
-                                type="text"
-                                value={selectedSession.paid_by_name || selectedSession.paid_by || 'Not set'}
-                                disabled
-                                style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', fontSize: '0.75rem', opacity: 0.6, cursor: 'not-allowed', backgroundColor: 'var(--theme-surface-alt)', color: 'var(--theme-text)' }}
-                              />
-                            ) : (
-                              <select
-                                value={paidBy}
-                                onChange={(e) => {
-                                  setPaidBy(e.target.value)
-                                  setPaymentInfoSaved(false)
-                                }}
-                                style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem', cursor: 'pointer' }}
-                              >
-                                <option value="">Select user...</option>
-                                {allUsers.map((u) => (
-                                  <option key={u.email} value={u.email}>{u.full_name}</option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        </div>
-                        {!selectedSession?.payment_requested && paidBy && !hasPaidByBankDetails && !adminUsersLoading && (
-                          <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: 'var(--theme-warning-strong)', background: 'var(--theme-warning-soft)', border: '1px solid color-mix(in srgb, var(--theme-warning) 28%, white)', borderRadius: '0.375rem', padding: '0.625rem 0.75rem' }}>
-                            Bank Details not available for the user
-                          </div>
-                        )}
-                        {adminUsersLoading && <div style={{ marginBottom: '0.75rem', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Loading users...</div>}
-                        {hasPaidByBankDetails && (
-                          <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface-alt)', borderRadius: '0.375rem', border: '1px solid var(--theme-border)' }}>
-                            <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-heading)' }}>Bank Details</div>
-                            <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.8125rem', color: 'var(--theme-text)' }}>
-                              <div><strong>Account Holder:</strong> {paidByBankDetails.full_name || 'Unknown User'}</div>
-                              <div><strong>Bank Name:</strong> {paidByBankDetails.bank_name}</div>
-                              <div><strong>Sort Code:</strong> {paidByBankDetails.sort_code}</div>
-                              <div><strong>Account Number:</strong> {paidByBankDetails.account_number}</div>
-                            </div>
-                          </div>
-                        )}
-                        {!selectedSession?.payment_requested && (
-                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                            <button onClick={handleSavePaymentInfo} disabled={!canSavePaymentInfo} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: !canSavePaymentInfo ? 'var(--theme-border)' : paymentInfoSaved ? 'var(--theme-success)' : 'var(--theme-accent)', color: !canSavePaymentInfo ? 'var(--theme-text-muted)' : 'var(--theme-accent-contrast)', border: 'none', cursor: !canSavePaymentInfo ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
-                              {paymentInfoSaved ? '✓ Saved - Click to Update' : 'Save Payment Info'}
-                            </button>
-                            <button onClick={handleRequestPayment} disabled={!paymentInfoSaved || !hasSelectedSessionPassed} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'var(--theme-border)' : 'var(--theme-danger)', color: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'var(--theme-text-muted)' : 'var(--theme-danger-contrast)', border: 'none', cursor: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
-                              {!hasSelectedSessionPassed ? 'Available after session' : !paymentInfoSaved ? 'Save payment info first' : '⚠️ Request Payment'}
-                            </button>
-                          </div>
-                        )}
-                        {selectedSession?.payment_requested && (
-                          <div style={{ padding: '0.5rem', background: 'var(--theme-success-soft)', borderRadius: '0.375rem', fontSize: '0.875rem', color: 'var(--theme-success-strong)', fontWeight: '600', textAlign: 'center' }}>
-                            ✓ Payment Requested
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', opacity: (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 0.6 : 1, pointerEvents: (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 'none' : 'auto' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Set Member Availability</div>
-                        <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
-                          <div style={{ flex: '0 0 140px' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Availability</label>
-                            <select value={adminSelectedStatus} onChange={(e) => setAdminSelectedStatus(e.target.value)} disabled={(selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}>
-                              <option value="available">Available</option>
-                              <option value="tentative">Tentative</option>
-                              <option value="not_available">Unavailable</option>
-                            </select>
-                          </div>
-                          <div style={{ flex: '1' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Select Member</label>
-                            <select value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)} disabled={(selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}>
-                              <option value="">Select a user...</option>
-                              {allUsers.map((u) => (
-                                <option key={u.email} value={u.email}>{u.full_name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                        <button onClick={handleAdminSetAvailability} disabled={!selectedUserEmail || (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating || adminAvailableBlockedByCapacity} style={{ width: '100%', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!selectedUserEmail || (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'var(--theme-border)' : 'var(--theme-accent)', color: (!selectedUserEmail || (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'var(--theme-text-muted)' : 'var(--theme-accent-contrast)', border: 'none', cursor: (!selectedUserEmail || (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating || adminAvailableBlockedByCapacity) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
-                          {adminAvailabilityUpdating ? 'Updating...' : 'Set Availability'}
-                        </button>
-                        {adminAvailableBlockedByCapacity && !selectedSession?.payment_requested && (
-                          <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-warning-strong)' }}>
-                            Capacity is reached for this session, so no more players can be added as Available.
-                          </p>
-                        )}
-                        {adminAvailabilityError && <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-danger)' }}>{adminAvailabilityError}</p>}
-                        <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                          {(selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 'Cannot change availability after payment request.' : 'Admins can add or modify member availability.'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
-                <strong>Your Selection</strong>
-                <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
-                  <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
-                  <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Tentative</button>
-                  <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
-                </div>
-                {!user && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)' }}>Log in to vote your availability.</p>}
-                {user && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability for past events.</p>}
-                {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
-                  <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>
-                    Maximum capacity reached. Available is temporarily disabled until a slot opens up.
-                  </p>
-                )}
-                {availabilityError && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)', fontSize: '0.875rem' }}>{availabilityError}</p>}
+          {optionSectionEnabled && (
+            <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
+              <strong>Event Options</strong>
+              <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.75rem' }}>
+                <button
+                  onClick={() => handleOptionSelection('A')}
+                  disabled={!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating}
+                  style={{
+                    padding: '0.85rem 0.75rem',
+                    borderRadius: '0.5rem',
+                    minWidth: 0,
+                    minHeight: '48px',
+                    width: '100%',
+                    border: currentSelectedOptionChoice === 'A' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                    background: currentSelectedOptionChoice === 'A' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
+                    color: 'var(--theme-text)',
+                    fontWeight: currentSelectedOptionChoice === 'A' ? 700 : 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    boxSizing: 'border-box',
+                    cursor: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating) ? 'not-allowed' : 'pointer',
+                    opacity: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested) ? 0.6 : 1,
+                  }}
+                >
+                  {selectedSession?.option_a_text}
+                </button>
+                <button
+                  onClick={() => handleOptionSelection('B')}
+                  disabled={!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating}
+                  style={{
+                    padding: '0.85rem 0.75rem',
+                    borderRadius: '0.5rem',
+                    minWidth: 0,
+                    minHeight: '48px',
+                    width: '100%',
+                    border: currentSelectedOptionChoice === 'B' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                    background: currentSelectedOptionChoice === 'B' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
+                    color: 'var(--theme-text)',
+                    fontWeight: currentSelectedOptionChoice === 'B' ? 700 : 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    boxSizing: 'border-box',
+                    cursor: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested || optionSelectionUpdating) ? 'not-allowed' : 'pointer',
+                    opacity: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested) ? 0.6 : 1,
+                  }}
+                >
+                  {selectedSession?.option_b_text}
+                </button>
               </div>
+            </div>
+          )}
 
               {optionSectionEnabled && (
                 <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
@@ -1343,10 +1138,10 @@ export default function Calendar({ user }) {
                         minWidth: 0,
                         minHeight: '48px',
                         width: '100%',
-                        border: selectedOptionChoice === 'A' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
-                        background: selectedOptionChoice === 'A' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
+                        border: currentSelectedOptionChoice === 'A' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                        background: currentSelectedOptionChoice === 'A' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
                         color: 'var(--theme-text)',
-                        fontWeight: selectedOptionChoice === 'A' ? 700 : 500,
+                        fontWeight: currentSelectedOptionChoice === 'A' ? 700 : 500,
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -1356,7 +1151,7 @@ export default function Calendar({ user }) {
                         opacity: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested) ? 0.6 : 1,
                       }}
                     >
-                      {selectedSession.option_a_text}
+                      {selectedSession?.option_a_text}
                     </button>
                     <button
                       onClick={() => handleOptionSelection('B')}
@@ -1367,10 +1162,10 @@ export default function Calendar({ user }) {
                         minWidth: 0,
                         minHeight: '48px',
                         width: '100%',
-                        border: selectedOptionChoice === 'B' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
-                        background: selectedOptionChoice === 'B' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
+                        border: currentSelectedOptionChoice === 'B' ? '2px solid var(--theme-accent)' : '1px solid var(--theme-border)',
+                        background: currentSelectedOptionChoice === 'B' ? 'color-mix(in srgb, var(--theme-accent) 12%, white)' : 'var(--theme-surface)',
                         color: 'var(--theme-text)',
-                        fontWeight: selectedOptionChoice === 'B' ? 700 : 500,
+                        fontWeight: currentSelectedOptionChoice === 'B' ? 700 : 500,
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -1380,7 +1175,7 @@ export default function Calendar({ user }) {
                         opacity: (!user || selectedStatus !== 'available' || hasSelectedSessionPassed || selectedSession?.payment_requested) ? 0.6 : 1,
                       }}
                     >
-                      {selectedSession.option_b_text}
+                      {selectedSession?.option_b_text}
                     </button>
                   </div>
                   {selectedStatus !== 'available' && (
@@ -1389,11 +1184,11 @@ export default function Calendar({ user }) {
                   {(voteSummary?.option_a?.length || voteSummary?.option_b?.length) > 0 && (
                     <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.75rem' }}>
                       <div>
-                        <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.35rem' }}>{selectedSession.option_a_text}</div>
+                        <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.35rem' }}>{selectedSession?.option_a_text}</div>
                         <div style={{ color: 'var(--theme-text)' }}>{(voteSummary?.option_a || []).length > 0 ? formatDisplayNames(voteSummary.option_a || []) : 'No selections yet'}</div>
                       </div>
                       <div>
-                        <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.35rem' }}>{selectedSession.option_b_text}</div>
+                        <div style={{ fontWeight: '600', color: 'var(--theme-heading)', marginBottom: '0.35rem' }}>{selectedSession?.option_b_text}</div>
                         <div style={{ color: 'var(--theme-text)' }}>{(voteSummary?.option_b || []).length > 0 ? formatDisplayNames(voteSummary.option_b || []) : 'No selections yet'}</div>
                       </div>
                     </div>
@@ -1448,7 +1243,7 @@ export default function Calendar({ user }) {
               <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <strong>Member Availability</strong>
-                  {!isCalendarEventPast(selectedSession.date, selectedSession?.time) && (
+                  {selectedSession && !isCalendarEventPast(selectedSession.date, selectedSession?.time) && (
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', fontWeight: '700', color: sessionRemainingSlots > 0 ? 'var(--theme-success-strong)' : 'var(--theme-warning-strong)' }}>
                     <span style={{ display: 'inline-flex', width: '1.5rem', height: '1.5rem', borderRadius: '999px', alignItems: 'center', justifyContent: 'center', background: sessionRemainingSlots > 0 ? 'var(--theme-success-soft)' : 'var(--theme-warning-soft)', border: `1px solid ${sessionRemainingSlots > 0 ? 'color-mix(in srgb, var(--theme-success) 28%, white)' : 'color-mix(in srgb, var(--theme-warning) 28%, white)'}` }}>+</span>
                     <span>{sessionRemainingSlots} slot{sessionRemainingSlots === 1 ? '' : 's'} available</span>
@@ -1509,10 +1304,8 @@ export default function Calendar({ user }) {
                   </div>
                 </div>
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
-    </div>
-  )
-}
+   
