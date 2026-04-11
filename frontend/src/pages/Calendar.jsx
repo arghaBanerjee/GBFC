@@ -29,6 +29,7 @@ export default function Calendar({ user }) {
   const [selectedUserEmail, setSelectedUserEmail] = useState('')
   const [adminSelectedStatus, setAdminSelectedStatus] = useState('available')
   const [calendarEventCost, setCalendarEventCost] = useState('')
+  const [calendarEventCostType, setCalendarEventCostType] = useState('Total')
   const [paidBy, setPaidBy] = useState('')
   const [maximumCapacity, setMaximumCapacity] = useState('100')
   const [payments, setPayments] = useState({})
@@ -490,7 +491,7 @@ export default function Calendar({ user }) {
         session_cost: calendarEventCost ? parseFloat(calendarEventCost) : null,
         paid_by: paidBy || null,
         maximum_capacity: maximumCapacity ? parseInt(maximumCapacity, 10) : 100,
-        cost_type: selectedSession.cost_type,
+        cost_type: calendarEventCostType,
       }),
     })
       .then(r => {
@@ -939,12 +940,14 @@ export default function Calendar({ user }) {
   useEffect(() => {
     if (selectedSession) {
       setCalendarEventCost(selectedSession.session_cost != null ? selectedSession.session_cost.toString() : '')
+      setCalendarEventCostType(selectedSession.cost_type || 'Total')
       setPaidBy(selectedSession.paid_by || '')
       setMaximumCapacity((selectedSession.maximum_capacity || 100).toString())
       // Check if payment info is already saved (both fields have values in DB)
       setPaymentInfoSaved(Boolean(selectedSession.session_cost != null && selectedSession.paid_by))
     } else {
       setCalendarEventCost('')
+      setCalendarEventCostType('Total')
       setPaidBy('')
       setMaximumCapacity('100')
       setPaymentInfoSaved(false)
@@ -1161,9 +1164,43 @@ export default function Calendar({ user }) {
                     <div style={{ padding: adminControlsOpen ? '0 1rem 1rem 1rem' : '0 1rem', transform: adminControlsOpen ? 'translateY(0)' : 'translateY(-8px)', transition: 'padding 0.25s ease, transform 0.25s ease' }}>
                       <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid var(--theme-border)' }}>
                         <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Payment Information</div>
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', color: 'var(--theme-text)' }}>
+                              <input
+                                type="radio"
+                                name="costType"
+                                value="Total"
+                                checked={calendarEventCostType === 'Total'}
+                                onChange={(e) => {
+                                  setCalendarEventCostType(e.target.value)
+                                  setPaymentInfoSaved(false)
+                                }}
+                                disabled={selectedSession?.payment_requested}
+                                style={{ cursor: selectedSession?.payment_requested ? 'not-allowed' : 'pointer' }}
+                              />
+                              Total Event Cost
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', color: 'var(--theme-text)' }}>
+                              <input
+                                type="radio"
+                                name="costType"
+                                value="Individual"
+                                checked={calendarEventCostType === 'Individual'}
+                                onChange={(e) => {
+                                  setCalendarEventCostType(e.target.value)
+                                  setPaymentInfoSaved(false)
+                                }}
+                                disabled={selectedSession?.payment_requested}
+                                style={{ cursor: selectedSession?.payment_requested ? 'not-allowed' : 'pointer' }}
+                              />
+                              Per Person Cost
+                            </label>
+                          </div>
+                        </div>
                         <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
                           <div style={{ flex: '0 0 100px' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Event Cost (£)</label>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Amount (£)</label>
                             <input
                               type="number"
                               step="0.01"
@@ -1238,7 +1275,7 @@ export default function Calendar({ user }) {
                       </div>
 
                       <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', opacity: (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 0.6 : 1, pointerEvents: (selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 'none' : 'auto' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Set Player Availability</div>
+                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Set Member Availability</div>
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
                           <div style={{ flex: '0 0 140px' }}>
                             <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Availability</label>
@@ -1249,7 +1286,7 @@ export default function Calendar({ user }) {
                             </select>
                           </div>
                           <div style={{ flex: '1' }}>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Select Player</label>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Select Member</label>
                             <select value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)} disabled={(selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') || adminAvailabilityUpdating} style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}>
                               <option value="">Select a user...</option>
                               {allUsers.map((u) => (
@@ -1268,7 +1305,7 @@ export default function Calendar({ user }) {
                         )}
                         {adminAvailabilityError && <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-danger)' }}>{adminAvailabilityError}</p>}
                         <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                          {(selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 'Cannot change availability after payment request.' : 'Admins can add or modify any player\'s availability.'}
+                          {(selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 'Cannot change availability after payment request.' : 'Admins can add or modify member availability.'}
                         </p>
                       </div>
                     </div>
