@@ -1421,7 +1421,7 @@ export default function Calendar({ user }) {
                       transition: 'all 0.2s' 
                     }}
                   >
-                    {adminPaymentUpdating ? 'Updating...' : 'Set Payment Confirmation'}
+                    {adminPaymentUpdating ? 'Updating...' : 'Confirm Payment'}
                   </button>
                   {adminPaymentError && <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-danger)' }}>{adminPaymentError}</p>}
                   <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
