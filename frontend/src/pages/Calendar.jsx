@@ -322,7 +322,7 @@ export default function Calendar({ user }) {
     const dateStr = selectedSession.date
     const calendarEventAvailabilityKey = String(selectedSession.id)
     if (isCalendarEventPast(dateStr, selectedSession?.time)) {
-      setAvailabilityError('Cannot change availability after session time has passed.')
+      setAvailabilityError('Cannot change availability for past session.')
       return
     }
     const currentStatus = selectedStatus
@@ -1263,7 +1263,7 @@ export default function Calendar({ user }) {
                               {paymentInfoSaved ? '✓ Saved - Click to Update' : 'Save Payment Info'}
                             </button>
                             <button onClick={handleRequestPayment} disabled={!paymentInfoSaved || !hasSelectedSessionPassed} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'var(--theme-border)' : 'var(--theme-danger)', color: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'var(--theme-text-muted)' : 'var(--theme-danger-contrast)', border: 'none', cursor: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
-                              {!hasSelectedSessionPassed ? 'Available after session' : !paymentInfoSaved ? 'Save payment info first' : '⚠️ Request Payment'}
+                              {!hasSelectedSessionPassed ? 'Request Payment After Event' : !paymentInfoSaved ? 'Save Payment Info First' : '⚠️ Request Payment'}
                             </button>
                           </div>
                         )}
