@@ -1195,7 +1195,7 @@ export default function Admin({ user, loading }) {
                 </div>
             </div>
             <div>
-                <label>Cost</label>
+                <label>Amount (£)</label>
                 <input type="number" min="0" step="0.01" value={calendarEventSessionCost} onChange={(e) => setCalendarEventSessionCost(e.target.value)} style={{ width: '100%' }} />
             </div>
             <div>
