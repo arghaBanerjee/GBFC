@@ -1483,7 +1483,7 @@ export default function Admin({ user, loading }) {
                       {u.email}
                     </div>
                     <div style={{ color: '#6b7280', fontSize: '0.95rem', marginBottom: '0.75rem' }}>
-                      <strong>Birthday:</strong> {formatBirthday(u.birthday)}
+                      Birthday {formatBirthday(u.birthday)}
                     </div>
                     {isUpcomingBirthdayUser && (
                       <div style={{
@@ -1504,17 +1504,15 @@ export default function Admin({ user, loading }) {
                     )}
                     <div style={{ marginBottom: '0.75rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <span style={{ fontSize: '0.9rem', fontWeight: '600', color: '#374151', minWidth: '5rem' }}>
-                          User:
-                        </span>
-                        <span style={{ fontSize: '0.85rem', color: '#6b7280', minWidth: '3rem' }}>Member</span>
+                        
+                        <span style={{ fontSize: '0.95rem', fontWeight: u.user_type === 'member' ? 'bold' : 'normal', color: '#6b7280', minWidth: '4.5rem' }}>Member </span>
                         <button
                           type="button"
                           onClick={() => handleUpdateUserType(u.email, u.user_type === 'admin' ? 'member' : 'admin')}
                           disabled={u.email === user?.email}
                           style={{
                             position: 'relative',
-                            width: '3rem',
+                            width: '4rem',
                             height: '1.5rem',
                             backgroundColor: u.user_type === 'admin' ? '#f97316' : '#3b82f6',
                             border: 'none',
@@ -1528,7 +1526,7 @@ export default function Admin({ user, loading }) {
                             style={{
                               position: 'absolute',
                               top: '0.125rem',
-                              left: u.user_type === 'admin' ? '1.625rem' : '0.125rem',
+                              left: u.user_type === 'admin' ? '2.625rem' : '0.125rem',
                               width: '1.25rem',
                               height: '1.25rem',
                               backgroundColor: 'white',
@@ -1538,22 +1536,20 @@ export default function Admin({ user, loading }) {
                             }}
                           />
                         </button>
-                        <span style={{ fontSize: '0.85rem', color: '#6b7280', minWidth: '3rem' }}>Admin</span>
+                        <span style={{ fontSize: '0.95rem', fontWeight: u.user_type === 'admin' ? 'bold' : 'normal', color: '#6b7280', minWidth: '5rem' }}>Admin</span>
                       </div>
                     </div>
                     <div style={{ marginBottom: '0.75rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <span style={{ fontSize: '0.9rem', fontWeight: '600', color: '#374151', minWidth: '5rem' }}>
-                          Payment:
-                        </span>
-                        <span style={{ fontSize: '0.85rem', color: '#6b7280', minWidth: '3rem' }}>Daily</span>
+                        
+                        <span style={{ fontSize: '0.95rem', fontWeight: u.payment_mode === 'Daily' ? 'bold' : 'normal', color: '#6b7280', minWidth: '4.5rem' }}>Pay Daily</span>
                         <button
                           type="button"
                           onClick={() => handleUpdateUserPaymentMode(u.email, u.payment_mode === 'Monthly' ? 'Daily' : 'Monthly')}
                           disabled={u.email === user?.email}
                           style={{
                             position: 'relative',
-                            width: '3rem',
+                            width: '4rem',
                             height: '1.5rem',
                             backgroundColor: u.payment_mode === 'Monthly' ? '#10b981' : '#06b6d4',
                             border: 'none',
@@ -1567,7 +1563,7 @@ export default function Admin({ user, loading }) {
                             style={{
                               position: 'absolute',
                               top: '0.125rem',
-                              left: u.payment_mode === 'Monthly' ? '1.625rem' : '0.125rem',
+                              left: u.payment_mode === 'Monthly' ? '2.625rem' : '0.125rem',
                               width: '1.25rem',
                               height: '1.25rem',
                               backgroundColor: 'white',
@@ -1577,7 +1573,7 @@ export default function Admin({ user, loading }) {
                             }}
                           />
                         </button>
-                        <span style={{ fontSize: '0.85rem', color: '#6b7280', minWidth: '3rem' }}>Monthly</span>
+                        <span style={{ fontSize: '0.95rem', fontWeight: u.payment_mode === 'Monthly' ? 'bold' : 'normal', color: '#6b7280', minWidth: '5rem' }}>Pay Monthly</span>
                       </div>
                     </div>
                     {userTypeStatusByEmail[u.email] && (
