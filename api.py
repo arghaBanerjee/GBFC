@@ -5116,6 +5116,91 @@ def confirm_calendar_event_payment_by_id(session_id: int, data: dict, current_us
             )
         return {"message": "Payment confirmation updated", "paid": paid}
 
+@app.post("/api/calendar/events/id/{session_id}/admin-payment")
+def admin_confirm_calendar_event_payment_by_id(session_id: int, data: dict, current_user: dict = Depends(get_current_user)):
+    """Admin endpoint to confirm payment for another user"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    
+    user_email = data.get("user_email")
+    paid = data.get("paid", False)
+    
+    if not user_email:
+        raise HTTPException(status_code=400, detail="user_email is required")
+    
+    with get_connection() as conn:
+        cur = conn.cursor()
+        session = get_practice_session_with_capacity_by_id(cur, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+
+        cur.execute(
+            f"SELECT id, date, payment_requested, time, location, event_type, event_title FROM practice_sessions WHERE id = {PLACEHOLDER}",
+            (session_id,)
+        )
+        session = cur.fetchone()
+        if not session:
+            raise HTTPException(status_code=404, detail="Practice session not found")
+
+        if not session["payment_requested"]:
+            raise HTTPException(status_code=400, detail="Payment has not been requested for this session")
+
+        # Check if target user is available for this session (check both session_id and date for legacy compatibility)
+        cur.execute(
+            f"SELECT status FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}",
+            (session_id, user_email),
+        )
+        availability = cur.fetchone()
+        
+        # If no session_id-based availability, check date-based availability for legacy compatibility
+        if not availability:
+            cur.execute(
+                f"SELECT status FROM practice_availability WHERE date = {PLACEHOLDER} AND user_email = {PLACEHOLDER} AND practice_session_id IS NULL",
+                (session["date"], user_email),
+            )
+            availability = cur.fetchone()
+        
+        if not availability or availability["status"] != "available":
+            raise HTTPException(status_code=400, detail=f"User {user_email} must be marked as available for this session to confirm payment")
+
+        # Get user details for notification
+        cur.execute(
+            f"SELECT full_name FROM users WHERE email = {PLACEHOLDER}",
+            (user_email,)
+        )
+        user_result = cur.fetchone()
+        user_name = user_result["full_name"] if user_result else user_email
+
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (practice_session_id, user_email) DO UPDATE SET date = EXCLUDED.date, paid = EXCLUDED.paid",
+                (session_id, session["date"], user_email, paid),
+            )
+        else:
+            cur.execute(
+                f"INSERT OR REPLACE INTO practice_payments (id, practice_session_id, date, user_email, paid) VALUES ((SELECT id FROM practice_payments WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}), {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                (session_id, user_email, session_id, session["date"], user_email, 1 if paid else 0),
+            )
+
+        conn.commit()
+
+        if paid:
+            deliver_notification(
+                "payment_confirmed",
+                {
+                    "session_id": session["id"],
+                    "date": session["date"],
+                    "time": session["time"],
+                    "location": session["location"],
+                    "event_type": session["event_type"],
+                    "event_title": session["event_title"],
+                    "member_name": user_name,
+                    "full_name": user_name,
+                },
+                related_date=session["date"],
+            )
+        return {"message": "Payment confirmation updated", "paid": paid}
+
 @app.post("/api/calendar/events/id/{session_id}/availability")
 def set_calendar_event_availability_by_session_id(session_id: int, status: dict, current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:

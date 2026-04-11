@@ -43,6 +43,13 @@ export default function Calendar({ user }) {
   const [availabilityError, setAvailabilityError] = useState('')
   const [adminAvailabilityError, setAdminAvailabilityError] = useState('')
   const [optionSelectionUpdating, setOptionSelectionUpdating] = useState(false)
+  
+  // Payment confirmation state
+  const [adminPaymentStatus, setAdminPaymentStatus] = useState('paid')
+  const [adminPaymentUserEmail, setAdminPaymentUserEmail] = useState('')
+  const [adminPaymentUpdating, setAdminPaymentUpdating] = useState(false)
+  const [adminPaymentError, setAdminPaymentError] = useState('')
+  
   const token = localStorage.getItem('token')
 
   const eventTypeLabelMap = {
@@ -673,6 +680,46 @@ export default function Calendar({ user }) {
       .finally(() => setAdminAvailabilityUpdating(false))
   }
 
+  const handleAdminSetPaymentConfirmation = () => {
+    if (!adminPaymentUserEmail || adminPaymentUpdating || !selectedSession) {
+      return
+    }
+    setAdminPaymentError('')
+    setAdminPaymentUpdating(true)
+    
+    fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/admin-payment`), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        user_email: adminPaymentUserEmail,
+        paid: adminPaymentStatus === 'paid'
+      }),
+    })
+      .then(r => {
+        if (!r.ok) {
+          return r.json().then(err => {
+            throw new Error(err.detail || 'Failed to set payment confirmation')
+          })
+        }
+        return r.json()
+      })
+      .then(() => {
+        // Reset form
+        setAdminPaymentUserEmail('')
+        setAdminPaymentStatus('paid')
+        // Refresh data - both availability and payments to show green ticks properly
+        refreshSelectedDateData(selectedSession, { refreshAvailabilityMap: true, refreshPayments: true })
+      })
+      .catch(err => {
+        setAdminPaymentError(err.message || 'Failed to set payment confirmation')
+        console.error('Failed to set payment confirmation:', err)
+      })
+      .finally(() => setAdminPaymentUpdating(false))
+  }
+
   const voteBtnStyle = (btnStatus) => {
     const isActive = selectedStatus === btnStatus
 
@@ -1163,7 +1210,7 @@ export default function Calendar({ user }) {
                   <div style={{ maxHeight: adminControlsOpen ? '1200px' : '0', opacity: adminControlsOpen ? 1 : 0, overflow: 'hidden', transition: 'max-height 0.35s ease, opacity 0.25s ease' }}>
                     <div style={{ padding: adminControlsOpen ? '0 1rem 1rem 1rem' : '0 1rem', transform: adminControlsOpen ? 'translateY(0)' : 'translateY(-8px)', transition: 'padding 0.25s ease, transform 0.25s ease' }}>
                       <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid var(--theme-border)' }}>
-                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Payment Information</div>
+                        <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Request Payment</div>
                         <div style={{ marginBottom: '0.75rem' }}>
                           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', color: 'var(--theme-text)' }}>
@@ -1308,6 +1355,69 @@ export default function Calendar({ user }) {
                           {(selectedSession?.payment_requested && selectedSession?.cost_type !== 'Individual') ? 'Cannot change availability after payment request.' : 'Admins can add or modify member availability.'}
                         </p>
                       </div>
+                      <div style={{ marginTop: '1.25rem', padding: '1rem', background: 'var(--theme-surface)', borderRadius: '0.75rem', border: '1px solid var(--theme-border)', opacity: !selectedSession?.payment_requested ? 0.6 : 1, pointerEvents: !selectedSession?.payment_requested ? 'none' : 'auto' }}>
+                  <div style={{ fontWeight: '600', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-heading)' }}>Confirm Member Payment</div>
+                  <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem', alignItems: 'flex-end' }}>
+                    <div style={{ flex: '0 0 140px' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Payment</label>
+                      <select 
+                        value={adminPaymentStatus} 
+                        onChange={(e) => setAdminPaymentStatus(e.target.value)} 
+                        disabled={!selectedSession?.payment_requested || adminPaymentUpdating} 
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}
+                      >
+                        <option value="paid">Paid</option>
+                        <option value="not_paid">Not Paid</option>
+                      </select>
+                    </div>
+                    <div style={{ flex: '1' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Select Member</label>
+                      <select 
+                        value={adminPaymentUserEmail} 
+                        onChange={(e) => setAdminPaymentUserEmail(e.target.value)} 
+                        disabled={!selectedSession?.payment_requested || adminPaymentUpdating} 
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)', fontSize: '0.875rem' }}
+                      >
+                        <option value="">Select a user...</option>
+                        {allUsers
+                          .filter(u => {
+                            // Check if user is marked as available for this event (required for payment confirmation)
+                            const userName = u.full_name
+                            const userEmail = u.email
+                            return (
+                              voteSummary?.available?.includes(userName) ||
+                              voteSummary?.available?.includes(userEmail)
+                            )
+                          })
+                          .map((u) => (
+                            <option key={u.email} value={u.email}>{u.full_name}</option>
+                          ))}
+                      </select>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={handleAdminSetPaymentConfirmation} 
+                    disabled={!adminPaymentUserEmail || !selectedSession?.payment_requested || adminPaymentUpdating} 
+                    style={{ 
+                      width: '100%', 
+                      padding: '0.5rem 1rem', 
+                      borderRadius: '0.375rem', 
+                      background: (!adminPaymentUserEmail || !selectedSession?.payment_requested || adminPaymentUpdating) ? 'var(--theme-border)' : 'var(--theme-accent)', 
+                      color: (!adminPaymentUserEmail || !selectedSession?.payment_requested || adminPaymentUpdating) ? 'var(--theme-text-muted)' : 'var(--theme-accent-contrast)', 
+                      border: 'none', 
+                      cursor: (!adminPaymentUserEmail || !selectedSession?.payment_requested || adminPaymentUpdating) ? 'not-allowed' : 'pointer', 
+                      fontWeight: '600', 
+                      fontSize: '0.875rem', 
+                      transition: 'all 0.2s' 
+                    }}
+                  >
+                    {adminPaymentUpdating ? 'Updating...' : 'Set Payment Confirmation'}
+                  </button>
+                  {adminPaymentError && <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-danger)' }}>{adminPaymentError}</p>}
+                  <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                    {!selectedSession?.payment_requested ? 'Pay confirmation available after payment request.' : 'Admins can confirm member payments for events.'}
+                  </p>
+                </div>
                     </div>
                   </div>
                 </div>
