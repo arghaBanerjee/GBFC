@@ -1203,7 +1203,17 @@ export default function Calendar({ user }) {
                     <strong style={{ color: 'var(--theme-danger-strong)' }}>Admin Controls</strong>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--theme-danger-strong)', fontSize: '0.875rem', fontWeight: '600' }}>
                       {adminControlsOpen ? 'Hide' : 'Show'}
-                      <span style={{ display: 'inline-block', transform: adminControlsOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.25s ease' }}>⌄</span>
+                      <span style={{ 
+                        display: 'inline-block', 
+                        width: '0', 
+                        height: '0', 
+                        borderLeft: '6px solid transparent', 
+                        borderRight: '6px solid transparent', 
+                        borderTop: adminControlsOpen ? 'none' : '8px solid var(--theme-danger-strong)', 
+                        borderBottom: adminControlsOpen ? '8px solid var(--theme-danger-strong)' : 'none', 
+                        transition: 'transform 0.25s ease',
+                        transform: adminControlsOpen ? 'translateY(2px)' : 'translateY(-2px)'
+                      }} />
                     </span>
                   </button>
 
