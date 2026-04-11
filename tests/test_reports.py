@@ -257,21 +257,22 @@ def test_player_payment_report_generation():
     assert ws.cell(1, 3).value == "Event Title"
     assert ws.cell(1, 4).value == "Time"
     assert ws.cell(1, 5).value == "Place"
-    assert ws.cell(1, 6).value == "Total Cost (£)"
-    assert ws.cell(1, 7).value == "Paid By"
-    assert ws.cell(1, 8).value == "Payment Requested Date"
-    assert ws.cell(1, 9).value == "Player Name"
-    assert ws.cell(1, 10).value == "Availability"
-    assert ws.cell(1, 11).value == "Individual Amount (£)"
-    assert ws.cell(1, 12).value == "Paid"
-    assert ws.cell(1, 13).value == "Payment Acknowledgement Date"
+    assert ws.cell(1, 6).value == "Cost Type"
+    assert ws.cell(1, 7).value == "Amount (£)"
+    assert ws.cell(1, 8).value == "Paid By"
+    assert ws.cell(1, 9).value == "Payment Requested Date"
+    assert ws.cell(1, 10).value == "Player Name"
+    assert ws.cell(1, 11).value == "Availability"
+    assert ws.cell(1, 12).value == "Individual Amount (£)"
+    assert ws.cell(1, 13).value == "Paid"
+    assert ws.cell(1, 14).value == "Payment Acknowledgement Date"
     
     # Check that we have data rows
     assert ws.cell(2, 1).value is not None  # First data row
     assert ws.cell(2, 2).value is not None  # Event type
     assert ws.cell(2, 3).value is not None  # Event title
-    assert ws.cell(2, 9).value is not None  # Player name
-    assert ws.cell(2, 10).value is not None  # Availability status
+    assert ws.cell(2, 10).value is not None  # Player name
+    assert ws.cell(2, 11).value is not None  # Availability status
     
     print("✓ Player payment report generated successfully with correct format")
 
