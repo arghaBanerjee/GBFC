@@ -676,7 +676,7 @@ h1, h2, h3, h4, h5, h6 {
   .logo-club-name {
     display: inline;
     font-weight: 800;
-    font-size: 1.45rem;
+    font-size: 2rem;
     line-height: 1;
     color: var(--theme-shell-text);
     margin-right: 0;
@@ -716,7 +716,7 @@ h1, h2, h3, h4, h5, h6 {
   }
   
   .logo-club-name {
-    font-size: 0.85rem;
+    font-size: 1.4rem;
   }
   
   .social-icons {
