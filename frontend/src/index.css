@@ -42,10 +42,27 @@ html, body {
   overflow-x: hidden;
   max-width: 100%;
   width: 100%;
+  position: relative;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Chrome-specific fixes for iOS */
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  width: 100%;
+  min-width: 100%;
+  max-width: 100vw;
 }
 
 .container {
@@ -56,6 +73,35 @@ html, body {
   margin-left: auto;
   margin-right: auto;
   overflow-x: hidden;
+  position: relative;
+}
+
+/* Additional Chrome on iOS fixes */
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Prevent any element from causing horizontal scroll */
+img, video, canvas, svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Fix for Chrome on iOS horizontal scroll */
+@media screen and (max-width: 480px) {
+  html, body {
+    width: 100vw;
+    min-width: 100vw;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  
+  * {
+    max-width: 100%;
+  }
 }
 
 body[data-theme='nordic_neutral'] {
