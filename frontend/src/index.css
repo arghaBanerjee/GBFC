@@ -63,6 +63,7 @@ body {
   width: 100%;
   min-width: 100%;
   max-width: 100vw;
+  padding-top: 80px;
 }
 
 .container {
@@ -248,8 +249,10 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ===== NAVIGATION ===== */
 .top-nav {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 1000;
   background: linear-gradient(135deg, var(--theme-shell), color-mix(in srgb, var(--theme-shell) 72%, var(--theme-secondary) 28%));
   border-bottom: 1px solid var(--theme-shell-border);
