@@ -467,7 +467,7 @@ export default function Profile({ user, setUser, loading }) {
           </label>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '1.125rem', color: 'var(--theme-text-muted)' }}>{user.email}</span>
-            <span className="theme-subtle-text" style={{ fontSize: '0.75rem', fontStyle: 'italic' }}>Read-only</span>
+            <span className="theme-subtle-text" style={{ fontSize: '0.75rem', fontStyle: 'italic' }}></span>
           </div>
         </div>
 
