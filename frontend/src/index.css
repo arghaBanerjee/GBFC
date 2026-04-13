@@ -105,16 +105,14 @@ img, video, canvas, svg {
   }
 }
 
-/* Stack signup and forgot password buttons on mobile */
-@media (max-width: 640px) {
-  .login-buttons-container {
-    flex-direction: column !important;
-  }
-  
-  .login-buttons-container button {
-    width: 100% !important;
-    flex: none !important;
-  }
+/* Stack signup and forgot password buttons on all screen sizes */
+.login-buttons-container {
+  flex-direction: column !important;
+}
+
+.login-buttons-container button {
+  width: 100% !important;
+  flex: none !important;
 }
 
 body[data-theme='nordic_neutral'] {
