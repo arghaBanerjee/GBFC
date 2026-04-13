@@ -107,12 +107,12 @@ img, video, canvas, svg {
 
 /* Stack signup and forgot password buttons on all screen sizes */
 .login-buttons-container {
-  flex-direction: column !important;
+  flex-direction: column;
 }
 
 .login-buttons-container button {
-  width: 100% !important;
-  flex: none !important;
+  width: 100%;
+  flex: none;
 }
 
 body[data-theme='nordic_neutral'] {
