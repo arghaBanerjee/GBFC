@@ -105,6 +105,18 @@ img, video, canvas, svg {
   }
 }
 
+/* Stack signup and forgot password buttons on mobile */
+@media (max-width: 640px) {
+  .login-buttons-container {
+    flex-direction: column !important;
+  }
+  
+  .login-buttons-container button {
+    width: 100% !important;
+    flex: none !important;
+  }
+}
+
 body[data-theme='nordic_neutral'] {
   --theme-bg: #eef2f6;
   --theme-bg-accent: radial-gradient(circle at top, rgba(148, 163, 184, 0.16), transparent 34%), linear-gradient(180deg, #f7f9fc 0%, #e9edf3 100%);

@@ -167,7 +167,7 @@ export default function Login({ setUser }) {
         <button type="submit" className="nav-btn theme-primary-btn" style={{ width: '100%', fontWeight: '600' }}>Log in</button>
         
         {/* Sign Up and Forgot Password buttons */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+        <div className="login-buttons-container" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
           <button 
             type="button" 
             onClick={() => navigate('/signup')}
