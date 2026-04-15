@@ -118,45 +118,57 @@ export default function Login({ setUser }) {
       <div className="theme-card" style={{ padding: '1.5rem' }}>
         <h2 className="theme-section-title" style={{ marginTop: 0, marginBottom: '1.5rem' }}>Login</h2>
         <form onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => {
-            setEmail(e.target.value)
-            if (validationErrors.email) {
+        <div className="auth-input-wrap">
+          <svg className="auth-input-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="5" width="18" height="14" rx="2" ry="2" />
+            <path d="M3 7l9 6 9-6" />
+          </svg>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              if (validationErrors.email) {
+                const error = validateEmail(e.target.value)
+                setValidationErrors(prev => ({ ...prev, email: error }))
+              }
+            }}
+            onBlur={(e) => {
               const error = validateEmail(e.target.value)
-              setValidationErrors(prev => ({ ...prev, email: error }))
-            }
-          }}
-          onBlur={(e) => {
-            const error = validateEmail(e.target.value)
-            if (error) setValidationErrors(prev => ({ ...prev, email: error }))
-          }}
-          required
-          className="theme-input"
-          style={{ marginBottom: '0.25rem', border: validationErrors.email ? '1px solid var(--theme-danger)' : undefined }}
-        />
+              if (error) setValidationErrors(prev => ({ ...prev, email: error }))
+            }}
+            required
+            className="theme-input"
+            style={{ border: validationErrors.email ? '1px solid var(--theme-danger)' : undefined }}
+          />
+        </div>
         {validationErrors.email && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.email}</p>}
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => {
-            setPassword(e.target.value)
-            if (validationErrors.password) {
+        <div className="auth-input-wrap">
+          <svg className="auth-input-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              if (validationErrors.password) {
+                const error = validatePassword(e.target.value)
+                setValidationErrors(prev => ({ ...prev, password: error }))
+              }
+            }}
+            onBlur={(e) => {
               const error = validatePassword(e.target.value)
-              setValidationErrors(prev => ({ ...prev, password: error }))
-            }
-          }}
-          onBlur={(e) => {
-            const error = validatePassword(e.target.value)
-            if (error) setValidationErrors(prev => ({ ...prev, password: error }))
-          }}
-          required
-          className="theme-input"
-          style={{ marginBottom: '0.25rem', border: validationErrors.password ? '1px solid var(--theme-danger)' : undefined }}
-        />
+              if (error) setValidationErrors(prev => ({ ...prev, password: error }))
+            }}
+            required
+            className="theme-input"
+            style={{ border: validationErrors.password ? '1px solid var(--theme-danger)' : undefined }}
+          />
+        </div>
         {validationErrors.password && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.password}</p>}
         {error && <p style={{ color: 'var(--theme-danger)' }}>{error}</p>}
         {/* ========== FORGOT PASSWORD FEATURE - Success/Error Message ========== */}
@@ -164,12 +176,7 @@ export default function Login({ setUser }) {
         {forgotPasswordMessage && <p style={{ color: forgotPasswordMessage.toLowerCase().includes('failed') ? 'var(--theme-danger)' : 'var(--theme-accent)', fontSize: '0.875rem', marginBottom: '0.5rem' }}>{forgotPasswordMessage}</p>}
         {/* ====================================================================== */}
         
-        <button type="submit" className="nav-btn theme-primary-btn" style={{ width: '100%', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-            <polyline points="10 17 15 12 10 7"/>
-            <line x1="15" y1="12" x2="3" y2="12"/>
-          </svg>
+        <button type="submit" className="nav-btn theme-primary-btn" style={{ width: '100%', fontWeight: '600' }}>
           Log in
         </button>
 
@@ -189,12 +196,6 @@ export default function Login({ setUser }) {
               gap: '0.5rem'
             }}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="8.5" cy="7" r="4"/>
-              <line x1="20" y1="8" x2="20" y2="14"/>
-              <line x1="23" y1="11" x2="17" y2="11"/>
-            </svg>
             New User ? Sign Up
           </button>
           <button
@@ -214,10 +215,6 @@ export default function Login({ setUser }) {
               gap: '0.5rem'
             }}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
             {sendingEmail ? 'Sending...' : 'Forgot Password'}
           </button>
         </div>

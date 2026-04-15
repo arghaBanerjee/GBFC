@@ -945,6 +945,27 @@ h1, h2, h3, h4, h5, h6 {
   box-sizing: border-box;
 }
 
+.auth-input-wrap {
+  position: relative;
+  margin-bottom: 0.25rem;
+}
+
+.auth-input-icon {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: var(--theme-text-muted);
+  pointer-events: none;
+}
+
+.auth-input-wrap .theme-input {
+  padding-left: 2.75rem;
+  margin-bottom: 0;
+}
+
 .theme-input:focus,
 .theme-select:focus {
   outline: none;
