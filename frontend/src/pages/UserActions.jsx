@@ -14,6 +14,7 @@ function UserActions({ user, loading }) {
   const [error, setError] = useState('')
   const hasLoadedData = useRef(false)
   const [updatingAvailabilityDates, setUpdatingAvailabilityDates] = useState({})
+  const [animatingPaymentId, setAnimatingPaymentId] = useState(null)
 
   const eventTypeLabelMap = {
     practice: 'Practice',
@@ -217,8 +218,12 @@ function UserActions({ user, loading }) {
       })
 
       if (response.ok) {
+        // Show animation before removing
+        setAnimatingPaymentId(sessionId)
+        await new Promise(resolve => setTimeout(resolve, 1200))
         // Refresh pending payments list only
         refreshPendingPayments()
+        setAnimatingPaymentId(null)
       } else {
         const err = await response.json()
         setError(err.detail || 'Failed to update payment')
@@ -231,7 +236,37 @@ function UserActions({ user, loading }) {
 
   const formatDate = (dateStr) => {
     const date = new Date(dateStr)
-    return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+    const weekday = date.toLocaleDateString('en-GB', { weekday: 'long' })
+    const day = date.getDate()
+    const month = date.toLocaleDateString('en-GB', { month: 'long' })
+    const ordinal = (n) => {
+      const s = ['th', 'st', 'nd', 'rd']
+      const v = n % 100
+      return s[(v - 20) % 10] || s[v] || s[0]
+    }
+    return `${weekday}, ${day}${ordinal(day)} ${month}`
+  }
+
+  const formatDateTime = (dateStr, timeStr) => {
+    const date = new Date(dateStr)
+    const weekday = date.toLocaleDateString('en-GB', { weekday: 'long' })
+    const day = date.getDate()
+    const month = date.toLocaleDateString('en-GB', { month: 'long' })
+    const ordinal = (n) => {
+      const s = ['th', 'st', 'nd', 'rd']
+      const v = n % 100
+      return s[(v - 20) % 10] || s[v] || s[0]
+    }
+    
+    let timeStrDisplay = ''
+    if (timeStr) {
+      const [hours, minutes] = timeStr.split(':').map(Number)
+      const dateWithTime = new Date(date)
+      dateWithTime.setHours(hours, minutes, 0, 0)
+      timeStrDisplay = dateWithTime.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true })
+    }
+    
+    return `${weekday}, ${day}${ordinal(day)} ${month}${timeStrDisplay ? `, ${timeStrDisplay}` : ''}`
   }
 
   const getEventTypeLabel = (eventType) => eventTypeLabelMap[eventType] || 'Event'
@@ -397,7 +432,7 @@ function UserActions({ user, loading }) {
                       <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{getEventDisplayTitle(calendarEvent)}</p>
                     </div>
                     <div className="card-header-meta">
-                      <span className="card-header-cta">View details</span>
+                      <span className="card-header-cta">View details →</span>
                     </div>
                   </button>
                   <div className="card-body">
@@ -408,7 +443,7 @@ function UserActions({ user, loading }) {
                       </div>
                       <div className="detail-chip">
                         <span className="label">Date & Time</span>
-                        <span className="value">{`${formatDate(calendarEvent.date)}${calendarEvent.time ? `, ${calendarEvent.time}` : ', TBD'}`}</span>
+                        <span className="value">{calendarEvent.time ? formatDateTime(calendarEvent.date, calendarEvent.time) : `${formatDate(calendarEvent.date)}`}</span>
                       </div>
                     </div>
                     
@@ -417,7 +452,7 @@ function UserActions({ user, loading }) {
                       const isPast = isCalendarEventPast(calendarEvent.date, calendarEvent.time)
                       const isDisabled = !googleCalendarUrl || isPast
                       return (
-                        <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '0.75rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                           <a
                             href={isDisabled ? '#' : googleCalendarUrl}
                             target={isDisabled ? undefined : '_blank'}
@@ -438,16 +473,15 @@ function UserActions({ user, loading }) {
                             </span>
                             <span>Add to Calendar</span>
                           </a>
+                          <span style={{ fontSize: '0.8rem', color: calendarEvent.capacity_reached ? 'var(--theme-warning-strong)' : 'var(--theme-accent-strong)', fontWeight: '500' }}>
+                            {calendarEvent.remaining_slots > 0 ? `${calendarEvent.remaining_slots} slot${calendarEvent.remaining_slots === 1 ? '' : 's'} available` : 'Full'}
+                          </span>
                         </div>
                       )
                     })()}
                     
+                    
                     <div className="availability-section">
-                      <p className="section-label">Availability</p>
-                      <p style={{ marginBottom: '0.5rem', fontSize: '0.8125rem', color: calendarEvent.capacity_reached ? 'var(--theme-warning-strong, color-mix(in srgb, var(--theme-warning) 84%, black 16%))' : 'var(--theme-accent-strong)' }}>
-                        Capacity: {calendarEvent.available_count || 0}/{calendarEvent.maximum_capacity || 100} booked
-                        {calendarEvent.remaining_slots > 0 ? ` · ${calendarEvent.remaining_slots} slot${calendarEvent.remaining_slots === 1 ? '' : 's'} available` : ' · Full'}
-                      </p>
                       <div className="availability-buttons">
                         <button
                           className={`availability-btn available ${calendarEvent.user_status === 'available' ? 'selected' : ''}`}
@@ -468,7 +502,7 @@ function UserActions({ user, loading }) {
                           onClick={() => handleAvailabilityChange(calendarEvent.id, 'not_available')}
                           disabled={updatingAvailabilityDates[calendarEvent.id]}
                         >
-                          {updatingAvailabilityDates[calendarEvent.id] && calendarEvent.user_status === 'not_available' ? 'Updating...' : 'Not Available'}
+                          {updatingAvailabilityDates[calendarEvent.id] && calendarEvent.user_status === 'not_available' ? 'Updating...' : 'Unavailable'}
                         </button>
                       </div>
                       {calendarEvent.capacity_reached && calendarEvent.user_status !== 'available' && (
@@ -488,7 +522,50 @@ function UserActions({ user, loading }) {
               <p className="empty-message">No pending payments</p>
             ) : (
               pendingPayments.map(payment => (
-                <div key={payment.id} className="payment-card">
+                <div key={payment.id} className="payment-card" style={{ position: 'relative' }}>
+                  {animatingPaymentId === payment.id && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: 'color-mix(in srgb, var(--theme-success) 10%, var(--theme-surface))',
+                      borderRadius: '0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'column',
+                      gap: '1rem',
+                      zIndex: 10,
+                      animation: 'fadeIn 0.3s ease-out'
+                    }}>
+                      <div style={{
+                        width: '4rem',
+                        height: '4rem',
+                        borderRadius: '50%',
+                        background: 'var(--theme-success)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        animation: 'scaleIn 0.4s ease-out 0.1s'
+                      }}>
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{
+                          animation: 'checkmark 0.3s ease-out 0.3s'
+                        }}>
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                      </div>
+                      <span style={{
+                        fontSize: '1rem',
+                        fontWeight: '600',
+                        color: 'var(--theme-success-strong)',
+                        animation: 'slideUp 0.3s ease-out 0.2s'
+                      }}>
+                        Payment Confirmed!
+                      </span>
+                    </div>
+                  )}
                   <button
                     type="button"
                     className="card-header clickable-card-header"
@@ -510,7 +587,7 @@ function UserActions({ user, loading }) {
                     <div className="payment-details compact-details">
                       <div className="detail-chip">
                         <span className="label">Date & Time</span>
-                        <span className="value">{`${formatDate(payment.date)}${payment.time ? `, ${payment.time}` : ''}`}</span>
+                        <span className="value">{payment.time ? formatDateTime(payment.date, payment.time) : `${formatDate(payment.date)}`}</span>
                       </div>
                       <div className="detail-chip">
                         <span className="label">Your Amount</span>

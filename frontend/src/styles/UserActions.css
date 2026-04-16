@@ -70,7 +70,7 @@
 .payment-card {
   background: var(--theme-surface);
   border: 1px solid var(--theme-border);
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   margin-bottom: 1rem;
   box-shadow: var(--theme-card-shadow);
   transition: box-shadow 0.2s;
@@ -88,6 +88,7 @@
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--theme-border);
   background-color: var(--theme-surface-alt);
+  border-radius: 0.75rem 0.75rem 0 0;
 }
 
 .clickable-card-header {
@@ -122,7 +123,7 @@
 }
 
 .card-header h3 {
-  font-size: 1.125rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--theme-heading);
   margin: 0;
@@ -142,6 +143,7 @@
 
 .card-body {
   padding: 1rem;
+  border-radius: 0 0 0.75rem 0.75rem;
 }
 
 /* Calendar Event and Payment Details */
@@ -171,12 +173,12 @@
 .detail-chip .label {
   font-weight: 600;
   color: var(--theme-text-muted);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
 }
 
 .detail-chip .value {
   color: var(--theme-heading);
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 700;
 }
 
@@ -467,5 +469,48 @@
 
   .checkbox-label span {
     font-size: 0.95rem;
+  }
+}
+
+/* Payment Confirmation Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes checkmark {
+  0% {
+    stroke-dasharray: 0 20;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dasharray: 20 0;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
   }
 }

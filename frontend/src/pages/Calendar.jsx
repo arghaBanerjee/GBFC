@@ -135,6 +135,27 @@ export default function Calendar({ user }) {
     return `${year}${month}${day}T${hour}${minute}00`
   }
 
+  const formatDisplayDate = (dateStr) => {
+    const date = new Date(dateStr)
+    const weekday = date.toLocaleDateString('en-GB', { weekday: 'long' })
+    const day = date.getDate()
+    const month = date.toLocaleDateString('en-GB', { month: 'long' })
+    const ordinal = (n) => {
+      const s = ['th', 'st', 'nd', 'rd']
+      const v = n % 100
+      return s[(v - 20) % 10] || s[v] || s[0]
+    }
+    return `${weekday}, ${day}${ordinal(day)} ${month}`
+  }
+
+  const formatDisplayTime = (timeStr) => {
+    if (!timeStr) return 'TBD'
+    const [hours, minutes] = timeStr.split(':').map(Number)
+    const date = new Date()
+    date.setHours(hours, minutes, 0, 0)
+    return date.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true })
+  }
+
   const buildGoogleCalendarInviteUrl = (session) => {
     if (!session) return ''
     const eventType = getEventTypeLabel(session.event_type)
@@ -1161,7 +1182,7 @@ export default function Calendar({ user }) {
           )}
           {selectedSession ? (
             <div id="selected-session-details" style={{ marginBottom: '1rem', padding: '0.875rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem', border: '1px solid var(--theme-border)' }}>
-              <h3 style={{ marginBottom: '1rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Select a date'}</h3>
+              <h3 style={{ marginBottom: '1rem', color: 'var(--theme-heading)' }}>{selectedDate ? formatDisplayDate(selectedDateStr) : 'Select a date'}</h3>
               <div style={{ marginBottom: '0.5rem' }}>
                 <strong style={{ color: eventTypeAccentMap[selectedSession.event_type] || 'var(--theme-heading)', fontSize: '1.25rem' }}>{selectedEventTypeLabel}</strong>
                 <div style={{ marginBottom: '0.35rem', fontSize: '1rem', fontWeight: '500', color: 'var(--theme-heading)' }}>{selectedEventTitle}</div>
@@ -1199,7 +1220,7 @@ export default function Calendar({ user }) {
                   <circle cx="12" cy="12" r="10"/>
                   <path d="M12 6v6l4 2"/>
                 </svg>
-                <span>Time: {selectedSession.time || 'TBD'}</span>
+                <span>Time: {formatDisplayTime(selectedSession.time)}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
