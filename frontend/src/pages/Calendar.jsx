@@ -122,6 +122,37 @@ export default function Calendar({ user }) {
     return title || getEventTypeLabel(calendarEvent.event_type)
   }
 
+  const formatGoogleCalendarDate = (date) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return ''
+    return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+  }
+
+  const buildGoogleCalendarInviteUrl = (calendarEvent) => {
+    if (!calendarEvent) return ''
+    const title = getEventDisplayTitle(calendarEvent)
+    const eventDateValue = calendarEvent.date || formatDateStr(selectedDate)
+    if (!eventDateValue) return ''
+    const startDateTime = getCalendarEventDateTime(eventDateValue, calendarEvent.time)
+    const endDateTime = startDateTime ? new Date(startDateTime.getTime() + 60 * 60 * 1000) : null
+    const eventDate = parseDateStr(eventDateValue)
+    const nextEventDate = eventDate ? new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate() + 1, 12, 0, 0, 0) : null
+    const dates = startDateTime && endDateTime
+      ? `${formatGoogleCalendarDate(startDateTime)}/${formatGoogleCalendarDate(endDateTime)}`
+      : eventDate && nextEventDate
+        ? `${formatDateStr(eventDate).replace(/-/g, '')}/${formatDateStr(nextEventDate).replace(/-/g, '')}`
+        : ''
+
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: title,
+      dates,
+      location: calendarEvent.location || 'TBD',
+      details: `${title}\nDate: ${eventDateValue || 'TBD'}\nTime: ${calendarEvent.time || 'TBD'}\nLocation: ${calendarEvent.location || 'TBD'}`,
+    })
+
+    return `https://calendar.google.com/calendar/render?${params.toString()}`
+  }
+
   const getCalendarEventAvailabilityStatus = (calendarEventSummary, currentUser) => {
     if (!calendarEventSummary || !currentUser?.email) return null
     const matchesUser = (name) => calendarEventSummary.user_emails?.[name] === currentUser.email
@@ -845,6 +876,7 @@ export default function Calendar({ user }) {
   const selectedPaidByUser = allUsers.find((u) => u.email === paidBy)
   const selectedEventTypeLabel = getEventTypeLabel(selectedSession?.event_type)
   const selectedEventTitle = getEventDisplayTitle(selectedSession)
+  const selectedSessionGoogleCalendarUrl = buildGoogleCalendarInviteUrl(selectedSession)
   const paidByBankDetails = selectedSession?.payment_requested
     ? {
         full_name: selectedSession?.paid_by_name || selectedSession?.paid_by,
@@ -1122,7 +1154,35 @@ export default function Calendar({ user }) {
               <h3 style={{ marginBottom: '1rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Select a date'}</h3>
               <div style={{ marginBottom: '0.5rem' }}>
                 <strong style={{ color: eventTypeAccentMap[selectedSession.event_type] || 'var(--theme-heading)', fontSize: '1.25rem' }}>{selectedEventTypeLabel}</strong>
-                <div style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: '500', color: 'var(--theme-heading)' }}>{selectedEventTitle}</div>
+                <div style={{ marginBottom: '0.35rem', fontSize: '1rem', fontWeight: '500', color: 'var(--theme-heading)' }}>{selectedEventTitle}</div>
+                <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '0.75rem' }}>
+                  {(() => {
+                    const isPast = hasSelectedSessionPassed
+                    const isDisabled = !selectedSessionGoogleCalendarUrl || isPast
+                    return (
+                      <a
+                        href={isDisabled ? '#' : selectedSessionGoogleCalendarUrl}
+                        target={isDisabled ? undefined : '_blank'}
+                        rel={isDisabled ? undefined : 'noreferrer'}
+                        aria-disabled={isDisabled}
+                        onClick={(e) => {
+                          if (isDisabled) e.preventDefault()
+                        }}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: 'var(--theme-accent-contrast)', textDecoration: 'none', fontSize: '0.8rem', fontWeight: '600', padding: '0.4rem 0.7rem', borderRadius: '999px', border: isDisabled ? '1px solid var(--theme-border)' : '1px solid var(--theme-accent)', background: isDisabled ? 'var(--theme-text-muted)' : 'var(--theme-accent)', boxShadow: isDisabled ? '0 1px 2px rgba(0, 0, 0, 0.05)' : '0 4px 10px color-mix(in srgb, var(--theme-accent) 22%, transparent)', opacity: isDisabled ? 0.65 : 1, pointerEvents: isDisabled ? 'none' : 'auto', cursor: isDisabled ? 'not-allowed' : 'pointer' }}
+                      >
+                        <span style={{ width: '0.95rem', height: '0.95rem', borderRadius: '0.25rem', background: '#ffffff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)', flex: '0 0 auto' }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="17" rx="3" fill="#ffffff" stroke="#DADCE0"/>
+                            <path d="M8 2.75C8.41421 2.75 8.75 3.08579 8.75 3.5V6C8.75 6.41421 8.41421 6.75 8 6.75C7.58579 6.75 7.25 6.41421 7.25 6V3.5C7.25 3.08579 7.58579 2.75 8 2.75Z" fill="#4285F4"/>
+                            <path d="M16 2.75C16.4142 2.75 16.75 3.08579 16.75 3.5V6C16.75 6.41421 16.4142 6.75 16 6.75C15.5858 6.75 15.25 6.41421 15.25 6V3.5C15.25 3.08579 15.5858 2.75 16 2.75Z" fill="#34A853"/>
+                            <path d="M3.5 8.5H20.5" stroke="#EA4335" strokeWidth="1.5" strokeLinecap="round"/>
+                          </svg>
+                        </span>
+                        <span>Add to Calendar</span>
+                      </a>
+                    )
+                  })()}
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

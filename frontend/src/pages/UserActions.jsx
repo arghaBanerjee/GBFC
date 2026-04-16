@@ -241,6 +241,76 @@ function UserActions({ user, loading }) {
     return title || getEventTypeLabel(item?.event_type)
   }
 
+  const formatDateStr = (dt) => {
+    if (!dt) return null
+    const date = dt instanceof Date ? dt : new Date(dt)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const parseDateStr = (dateStr) => {
+    if (!dateStr) return null
+    const parts = dateStr.split('-').map((p) => Number(p))
+    if (parts.length !== 3) return null
+    const [y, m, d] = parts
+    if (!y || !m || !d) return null
+    const dt = new Date(y, m - 1, d, 12, 0, 0, 0)
+    const rt = formatDateStr(dt)
+    if (rt !== dateStr) return null
+    return dt
+  }
+
+  const getCalendarEventDateTime = (dateStr, timeStr) => {
+    if (!dateStr) return null
+    const effectiveTime = timeStr || '21:00'
+    const [year, month, day] = dateStr.split('-').map(Number)
+    const [hours, minutes] = effectiveTime.split(':').map(Number)
+    if (!year || !month || !day) return null
+    const dt = new Date(year, month - 1, day, hours, minutes, 0, 0)
+    const rt = formatDateStr(dt)
+    if (rt !== dateStr) return null
+    return dt
+  }
+
+  const formatGoogleCalendarDate = (date) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return ''
+    return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+  }
+
+  const buildGoogleCalendarInviteUrl = (calendarEvent) => {
+    if (!calendarEvent) return ''
+    const title = getEventDisplayTitle(calendarEvent)
+    const eventDateValue = calendarEvent.date || formatDateStr(new Date())
+    if (!eventDateValue) return ''
+    const startDateTime = getCalendarEventDateTime(eventDateValue, calendarEvent.time)
+    const endDateTime = startDateTime ? new Date(startDateTime.getTime() + 60 * 60 * 1000) : null
+    const eventDate = parseDateStr(eventDateValue)
+    const nextEventDate = eventDate ? new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate() + 1, 12, 0, 0, 0) : null
+    const dates = startDateTime && endDateTime
+      ? `${formatGoogleCalendarDate(startDateTime)}/${formatGoogleCalendarDate(endDateTime)}`
+      : eventDate && nextEventDate
+        ? `${formatDateStr(eventDate).replace(/-/g, '')}/${formatDateStr(nextEventDate).replace(/-/g, '')}`
+        : ''
+
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: title,
+      dates,
+      location: calendarEvent.location || 'TBD',
+      details: `${title}\nDate: ${eventDateValue || 'TBD'}\nTime: ${calendarEvent.time || 'TBD'}\nLocation: ${calendarEvent.location || 'TBD'}`,
+    })
+
+    return `https://calendar.google.com/calendar/render?${params.toString()}`
+  }
+
+  const isCalendarEventPast = (dateStr, timeStr) => {
+    const calendarEventDateTime = getCalendarEventDateTime(dateStr, timeStr)
+    if (!calendarEventDateTime) return false
+    return calendarEventDateTime.getTime() < Date.now()
+  }
+
   const navigateToCalendarEvent = (date, sessionId) => {
     const params = new URLSearchParams()
     params.set('date', date)
@@ -331,6 +401,36 @@ function UserActions({ user, loading }) {
                         <span className="value">{`${formatDate(calendarEvent.date)}${calendarEvent.time ? `, ${calendarEvent.time}` : ', TBD'}`}</span>
                       </div>
                     </div>
+                    
+                    {(() => {
+                      const googleCalendarUrl = buildGoogleCalendarInviteUrl(calendarEvent)
+                      const isPast = isCalendarEventPast(calendarEvent.date, calendarEvent.time)
+                      const isDisabled = !googleCalendarUrl || isPast
+                      return (
+                        <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '0.75rem' }}>
+                          <a
+                            href={isDisabled ? '#' : googleCalendarUrl}
+                            target={isDisabled ? undefined : '_blank'}
+                            rel={isDisabled ? undefined : 'noreferrer'}
+                            aria-disabled={isDisabled}
+                            onClick={(e) => {
+                              if (isDisabled) e.preventDefault()
+                            }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: 'var(--theme-accent-contrast)', textDecoration: 'none', fontSize: '0.8rem', fontWeight: '600', padding: '0.4rem 0.7rem', borderRadius: '999px', border: isDisabled ? '1px solid var(--theme-border)' : '1px solid var(--theme-accent)', background: isDisabled ? 'var(--theme-text-muted)' : 'var(--theme-accent)', boxShadow: isDisabled ? '0 1px 2px rgba(0, 0, 0, 0.05)' : '0 4px 10px color-mix(in srgb, var(--theme-accent) 22%, transparent)', opacity: isDisabled ? 0.65 : 1, pointerEvents: isDisabled ? 'none' : 'auto', cursor: isDisabled ? 'not-allowed' : 'pointer' }}
+                          >
+                            <span style={{ width: '0.95rem', height: '0.95rem', borderRadius: '0.25rem', background: '#ffffff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)', flex: '0 0 auto' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <rect x="3" y="4" width="18" height="17" rx="3" fill="#ffffff" stroke="#DADCE0"/>
+                                <path d="M8 2.75C8.41421 2.75 8.75 3.08579 8.75 3.5V6C8.75 6.41421 8.41421 6.75 8 6.75C7.58579 6.75 7.25 6.41421 7.25 6V3.5C7.25 3.08579 7.58579 2.75 8 2.75Z" fill="#4285F4"/>
+                                <path d="M16 2.75C16.4142 2.75 16.75 3.08579 16.75 3.5V6C16.75 6.41421 16.4142 6.75 16 6.75C15.5858 6.75 15.25 6.41421 15.25 6V3.5C15.25 3.08579 15.5858 2.75 16 2.75Z" fill="#34A853"/>
+                                <path d="M3.5 8.5H20.5" stroke="#EA4335" strokeWidth="1.5" strokeLinecap="round"/>
+                              </svg>
+                            </span>
+                            <span>Add to Calendar</span>
+                          </a>
+                        </div>
+                      )
+                    })()}
                     
                     <div className="availability-section">
                       <p className="section-label">Availability</p>
