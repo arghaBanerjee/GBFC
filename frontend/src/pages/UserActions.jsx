@@ -276,12 +276,22 @@ function UserActions({ user, loading }) {
 
   const formatGoogleCalendarDate = (date) => {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return ''
-    return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+    const options = { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }
+    const formatter = new Intl.DateTimeFormat('en-GB', options)
+    const parts = formatter.formatToParts(date)
+    const year = parts.find(p => p.type === 'year').value
+    const month = parts.find(p => p.type === 'month').value
+    const day = parts.find(p => p.type === 'day').value
+    const hour = parts.find(p => p.type === 'hour').value
+    const minute = parts.find(p => p.type === 'minute').value
+    return `${year}${month}${day}T${hour}${minute}00`
   }
 
   const buildGoogleCalendarInviteUrl = (calendarEvent) => {
     if (!calendarEvent) return ''
-    const title = getEventDisplayTitle(calendarEvent)
+    const eventType = getEventTypeLabel(calendarEvent.event_type)
+    const eventTitle = getEventDisplayTitle(calendarEvent)
+    const title = `${eventType} - ${eventTitle}`
     const eventDateValue = calendarEvent.date || formatDateStr(new Date())
     if (!eventDateValue) return ''
     const startDateTime = getCalendarEventDateTime(eventDateValue, calendarEvent.time)

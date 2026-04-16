@@ -124,15 +124,25 @@ export default function Calendar({ user }) {
 
   const formatGoogleCalendarDate = (date) => {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return ''
-    return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+    const options = { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }
+    const formatter = new Intl.DateTimeFormat('en-GB', options)
+    const parts = formatter.formatToParts(date)
+    const year = parts.find(p => p.type === 'year').value
+    const month = parts.find(p => p.type === 'month').value
+    const day = parts.find(p => p.type === 'day').value
+    const hour = parts.find(p => p.type === 'hour').value
+    const minute = parts.find(p => p.type === 'minute').value
+    return `${year}${month}${day}T${hour}${minute}00`
   }
 
-  const buildGoogleCalendarInviteUrl = (calendarEvent) => {
-    if (!calendarEvent) return ''
-    const title = getEventDisplayTitle(calendarEvent)
-    const eventDateValue = calendarEvent.date || formatDateStr(selectedDate)
+  const buildGoogleCalendarInviteUrl = (session) => {
+    if (!session) return ''
+    const eventType = getEventTypeLabel(session.event_type)
+    const eventTitle = getEventDisplayTitle(session)
+    const title = `${eventType} - ${eventTitle}`
+    const eventDateValue = session.date || formatDateStr(new Date())
     if (!eventDateValue) return ''
-    const startDateTime = getCalendarEventDateTime(eventDateValue, calendarEvent.time)
+    const startDateTime = getCalendarEventDateTime(eventDateValue, session.time)
     const endDateTime = startDateTime ? new Date(startDateTime.getTime() + 60 * 60 * 1000) : null
     const eventDate = parseDateStr(eventDateValue)
     const nextEventDate = eventDate ? new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate() + 1, 12, 0, 0, 0) : null
@@ -146,8 +156,8 @@ export default function Calendar({ user }) {
       action: 'TEMPLATE',
       text: title,
       dates,
-      location: calendarEvent.location || 'TBD',
-      details: `${title}\nDate: ${eventDateValue || 'TBD'}\nTime: ${calendarEvent.time || 'TBD'}\nLocation: ${calendarEvent.location || 'TBD'}`,
+      location: session.location || 'TBD',
+      details: `${title}\nDate: ${eventDateValue || 'TBD'}\nTime: ${session.time || 'TBD'}\nLocation: ${session.location || 'TBD'}`,
     })
 
     return `https://calendar.google.com/calendar/render?${params.toString()}`
