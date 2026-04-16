@@ -910,6 +910,7 @@ export default function Calendar({ user }) {
   const selectedEventTypeLabel = getEventTypeLabel(selectedSession?.event_type)
   const selectedEventTitle = getEventDisplayTitle(selectedSession)
   const selectedSessionGoogleCalendarUrl = buildGoogleCalendarInviteUrl(selectedSession)
+  const isCurrentUserPaymentConfirmed = Boolean(user?.email && payments[user.email])
   const paidByBankDetails = selectedSession?.payment_requested
     ? {
         full_name: selectedSession?.paid_by_name || selectedSession?.paid_by,
@@ -1525,8 +1526,7 @@ export default function Calendar({ user }) {
                   </div>
                 </div>
               )}
-              
-              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
+              <div style={{ marginTop: '1.25rem', padding: '0.875rem', border: '1px solid var(--theme-border)', borderRadius: '0.75rem', background: 'var(--theme-surface-alt)', opacity: hasSelectedSessionPassed ? 0.6 : 1, pointerEvents: hasSelectedSessionPassed ? 'none' : 'auto' }}>
                 <strong>Your Selection</strong>
                 <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
                   <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
@@ -1534,17 +1534,15 @@ export default function Calendar({ user }) {
                   <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
                 </div>
                 {!user && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)' }}>Log in to vote your availability.</p>}
-                {user && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>Cannot change availability for past events.</p>}
+                {user && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem', pointerEvents: 'auto' }}>Cannot change availability for past events.</p>}
                 {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
                   <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>
                     Maximum capacity reached. Available is temporarily disabled until a slot opens up.
                   </p>
                 )}
                 {availabilityError && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)', fontSize: '0.875rem' }}>{availabilityError}</p>}
-              </div>
-
-              {optionSectionEnabled && (
-                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
+                {optionSectionEnabled && (
+                  <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--theme-border-soft)' }}>
                   <strong>Event Options</strong>
                   <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.75rem' }}>
                     <button
@@ -1599,6 +1597,7 @@ export default function Calendar({ user }) {
                   {selectedStatus !== 'available' && (
                     <p style={{ marginTop: '0.5rem', color: 'var(--theme-text-muted)', fontSize: '0.875rem' }}>Set yourself available to choose an event option.</p>
                   )}
+                  
                   {(voteSummary?.option_a?.length || voteSummary?.option_b?.length) > 0 && (
                     <div style={{ marginTop: '0.75rem', display: 'grid', gap: '0.75rem' }}>
                       <div>
@@ -1611,11 +1610,12 @@ export default function Calendar({ user }) {
                       </div>
                     </div>
                   )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
 
               {selectedSession?.payment_requested && user && isUserAvailable && voteSummary?.available?.length > 0 && (
-                <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)', position: 'relative', overflow: 'hidden', opacity: isCurrentUserPaymentConfirmed && !animatingPayment ? 0.65 : 1, pointerEvents: isCurrentUserPaymentConfirmed && !animatingPayment ? 'none' : 'auto' }}>
                   {animatingPayment && (
                     <div style={{
                       position: 'absolute',
@@ -1687,7 +1687,7 @@ export default function Calendar({ user }) {
                           }
                           handlePaymentConfirmation(e.target.checked)
                         }}
-                        disabled={paymentUpdatePending}
+                        disabled={paymentUpdatePending || isCurrentUserPaymentConfirmed}
                         style={{ width: '18px', height: '18px', cursor: paymentUpdatePending ? 'wait' : 'pointer' }}
                       />
                       <label htmlFor="payment-checkbox" style={{ fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>
