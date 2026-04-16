@@ -36,6 +36,7 @@ export default function Calendar({ user }) {
   const [paymentUpdatePending, setPaymentUpdatePending] = useState(false)
   const [showPaymentConfirm, setShowPaymentConfirm] = useState(false)
   const [paymentInfoSaved, setPaymentInfoSaved] = useState(false)
+  const [animatingPayment, setAnimatingPayment] = useState(false)
   const [adminControlsOpen, setAdminControlsOpen] = useState(false)
   const [adminUsersLoading, setAdminUsersLoading] = useState(false)
   const [availabilityUpdating, setAvailabilityUpdating] = useState(false)
@@ -632,7 +633,7 @@ export default function Calendar({ user }) {
       ...prev,
       [user.email]: paid,
     }))
-    
+
     fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/payment`), {
       method: 'POST',
       headers: {
@@ -650,7 +651,7 @@ export default function Calendar({ user }) {
         return r.json()
       })
       .then(() => {
-        // Refresh payment data
+        // Refresh payment data immediately
         return fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/payments`), {
           headers: { Authorization: `Bearer ${token}` }
         })
@@ -662,6 +663,7 @@ export default function Calendar({ user }) {
           ...prev,
           [user.email]: previousPaid,
         }))
+        setAnimatingPayment(false)
         console.error('Failed to update payment:', err)
       })
       .finally(() => setPaymentUpdatePending(false))
@@ -1613,7 +1615,50 @@ export default function Calendar({ user }) {
               )}
 
               {selectedSession?.payment_requested && user && isUserAvailable && voteSummary?.available?.length > 0 && (
-                <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)' }}>
+                <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)', position: 'relative', overflow: 'hidden' }}>
+                  {animatingPayment && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: 'color-mix(in srgb, var(--theme-success) 12%, var(--theme-surface))',
+                      borderRadius: '0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'column',
+                      gap: '1rem',
+                      zIndex: 20,
+                      animation: 'fadeIn 0.3s ease-out'
+                    }}>
+                      <div style={{
+                        width: '4rem',
+                        height: '4rem',
+                        borderRadius: '50%',
+                        background: 'var(--theme-success)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        animation: 'scaleIn 0.4s ease-out 0.1s'
+                      }}>
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{
+                          animation: 'checkmark 0.3s ease-out 0.3s'
+                        }}>
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                      </div>
+                      <span style={{
+                        fontSize: '1rem',
+                        fontWeight: '600',
+                        color: 'var(--theme-success-strong)',
+                        animation: 'slideUp 0.3s ease-out 0.2s'
+                      }}>
+                        Payment Confirmed!
+                      </span>
+                    </div>
+                  )}
                   <strong style={{ color: 'var(--theme-warning-strong)' }}>Payment Request</strong>
                   <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: 'var(--theme-warning-strong)' }}>
                     {selectedSession.cost_type} Cost £ {selectedSession.session_cost != null ? Number(selectedSession.session_cost).toFixed(2) : '0.00'}
@@ -1635,7 +1680,13 @@ export default function Calendar({ user }) {
                         type="checkbox"
                         id="payment-checkbox"
                         checked={payments[user.email] || false}
-                        onChange={(e) => handlePaymentConfirmation(e.target.checked)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setAnimatingPayment(true)
+                            window.setTimeout(() => setAnimatingPayment(false), 1200)
+                          }
+                          handlePaymentConfirmation(e.target.checked)
+                        }}
                         disabled={paymentUpdatePending}
                         style={{ width: '18px', height: '18px', cursor: paymentUpdatePending ? 'wait' : 'pointer' }}
                       />
