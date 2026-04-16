@@ -218,19 +218,19 @@ function UserActions({ user, loading }) {
       })
 
       if (response.ok) {
-        // Show animation before removing
-        setAnimatingPaymentId(sessionId)
+        // Wait for animation to complete before refreshing
         await new Promise(resolve => setTimeout(resolve, 1200))
         // Refresh pending payments list only
         refreshPendingPayments()
-        setAnimatingPaymentId(null)
       } else {
         const err = await response.json()
         setError(err.detail || 'Failed to update payment')
+        setAnimatingPaymentId(null)
       }
     } catch (err) {
       setError('Failed to update payment')
       console.error(err)
+      setAnimatingPaymentId(null)
     }
   }
 
@@ -616,7 +616,10 @@ function UserActions({ user, loading }) {
                         <input
                           type="checkbox"
                           checked={payment.paid}
-                          onChange={(e) => handlePaymentConfirmation(payment.id, e.target.checked)}
+                          onChange={(e) => {
+                            setAnimatingPaymentId(payment.id)
+                            handlePaymentConfirmation(payment.id, e.target.checked)
+                          }}
                         />
                         <span>Paid £{payment.individual_amount} to {payment.paid_by_name || payment.paid_by}</span>
                       </label>
