@@ -1528,16 +1528,14 @@ export default function Calendar({ user }) {
               )}
               <div style={{ marginTop: '1.25rem', padding: '0.875rem', border: '1px solid var(--theme-border)', borderRadius: '0.75rem', background: 'var(--theme-surface-alt)', opacity: hasSelectedSessionPassed ? 0.6 : 1, pointerEvents: hasSelectedSessionPassed ? 'none' : 'auto' }}>
                 <strong>Your Selection</strong>
-                <div style={{ marginTop: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
+                <div style={{ marginTop: '0.5rem', paddingBottom: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
                   <button onClick={() => handleAvailability('available')} style={voteBtnStyle('available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || !canSelectAvailable || availabilityUpdating}>Available</button>
                   <button onClick={() => handleAvailability('tentative')} style={voteBtnStyle('tentative')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Tentative</button>
                   <button onClick={() => handleAvailability('not_available')} style={voteBtnStyle('not_available')} disabled={!user || hasSelectedSessionPassed || selectedSession?.payment_requested || availabilityUpdating}>Unavailable</button>
                 </div>
-                {!user && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)' }}>Log in to vote your availability.</p>}
-                {user && hasSelectedSessionPassed && <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem', pointerEvents: 'auto' }}>Cannot change availability for past events.</p>}
                 {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
                   <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>
-                    Maximum capacity reached. Available is temporarily disabled until a slot opens up.
+                    Maximum capacity reached. Voting disabled until more slots open up.
                   </p>
                 )}
                 {availabilityError && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)', fontSize: '0.875rem' }}>{availabilityError}</p>}
