@@ -8,6 +8,7 @@ export default function Calendar({ user }) {
   const location = useLocation()
   const adminControlsRef = useRef(null)
   const selectedCalendarEventRef = useRef(null)
+  const monthEventsCacheRef = useRef({})
   const initialLandingParamsRef = useRef((() => {
     const initialParams = new URLSearchParams(location.search)
     return {
@@ -86,6 +87,62 @@ export default function Calendar({ user }) {
     const year = date.getFullYear()
     const month = date.getMonth() + 1
     return apiUrl(`/api/calendar/events?year=${year}&month=${month}`)
+  }
+
+  const getMonthCacheKey = (date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    return `${year}-${month}`
+  }
+
+  const sortCalendarEvents = (calendarEvents) => [...calendarEvents].sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date)
+    return (a.time || '').localeCompare(b.time || '') || a.id - b.id
+  })
+
+  const setCachedMonthEvents = (date, calendarEvents) => {
+    monthEventsCacheRef.current[getMonthCacheKey(date)] = sortCalendarEvents(Array.isArray(calendarEvents) ? calendarEvents : [])
+  }
+
+  const syncCachedCalendarEvent = (updatedCalendarEvent) => {
+    if (!updatedCalendarEvent?.id || !updatedCalendarEvent?.date) return
+    const cacheEntries = Object.entries(monthEventsCacheRef.current)
+    cacheEntries.forEach(([cacheKey, calendarEvents]) => {
+      const withoutUpdatedEvent = (calendarEvents || []).filter((calendarEvent) => calendarEvent.id !== updatedCalendarEvent.id)
+      monthEventsCacheRef.current[cacheKey] = withoutUpdatedEvent
+    })
+
+    const updatedCalendarEventDate = parseDateStr(updatedCalendarEvent.date)
+    if (!updatedCalendarEventDate) return
+    const targetCacheKey = getMonthCacheKey(updatedCalendarEventDate)
+    const targetMonthEvents = monthEventsCacheRef.current[targetCacheKey] || []
+    monthEventsCacheRef.current[targetCacheKey] = sortCalendarEvents([...targetMonthEvents, updatedCalendarEvent])
+  }
+
+  const loadCalendarEventsForMonth = (date, { forceRefresh = false } = {}) => {
+    const cacheKey = getMonthCacheKey(date)
+    const cachedMonthEvents = monthEventsCacheRef.current[cacheKey]
+
+    if (!forceRefresh && cachedMonthEvents) {
+      setAdminCalendarEvents(cachedMonthEvents)
+      setCalendarEventsLoading(false)
+      return Promise.resolve(cachedMonthEvents)
+    }
+
+    setCalendarEventsLoading(true)
+    return fetch(getCalendarEventsUrl(date))
+      .then(r => r.json())
+      .then(data => {
+        const normalizedCalendarEvents = Array.isArray(data) ? data : []
+        setCachedMonthEvents(date, normalizedCalendarEvents)
+        setAdminCalendarEvents(normalizedCalendarEvents)
+        return normalizedCalendarEvents
+      })
+      .catch(() => {
+        setAdminCalendarEvents([])
+        return []
+      })
+      .finally(() => setCalendarEventsLoading(false))
   }
 
   const parseDateStr = (dateStr) => {
@@ -202,13 +259,11 @@ export default function Calendar({ user }) {
 
   const mergeUpdatedCalendarEvent = (updatedCalendarEvent) => {
     if (!updatedCalendarEvent?.id) return
+    syncCachedCalendarEvent(updatedCalendarEvent)
     setAdminCalendarEvents((prev) => {
       const existingIndex = prev.findIndex((calendarEvent) => calendarEvent.id === updatedCalendarEvent.id)
       if (existingIndex === -1) {
-        return [...prev, updatedCalendarEvent].sort((a, b) => {
-          if (a.date !== b.date) return a.date.localeCompare(b.date)
-          return (a.time || '').localeCompare(b.time || '') || a.id - b.id
-        })
+        return sortCalendarEvents([...prev, updatedCalendarEvent])
       }
       return prev.map((calendarEvent) =>
         calendarEvent.id === updatedCalendarEvent.id ? { ...calendarEvent, ...updatedCalendarEvent } : calendarEvent
@@ -311,12 +366,7 @@ export default function Calendar({ user }) {
 
   useEffect(() => {
     // Fetch admin-created events
-    setCalendarEventsLoading(true)
-    fetch(getCalendarEventsUrl(currentDate))
-      .then(r => r.json())
-      .then(data => setAdminCalendarEvents(Array.isArray(data) ? data : []))
-      .catch(() => setAdminCalendarEvents([]))
-      .finally(() => setCalendarEventsLoading(false))
+    loadCalendarEventsForMonth(currentDate)
     
     // Fetch user availability
     if (user && token) {
@@ -584,9 +634,7 @@ export default function Calendar({ user }) {
         setPaidBy(updatedSession.paid_by || '')
         setMaximumCapacity((updatedSession.maximum_capacity || 100).toString())
         setPaymentInfoSaved(Boolean(updatedSession.session_cost != null && updatedSession.paid_by))
-        return fetch(getCalendarEventsUrl(currentDate))
-          .then(r => r.json())
-          .then(data => setAdminCalendarEvents(data || []))
+        return loadCalendarEventsForMonth(currentDate, { forceRefresh: true })
       })
       .catch(err => console.error('Failed to save payment info:', err))
   }
@@ -623,9 +671,7 @@ export default function Calendar({ user }) {
       })
       .then(() => {
         // Refresh admin sessions
-        return fetch(getCalendarEventsUrl(currentDate))
-          .then(r => r.json())
-          .then(data => setAdminCalendarEvents(data || []))
+        return loadCalendarEventsForMonth(currentDate, { forceRefresh: true })
       })
       .catch(err => console.error('Failed to request payment:', err))
   }
