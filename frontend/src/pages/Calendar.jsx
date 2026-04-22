@@ -1151,6 +1151,14 @@ export default function Calendar({ user }) {
     const userEmail = voteSummary?.user_emails?.[name] || name
     return count + (payments[userEmail] ? 1 : 0)
   }, 0)
+  const paymentCompletionRatio = availablePlayersForPayment > 0 ? Math.min(paidAvailablePlayersCount / availablePlayersForPayment, 1) : 0
+  const paymentCompletionPercentage = Math.round(paymentCompletionRatio * 100)
+  const paymentChartOffset = capacityChartCircumference * (1 - paymentCompletionRatio)
+  const paymentStatusText = availablePlayersForPayment === 0
+    ? 'No Payments Required'
+    : paidAvailablePlayersCount >= availablePlayersForPayment
+      ? 'Fully Paid'
+      : `${availablePlayersForPayment - paidAvailablePlayersCount} Payment${availablePlayersForPayment - paidAvailablePlayersCount === 1 ? '' : 's'} Pending`
   const adminAvailableBlockedByCapacity = adminSelectedStatus === 'available' && isCapacityReached
   const isPaymentRequested = Boolean(selectedSession?.payment_requested)
 
@@ -1291,19 +1299,19 @@ export default function Calendar({ user }) {
                 <div style={{ position: 'relative', width: '72px', height: '72px', flex: '0 0 72px' }}>
                   <svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true">
                     <circle cx="36" cy="36" r="26" fill="none" stroke="color-mix(in srgb, var(--theme-border) 78%, white)" strokeWidth="8" />
-                    <circle cx="36" cy="36" r="26" fill="none" stroke={isCapacityReached ? 'var(--theme-warning-strong)' : 'var(--theme-success-strong)'} strokeWidth="8" strokeLinecap="round" strokeDasharray={capacityChartCircumference} strokeDashoffset={capacityChartOffset} transform="rotate(-90 36 36)" />
+                    <circle cx="36" cy="36" r="26" fill="none" stroke={hasSelectedSessionPassed ? (paymentCompletionRatio >= 1 ? 'var(--theme-success-strong)' : 'var(--theme-warning-strong)') : (isCapacityReached ? 'var(--theme-warning-strong)' : 'var(--theme-success-strong)')} strokeWidth="8" strokeLinecap="round" strokeDasharray={capacityChartCircumference} strokeDashoffset={hasSelectedSessionPassed ? paymentChartOffset : capacityChartOffset} transform="rotate(-90 36 36)" />
                   </svg>
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
-                    <strong style={{ fontSize: '1.1rem', color: 'var(--theme-heading)' }}>{sessionBookingPercentage}%</strong>
+                    <strong style={{ fontSize: '1.1rem', color: 'var(--theme-heading)' }}>{hasSelectedSessionPassed ? `${paymentCompletionPercentage}%` : `${sessionBookingPercentage}%`}</strong>
                   </div>
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>Capacity</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: '700', color: isCapacityReached ? 'var(--theme-warning-strong)' : 'var(--theme-success-strong)', marginBottom: '0.2rem' }}>
-                    {sessionAvailableCount}/{sessionMaximumCapacity} booked
+                  <div style={{ fontSize: '0.75rem', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', marginBottom: '0.25rem' }}>{hasSelectedSessionPassed ? 'Payments' : 'Capacity'}</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '700', color: hasSelectedSessionPassed ? (paymentCompletionRatio >= 1 ? 'var(--theme-success-strong)' : 'var(--theme-warning-strong)') : (isCapacityReached ? 'var(--theme-warning-strong)' : 'var(--theme-success-strong)'), marginBottom: '0.2rem' }}>
+                    {hasSelectedSessionPassed ? `${paidAvailablePlayersCount}/${availablePlayersForPayment} Paid` : `${sessionAvailableCount}/${sessionMaximumCapacity} booked`}
                   </div>
                   <div style={{ fontSize: '0.875rem', color: 'var(--theme-text-muted)' }}>
-                    {sessionRemainingSlots > 0 ? `+${sessionRemainingSlots} slot${sessionRemainingSlots === 1 ? '' : 's'} available` : 'No slots available'}
+                    {hasSelectedSessionPassed ? paymentStatusText : (sessionRemainingSlots > 0 ? `+${sessionRemainingSlots} slot${sessionRemainingSlots === 1 ? '' : 's'} available` : 'No slots available')}
                   </div>
                 </div>
               </div>
