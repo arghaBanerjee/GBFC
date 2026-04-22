@@ -1783,11 +1783,6 @@ export default function Calendar({ user }) {
                   <div style={{ border: '1px solid color-mix(in srgb, var(--theme-success) 28%, white)', borderRadius: '0.75rem', padding: '0.55rem', background: 'var(--theme-success-soft)' }}>
                     <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-success-strong)' }}>
                       {(voteSummary?.available || []).length}
-                      {isPaymentRequested && (voteSummary?.available || []).length > 0 && (
-                      <span style={{ fontSize: '0.750rem', color: 'var(--theme-success-strong)', fontWeight: '500'}}>
-                        &nbsp;&nbsp;(Paid {paidAvailablePlayersCount})
-                      </span>
-                    )}
                     </div>
                     <div style={{ fontSize: '1.1rem', fontWeight: '500', marginBottom: '0.35rem', color: 'var(--theme-success-strong)' }}>Available</div>
                     <div style={{ marginTop: '0.5rem', paddingTop: '1rem' }}>
