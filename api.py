@@ -3591,7 +3591,12 @@ async def startup_event():
             cur = conn.cursor()
             cur.execute("SELECT COUNT(*) FROM practice_sessions WHERE event_type = 'others'")
             result = cur.fetchone()
-            world_cup_count = result[0] if result else 0
+            if not result:
+                world_cup_count = 0
+            elif isinstance(result, dict):
+                world_cup_count = result.get("count", 0)
+            else:
+                world_cup_count = result[0]
             
             if world_cup_count == 0:
                 print("Seeding 2026 FIFA World Cup events...")
