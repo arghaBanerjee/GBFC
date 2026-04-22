@@ -82,6 +82,12 @@ export default function Calendar({ user }) {
     return `${year}-${month}-${day}`
   }
 
+  const getCalendarEventsUrl = (date) => {
+    const year = date.getFullYear()
+    const month = date.getMonth() + 1
+    return apiUrl(`/api/calendar/events?year=${year}&month=${month}`)
+  }
+
   const parseDateStr = (dateStr) => {
     if (!dateStr) return null
     // Expect YYYY-MM-DD
@@ -306,7 +312,7 @@ export default function Calendar({ user }) {
   useEffect(() => {
     // Fetch admin-created events
     setCalendarEventsLoading(true)
-    fetch(apiUrl('/api/calendar/events'))
+    fetch(getCalendarEventsUrl(currentDate))
       .then(r => r.json())
       .then(data => setAdminCalendarEvents(Array.isArray(data) ? data : []))
       .catch(() => setAdminCalendarEvents([]))
@@ -325,7 +331,7 @@ export default function Calendar({ user }) {
       setAvailability({})
       setAllUsers([])
     }
-  }, [user, token])
+  }, [user, token, currentDate])
 
   useEffect(() => {
     setIsAdmin(user?.user_type === 'admin')
@@ -578,7 +584,7 @@ export default function Calendar({ user }) {
         setPaidBy(updatedSession.paid_by || '')
         setMaximumCapacity((updatedSession.maximum_capacity || 100).toString())
         setPaymentInfoSaved(Boolean(updatedSession.session_cost != null && updatedSession.paid_by))
-        return fetch(apiUrl('/api/calendar/events'))
+        return fetch(getCalendarEventsUrl(currentDate))
           .then(r => r.json())
           .then(data => setAdminCalendarEvents(data || []))
       })
@@ -617,7 +623,7 @@ export default function Calendar({ user }) {
       })
       .then(() => {
         // Refresh admin sessions
-        return fetch(apiUrl('/api/calendar/events'))
+        return fetch(getCalendarEventsUrl(currentDate))
           .then(r => r.json())
           .then(data => setAdminCalendarEvents(data || []))
       })

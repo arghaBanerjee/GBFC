@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, BackgroundTasks, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 from typing import List, Optional
+import calendar
 import html
 import re
 import sqlite3
@@ -4901,10 +4902,20 @@ async def upload_forum_image(file: UploadFile = File(...), current_user: dict = 
 
 # --- Practice Sessions (admin-managed) ---
 @app.get("/api/calendar/events")
-def list_calendar_events():
+def list_calendar_events(year: Optional[int] = Query(default=None), month: Optional[int] = Query(default=None)):
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT id FROM practice_sessions ORDER BY date ASC, COALESCE(time, ''), id ASC")
+        if year is not None and month is not None:
+            if month < 1 or month > 12:
+                raise HTTPException(status_code=400, detail="month must be between 1 and 12")
+            month_start = f"{year:04d}-{month:02d}-01"
+            month_end = f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
+            cur.execute(
+                f"SELECT id FROM practice_sessions WHERE date >= {PLACEHOLDER} AND date <= {PLACEHOLDER} ORDER BY date ASC, COALESCE(time, ''), id ASC",
+                (month_start, month_end),
+            )
+        else:
+            cur.execute(f"SELECT id FROM practice_sessions ORDER BY date ASC, COALESCE(time, ''), id ASC")
         sessions = []
         for row in cur.fetchall():
             row_dict = dict(row)
@@ -6401,6 +6412,7 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
             SELECT ps.id, ps.date, ps.time, ps.location, ps.event_type, ps.event_title, ps.session_cost, ps.paid_by,
                    COALESCE(ps.maximum_capacity, 100) as maximum_capacity
             FROM practice_sessions ps
+            WHERE ps.event_type IN ('practice', 'match', 'social')
             ORDER BY ps.date ASC, COALESCE(ps.time, '') ASC, ps.id ASC
             """
         )
@@ -6430,6 +6442,8 @@ def get_upcoming_sessions(current_user: dict = Depends(get_current_user)):
                 "remaining_slots": max(maximum_capacity - available_count, 0),
                 "capacity_reached": available_count >= maximum_capacity,
             })
+            if len(sessions) >= 10:
+                break
         
         return {"sessions": sessions}
 
