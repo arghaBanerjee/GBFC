@@ -308,7 +308,7 @@ export default function Calendar({ user }) {
     setCalendarEventsLoading(true)
     fetch(apiUrl('/api/calendar/events'))
       .then(r => r.json())
-      .then(data => setAdminCalendarEvents(data || []))
+      .then(data => setAdminCalendarEvents(Array.isArray(data) ? data : []))
       .catch(() => setAdminCalendarEvents([]))
       .finally(() => setCalendarEventsLoading(false))
     
@@ -1079,6 +1079,7 @@ export default function Calendar({ user }) {
   const hasSelectedSessionPassed = Boolean(selectedSession && isCalendarEventPast(selectedSession.date, selectedSession.time))
   const canSelectAvailable = selectedStatus === 'available' || !isCapacityReached
   const optionSectionEnabled = Boolean(selectedSession?.option_a_text && selectedSession?.option_b_text)
+  const isOtherEvent = selectedSession?.event_type === 'others'
   const getDisplayFirstName = (name) => {
     const trimmedName = (name || '').trim()
     if (!trimmedName) return ''
@@ -1099,6 +1100,7 @@ export default function Calendar({ user }) {
     return count + (payments[userEmail] ? 1 : 0)
   }, 0)
   const adminAvailableBlockedByCapacity = adminSelectedStatus === 'available' && isCapacityReached
+  const isPaymentRequested = Boolean(selectedSession?.payment_requested)
 
   return (
     <div className="container">
@@ -1232,6 +1234,7 @@ export default function Calendar({ user }) {
                 </svg>
                 <span>Location: {selectedSession.location || 'TBD'}</span>
               </div>
+              {!isOtherEvent && (
               <div style={{ marginTop: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem', borderRadius: '0.875rem', background: 'var(--theme-surface)', border: '1px solid var(--theme-border)' }}>
                 <div style={{ position: 'relative', width: '72px', height: '72px', flex: '0 0 72px' }}>
                   <svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true">
@@ -1252,6 +1255,7 @@ export default function Calendar({ user }) {
                   </div>
                 </div>
               </div>
+              )}
             </div>
           ) : shouldShowInitialLandingLoader ? (
             <div id="selected-session-details" style={{ marginBottom: '1rem', padding: '1rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem', border: '1px solid var(--theme-border)' }}>
@@ -1274,7 +1278,7 @@ export default function Calendar({ user }) {
             </div>
             </div>
           )}
-          {selectedSession && (
+          {selectedSession && !isOtherEvent && (
             <>
               {isAdmin && (
                 <div ref={adminControlsRef} style={{ marginTop: '1rem', background: 'color-mix(in srgb, var(--theme-danger) 8%, var(--theme-surface))', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-danger) 24%, white)', overflow: 'hidden', boxShadow: adminControlsOpen ? 'var(--theme-card-shadow)' : 'none', transition: 'all 0.25s ease' }}>
@@ -1612,7 +1616,7 @@ export default function Calendar({ user }) {
                 )}
               </div>
 
-              {selectedSession?.payment_requested && user && isUserAvailable && voteSummary?.available?.length > 0 && (
+              {isPaymentRequested && user && isUserAvailable && voteSummary?.available?.length > 0 && (
                 <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--theme-warning-soft)', borderRadius: '0.75rem', border: '1px solid color-mix(in srgb, var(--theme-warning) 36%, white)', position: 'relative', overflow: 'hidden', opacity: isCurrentUserPaymentConfirmed && !animatingPayment ? 0.65 : 1, pointerEvents: isCurrentUserPaymentConfirmed && !animatingPayment ? 'none' : 'auto' }}>
                   {animatingPayment && (
                     <div style={{
@@ -1719,7 +1723,7 @@ export default function Calendar({ user }) {
                   <div style={{ border: '1px solid color-mix(in srgb, var(--theme-success) 28%, white)', borderRadius: '0.75rem', padding: '0.55rem', background: 'var(--theme-success-soft)' }}>
                     <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-success-strong)' }}>
                       {(voteSummary?.available || []).length}
-                      {selectedSession?.payment_requested && (voteSummary?.available || []).length > 0 && (
+                      {isPaymentRequested && (voteSummary?.available || []).length > 0 && (
                       <span style={{ fontSize: '0.750rem', color: 'var(--theme-success-strong)', fontWeight: '500'}}>
                         &nbsp;&nbsp;(Paid {paidAvailablePlayersCount})
                       </span>
@@ -1734,7 +1738,7 @@ export default function Calendar({ user }) {
                           <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
-                              {selectedSession?.payment_requested && hasPaid && <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>}
+                              {isPaymentRequested && hasPaid && <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>}
                             </div>
                           </div>
                         )

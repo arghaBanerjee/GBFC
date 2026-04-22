@@ -28,6 +28,7 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from io import BytesIO
 from apscheduler.schedulers.background import BackgroundScheduler
 from local_env import load_local_env
+from seed_world_cup_2026 import seed_world_cup_events
 
 load_local_env()
 
@@ -2011,8 +2012,8 @@ def normalize_maximum_capacity(value) -> int:
         normalized = int(value)
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="Maximum capacity must be a whole number")
-    if normalized <= 0:
-        raise HTTPException(status_code=400, detail="Maximum capacity must be greater than 0")
+    if normalized < 0:
+        raise HTTPException(status_code=400, detail="Maximum capacity must be 0 or greater")
     return normalized
 
 def normalize_practice_time(value: Optional[str]) -> Optional[str]:
@@ -2601,6 +2602,14 @@ def get_calendar_event_with_capacity_by_id(cur, session_id: int) -> Optional[dic
     session["event_title"] = normalize_event_title(session.get("event_title"), session["event_type"])
     session["option_a_text"] = (session.get("option_a_text") or "").strip() or None
     session["option_b_text"] = (session.get("option_b_text") or "").strip() or None
+    # Ensure default values for optional fields to prevent 400 errors
+    session["session_cost"] = session.get("session_cost") or None
+    session["cost_type"] = session.get("cost_type") or "Total"
+    session["paid_by"] = session.get("paid_by") or None
+    session["paid_by_name"] = session.get("paid_by_name") or None
+    session["paid_by_bank_name"] = session.get("paid_by_bank_name") or None
+    session["paid_by_sort_code"] = session.get("paid_by_sort_code") or None
+    session["paid_by_account_number"] = session.get("paid_by_account_number") or None
     available_count = get_available_count_for_calendar_event_id(cur, session_id)
     maximum_capacity = normalize_maximum_capacity(session.get("maximum_capacity"))
     session["maximum_capacity"] = maximum_capacity
@@ -3533,8 +3542,8 @@ def default_event_type_label(event_type: str) -> str:
 
 def normalize_event_title(event_title: Optional[str], event_type: str) -> str:
     cleaned = (event_title or "").strip()
-    if len(cleaned) > 30:
-        raise HTTPException(status_code=400, detail="Event title must be 30 characters or less")
+    if len(cleaned) > 120:
+        raise HTTPException(status_code=400, detail="Event title must be 120 characters or less")
     return cleaned if cleaned else default_event_title_for_type(event_type)
 
 # --- FastAPI app ---
@@ -3575,6 +3584,23 @@ app.add_middleware(
 async def startup_event():
     init_db()
     seed_notification_settings()
+    
+    # Seed World Cup 2026 events if not already present
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM practice_sessions WHERE event_type = 'others'")
+            result = cur.fetchone()
+            world_cup_count = result[0] if result else 0
+            
+            if world_cup_count == 0:
+                print("Seeding 2026 FIFA World Cup events...")
+                seed_world_cup_events()
+            else:
+                print(f"World Cup events already present ({world_cup_count} events), skipping seeding")
+    except Exception as e:
+        print(f"Warning: Could not check/seed World Cup events: {e}")
+    
     print("Database initialized successfully")
     if whatsapp_is_configured() and not whatsapp_scheduler.running:
         whatsapp_scheduler.add_job(keep_whatsapp_instance_alive, "interval", minutes=30, id="whatsapp_keepalive", replace_existing=True)
@@ -4869,7 +4895,7 @@ async def upload_forum_image(file: UploadFile = File(...), current_user: dict = 
 
 
 # --- Practice Sessions (admin-managed) ---
-@app.get("/api/calendar/events", response_model=List[PracticeSessionOut])
+@app.get("/api/calendar/events")
 def list_calendar_events():
     with get_connection() as conn:
         cur = conn.cursor()
@@ -4879,7 +4905,7 @@ def list_calendar_events():
             row_dict = dict(row)
             session = get_practice_session_with_capacity_by_id(cur, row_dict["id"])
             if session:
-                sessions.append(PracticeSessionOut(**session))
+                sessions.append(session)
         return sessions
 
 @app.get("/api/calendar/events/id/{session_id}", response_model=PracticeSessionOut)
