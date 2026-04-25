@@ -239,6 +239,10 @@ function App() {
     }
   }, [location.pathname])
 
+  // Detect iOS (iOS doesn't support beforeinstallprompt)
+  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
+  const isInStandaloneMode = typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true)
+
   // PWA Install Prompt Handler
   useEffect(() => {
     // Check if user previously dismissed the prompt
@@ -248,6 +252,11 @@ function App() {
       if (daysSinceDismiss < 7) {
         setInstallPromptDismissed(true)
       }
+    }
+
+    // For iOS: show manual install banner if not already installed
+    if (isIOS && !isInStandaloneMode) {
+      setIsInstallable(true)
     }
 
     const handleBeforeInstallPrompt = (e) => {
@@ -678,7 +687,7 @@ function App() {
       </nav>
 
       {/* PWA Install Prompt Popup */}
-      {isInstallable && !installPromptDismissed && (
+      {isInstallable && !installPromptDismissed && !isInStandaloneMode && (
         <div
           style={{
             position: 'fixed',
@@ -708,26 +717,40 @@ function App() {
               Install GBFC App
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)', lineHeight: 1.3 }}>
-              Add to your home screen for quick access
+              {isIOS ? (
+                <>
+                  Tap{' '}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: 'middle', display: 'inline' }}>
+                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                    <polyline points="16 6 12 2 8 6"/>
+                    <line x1="12" y1="2" x2="12" y2="15"/>
+                  </svg>
+                  {' '}then "Add to Home Screen"
+                </>
+              ) : (
+                'Add to your home screen for quick access'
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', flexShrink: 0 }}>
-            <button
-              onClick={handleInstallClick}
-              style={{
-                background: 'var(--theme-accent)',
-                color: 'var(--theme-accent-contrast)',
-                border: 'none',
-                borderRadius: '0.5rem',
-                padding: '0.5rem 0.9rem',
-                fontWeight: 600,
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Install
-            </button>
+            {!isIOS && (
+              <button
+                onClick={handleInstallClick}
+                style={{
+                  background: 'var(--theme-accent)',
+                  color: 'var(--theme-accent-contrast)',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  padding: '0.5rem 0.9rem',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Install
+              </button>
+            )}
             <button
               onClick={handleDismissInstallPrompt}
               style={{
@@ -742,7 +765,7 @@ function App() {
                 whiteSpace: 'nowrap',
               }}
             >
-              Not now
+              {isIOS ? 'Dismiss' : 'Not now'}
             </button>
           </div>
         </div>
