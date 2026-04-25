@@ -1,7 +1,7 @@
 {
-  "name": "GBFC - Club Calendar",
+  "name": "GBFC",
   "short_name": "GBFC",
-  "description": "GBFC - Club Calendar and Member Management",
+  "description": "GBFC - Club Calendar and Event Management",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
