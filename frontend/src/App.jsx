@@ -46,6 +46,7 @@ function App() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [deferredPrompt, setDeferredPrompt] = useState(null)
   const [isInstallable, setIsInstallable] = useState(false)
+  const [installPromptDismissed, setInstallPromptDismissed] = useState(false)
   const notificationRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
@@ -240,6 +241,15 @@ function App() {
 
   // PWA Install Prompt Handler
   useEffect(() => {
+    // Check if user previously dismissed the prompt
+    const dismissedAt = localStorage.getItem('installPromptDismissedAt')
+    if (dismissedAt) {
+      const daysSinceDismiss = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24)
+      if (daysSinceDismiss < 7) {
+        setInstallPromptDismissed(true)
+      }
+    }
+
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault()
       setDeferredPrompt(e)
@@ -268,6 +278,11 @@ function App() {
       setIsInstallable(false)
     }
     setDeferredPrompt(null)
+  }
+
+  const handleDismissInstallPrompt = () => {
+    setInstallPromptDismissed(true)
+    localStorage.setItem('installPromptDismissedAt', Date.now().toString())
   }
 
   const markAsRead = async () => {
@@ -394,30 +409,6 @@ function App() {
           </div>
 
           <div className="nav-actions">
-            {/* PWA Install Button - shows when app is installable */}
-            {isInstallable && (
-              <button
-                onClick={handleInstallClick}
-                className="nav-btn install-btn"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  background: 'var(--theme-accent)',
-                  color: 'var(--theme-accent-contrast)',
-                  border: '1px solid var(--theme-accent)',
-                }}
-                aria-label="Install App"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                <span style={{ display: window.innerWidth <= 768 ? 'none' : 'inline' }}>Install App</span>
-              </button>
-            )}
-
             {/* User Actions Icon - visible on both desktop and mobile */}
             {user && (
               <Link to="/user/events" style={{ textDecoration: 'none' }} title="My Actions">
@@ -651,33 +642,6 @@ function App() {
               )}
             </div>
             <div className="mobile-auth">
-              {/* PWA Install Button in Mobile Menu */}
-              {isInstallable && (
-                <button
-                  onClick={handleInstallClick}
-                  className="nav-btn install-btn"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '0.5rem',
-                    background: 'var(--theme-accent)',
-                    color: 'var(--theme-accent-contrast)',
-                    border: '1px solid var(--theme-accent)',
-                    width: '100%',
-                  }}
-                  aria-label="Install App"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  Install App
-                </button>
-              )}
-            </div>
-            <div className="mobile-auth">
               {user ? (
                 <>
                   <Link to="/user/profile" onClick={() => setMobileMenuOpen(false)} style={{ textDecoration: 'none' }}>
@@ -712,6 +676,77 @@ function App() {
           </div>
         )}
       </nav>
+
+      {/* PWA Install Prompt Popup */}
+      {isInstallable && !installPromptDismissed && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '1rem',
+            left: '1rem',
+            right: '1rem',
+            maxWidth: '480px',
+            margin: '0 auto',
+            background: 'var(--theme-surface)',
+            border: '1px solid var(--theme-border)',
+            borderRadius: '0.75rem',
+            boxShadow: '0 10px 40px rgba(0, 0, 0, 0.25)',
+            padding: '1rem',
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+          }}
+        >
+          <img
+            src={clubLogo}
+            alt="GBFC"
+            style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', flexShrink: 0 }}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: 'var(--theme-heading)', marginBottom: '0.15rem', fontSize: '0.95rem' }}>
+              Install GBFC App
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)', lineHeight: 1.3 }}>
+              Add to your home screen for quick access
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', flexShrink: 0 }}>
+            <button
+              onClick={handleInstallClick}
+              style={{
+                background: 'var(--theme-accent)',
+                color: 'var(--theme-accent-contrast)',
+                border: 'none',
+                borderRadius: '0.5rem',
+                padding: '0.5rem 0.9rem',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Install
+            </button>
+            <button
+              onClick={handleDismissInstallPrompt}
+              style={{
+                background: 'transparent',
+                color: 'var(--theme-text-muted)',
+                border: '1px solid var(--theme-border)',
+                borderRadius: '0.5rem',
+                padding: '0.4rem 0.9rem',
+                fontWeight: 500,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Page Content */}
       <RouteErrorBoundary>

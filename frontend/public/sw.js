@@ -1,14 +1,20 @@
-const CACHE_NAME = 'gbfc-v1';
-const urlsToCache = ['/', '/club-icon.jpeg'];
+// Minimal service worker - required for PWA installability
+// Does NOT cache anything to avoid stale content issues after deployments
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  // Clear any old caches from previous versions
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))
+    caches.keys().then((cacheNames) =>
+      Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)))
+    ).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => response || fetch(event.request))
-  );
+  // Pass through all requests to network - no caching
+  return;
 });
