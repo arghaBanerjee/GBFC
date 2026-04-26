@@ -3580,11 +3580,56 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def normalize_user_emails_to_lowercase():
+    """One-time migration to lowercase all stored emails so case-insensitive
+    uniqueness is enforced going forward. Skips rows where lowering the email
+    would conflict with an existing lowercase email (the existing lowercase row
+    is preserved; the uppercase variant is logged but not modified).
+    """
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id, email FROM users WHERE email IS NOT NULL")
+            rows = cur.fetchall()
+            updates = []
+            seen_lower = {}
+            conflicts = []
+            for row in rows:
+                row_dict = dict(row)
+                user_id = row_dict.get("id")
+                email = row_dict.get("email") or ""
+                lowered = email.strip().lower()
+                if not lowered:
+                    continue
+                if lowered in seen_lower and seen_lower[lowered] != user_id:
+                    conflicts.append((user_id, email, seen_lower[lowered]))
+                    continue
+                seen_lower[lowered] = user_id
+                if email != lowered:
+                    updates.append((lowered, user_id))
+            for lowered, user_id in updates:
+                try:
+                    cur.execute(
+                        f"UPDATE users SET email = {PLACEHOLDER} WHERE id = {PLACEHOLDER}",
+                        (lowered, user_id)
+                    )
+                except Exception as e:
+                    print(f"Warning: could not lowercase email for user id={user_id}: {e}")
+            conn.commit()
+            if updates:
+                print(f"Normalized {len(updates)} user email(s) to lowercase")
+            if conflicts:
+                print(f"Email-case migration found {len(conflicts)} conflict(s) (kept first occurrence): {conflicts}")
+    except Exception as e:
+        print(f"Warning: email normalization migration failed: {e}")
+
+
 # Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
     init_db()
     seed_notification_settings()
+    normalize_user_emails_to_lowercase()
     
     # Seed World Cup 2026 events if not already present
     try:
@@ -3705,6 +3750,10 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 @app.post("/api/signup", response_model=UserOut)
 def signup(user: UserCreate, background_tasks: BackgroundTasks):
     try:
+        # Normalize email to lowercase to enforce case-insensitive uniqueness.
+        # Two users cannot register with the same email differing only in case.
+        normalized_email = (user.email or "").strip().lower()
+        user.email = normalized_email
         welcome_payload = {
             "email": user.email,
             "full_name": user.full_name,
@@ -3713,9 +3762,9 @@ def signup(user: UserCreate, background_tasks: BackgroundTasks):
         with get_connection() as conn:
             cur = conn.cursor()
             
-            # Check if email already exists
+            # Check if email already exists (case-insensitive match)
             cur.execute(
-                f"SELECT id, is_deleted FROM users WHERE email = {PLACEHOLDER}",
+                f"SELECT id, is_deleted FROM users WHERE LOWER(email) = {PLACEHOLDER}",
                 (user.email,)
             )
             existing = cur.fetchone()
@@ -3772,12 +3821,18 @@ def signup(user: UserCreate, background_tasks: BackgroundTasks):
 
 @app.post("/api/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    # Normalize email to lowercase for case-insensitive login lookup
+    normalized_email = (form_data.username or "").strip().lower()
+    form_data.username = normalized_email
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute(f"SELECT * FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)", (form_data.username,))
+        cur.execute(
+            f"SELECT * FROM users WHERE LOWER(email) = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+            (normalized_email,)
+        )
         user = cur.fetchone()
         if not user:
-            print(f"Login failed: no user found for email {form_data.username}")
+            print(f"Login failed: no user found for email {normalized_email}")
             raise HTTPException(status_code=401, detail="Invalid email or password")
         # Debug: compare stored hash with computed hash
         input_hash = hash_password(form_data.password)
