@@ -9,6 +9,7 @@ export default function Calendar({ user }) {
   const adminControlsRef = useRef(null)
   const selectedCalendarEventRef = useRef(null)
   const monthEventsCacheRef = useRef({})
+  const latestRequestedMonthRef = useRef(null)
   const initialLandingParamsRef = useRef((() => {
     const initialParams = new URLSearchParams(location.search)
     return {
@@ -123,6 +124,10 @@ export default function Calendar({ user }) {
     const cacheKey = getMonthCacheKey(date)
     const cachedMonthEvents = monthEventsCacheRef.current[cacheKey]
 
+    // Track the latest requested month so stale fetches (from previous
+    // currentDate values) cannot overwrite the UI with wrong-month data
+    latestRequestedMonthRef.current = cacheKey
+
     if (!forceRefresh && cachedMonthEvents) {
       setAdminCalendarEvents(cachedMonthEvents)
       setCalendarEventsLoading(false)
@@ -138,14 +143,25 @@ export default function Calendar({ user }) {
       .then(data => {
         const normalizedCalendarEvents = Array.isArray(data) ? data : []
         setCachedMonthEvents(date, normalizedCalendarEvents)
-        setAdminCalendarEvents(normalizedCalendarEvents)
+        // Only commit to UI if this is still the latest requested month.
+        // Otherwise a slow fetch from a previous month could overwrite the
+        // events of the month the user is now viewing.
+        if (latestRequestedMonthRef.current === cacheKey) {
+          setAdminCalendarEvents(normalizedCalendarEvents)
+        }
         return normalizedCalendarEvents
       })
       .catch(() => {
-        setAdminCalendarEvents([])
+        if (latestRequestedMonthRef.current === cacheKey) {
+          setAdminCalendarEvents([])
+        }
         return []
       })
-      .finally(() => setCalendarEventsLoading(false))
+      .finally(() => {
+        if (latestRequestedMonthRef.current === cacheKey) {
+          setCalendarEventsLoading(false)
+        }
+      })
   }
 
   const parseDateStr = (dateStr) => {
