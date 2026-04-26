@@ -6,7 +6,9 @@ export default function Signup({ setUser }) {
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState('')
   const [validationErrors, setValidationErrors] = useState({})
   const navigate = useNavigate()
@@ -151,7 +153,7 @@ export default function Signup({ setUser }) {
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
           <input
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             placeholder="Password"
             value={password}
             onChange={(e) => {
@@ -174,8 +176,26 @@ export default function Signup({ setUser }) {
             }}
             required
             className="theme-input"
-            style={{ border: validationErrors.password ? '1px solid var(--theme-danger)' : undefined }}
+            style={{ border: validationErrors.password ? '1px solid var(--theme-danger)' : undefined, paddingRight: '2.75rem' }}
           />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', padding: '0.25rem', cursor: 'pointer', color: 'var(--theme-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {showPassword ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            )}
+          </button>
         </div>
         {validationErrors.password && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.password}</p>}
         <div className="auth-input-wrap">
@@ -185,7 +205,7 @@ export default function Signup({ setUser }) {
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
           <input
-            type="password"
+            type={showConfirmPassword ? 'text' : 'password'}
             placeholder="Confirm password"
             value={confirmPassword}
             onChange={(e) => {
@@ -202,8 +222,26 @@ export default function Signup({ setUser }) {
             }}
             required
             className="theme-input"
-            style={{ border: validationErrors.confirmPassword ? '1px solid var(--theme-danger)' : undefined }}
+            style={{ border: validationErrors.confirmPassword ? '1px solid var(--theme-danger)' : undefined, paddingRight: '2.75rem' }}
           />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword((v) => !v)}
+            aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+            style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', padding: '0.25rem', cursor: 'pointer', color: 'var(--theme-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {showConfirmPassword ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            )}
+          </button>
         </div>
         {validationErrors.confirmPassword && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.confirmPassword}</p>}
         {error && <p style={{ color: 'var(--theme-danger)' }}>{error}</p>}
