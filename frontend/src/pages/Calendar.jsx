@@ -129,6 +129,9 @@ export default function Calendar({ user }) {
       return Promise.resolve(cachedMonthEvents)
     }
 
+    // Clear stale events from previous month so that "No event scheduled"
+    // is not shown briefly while the new month is being fetched
+    setAdminCalendarEvents([])
     setCalendarEventsLoading(true)
     return fetch(getCalendarEventsUrl(date))
       .then(r => r.json())
@@ -1317,7 +1320,7 @@ export default function Calendar({ user }) {
               </div>
               )}
             </div>
-          ) : shouldShowInitialLandingLoader ? (
+          ) : (shouldShowInitialLandingLoader || (selectedDate && (calendarEventsLoading || (hasRequestedSessionId && calendarEventDetailsLoading)))) ? (
             <div id="selected-session-details" style={{ marginBottom: '1rem', padding: '1rem', background: 'var(--theme-surface-alt)', borderRadius: '0.75rem', border: '1px solid var(--theme-border)' }}>
               <h3 style={{ marginBottom: '0.875rem', color: 'var(--theme-heading)' }}>{selectedDate ? selectedDate.toDateString() : 'Loading event'}</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '1rem', borderRadius: '0.875rem', background: 'var(--theme-surface)', border: '1px solid var(--theme-border)' }}>
