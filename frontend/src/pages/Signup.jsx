@@ -7,8 +7,6 @@ export default function Signup({ setUser }) {
   const [fullName, setFullName] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState('')
   const [validationErrors, setValidationErrors] = useState({})
   const navigate = useNavigate()
@@ -36,11 +34,6 @@ export default function Signup({ setUser }) {
     return ''
   }
 
-  const validateConfirmPassword = (value, currentPassword) => {
-    if (!value) return 'Please confirm your password'
-    if (value !== currentPassword) return 'Passwords do not match'
-    return ''
-  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -50,12 +43,10 @@ export default function Signup({ setUser }) {
     const nameError = validateFullName(fullName)
     const emailError = validateEmail(email)
     const passwordError = validatePassword(password)
-    const confirmPasswordError = validateConfirmPassword(confirmPassword, password)
     
     if (nameError) errors.fullName = nameError
     if (emailError) errors.email = emailError
     if (passwordError) errors.password = passwordError
-    if (confirmPasswordError) errors.confirmPassword = confirmPasswordError
     
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors)
@@ -163,12 +154,6 @@ export default function Signup({ setUser }) {
                 const error = validatePassword(nextPassword)
                 setValidationErrors(prev => ({ ...prev, password: error }))
               }
-              if (confirmPassword) {
-                setValidationErrors(prev => ({
-                  ...prev,
-                  confirmPassword: validateConfirmPassword(confirmPassword, nextPassword),
-                }))
-              }
             }}
             onBlur={(e) => {
               const error = validatePassword(e.target.value)
@@ -198,52 +183,6 @@ export default function Signup({ setUser }) {
           </button>
         </div>
         {validationErrors.password && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.password}</p>}
-        <div className="auth-input-wrap">
-          <svg className="auth-input-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 12l2 2 4-4" />
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-          <input
-            type={showConfirmPassword ? 'text' : 'password'}
-            placeholder="Confirm password"
-            value={confirmPassword}
-            onChange={(e) => {
-              const nextConfirmPassword = e.target.value
-              setConfirmPassword(nextConfirmPassword)
-              if (validationErrors.confirmPassword) {
-                const error = validateConfirmPassword(nextConfirmPassword, password)
-                setValidationErrors(prev => ({ ...prev, confirmPassword: error }))
-              }
-            }}
-            onBlur={(e) => {
-              const error = validateConfirmPassword(e.target.value, password)
-              if (error) setValidationErrors(prev => ({ ...prev, confirmPassword: error }))
-            }}
-            required
-            className="theme-input"
-            style={{ border: validationErrors.confirmPassword ? '1px solid var(--theme-danger)' : undefined, paddingRight: '2.75rem' }}
-          />
-          <button
-            type="button"
-            onClick={() => setShowConfirmPassword((v) => !v)}
-            aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-            style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', padding: '0.25rem', cursor: 'pointer', color: 'var(--theme-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            {showConfirmPassword ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                <line x1="1" y1="1" x2="23" y2="23"/>
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            )}
-          </button>
-        </div>
-        {validationErrors.confirmPassword && <p style={{ color: 'var(--theme-danger)', fontSize: '0.875rem', marginTop: '0', marginBottom: '0.5rem' }}>{validationErrors.confirmPassword}</p>}
         {error && <p style={{ color: 'var(--theme-danger)' }}>{error}</p>}
         <button type="submit" className="nav-btn theme-primary-btn" style={{ width: '100%', fontWeight: '600' }}>
           Create Account
