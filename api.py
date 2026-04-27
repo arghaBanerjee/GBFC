@@ -467,10 +467,10 @@ def init_db():
 
             try:
                 cur.execute("""
-                    DO $$ 
-                    BEGIN 
+                    DO $$
+                    BEGIN
                         IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns 
+                            SELECT 1 FROM information_schema.columns
                             WHERE table_name='users' AND column_name='theme_preference'
                         ) THEN
                             ALTER TABLE users ADD COLUMN theme_preference VARCHAR(50) DEFAULT 'nordic_neutral';
@@ -481,7 +481,25 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not add theme_preference column: {e}")
                 conn.rollback()
-            
+
+            # Add platform column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='users' AND column_name='platform'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN platform VARCHAR(50) DEFAULT 'browser';
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add platform column: {e}")
+                conn.rollback()
+
             # Add payment_mode column if it doesn't exist (for existing databases)
             try:
                 cur.execute("""
@@ -1316,6 +1334,12 @@ def init_db():
                 cur.execute("UPDATE practice_sessions SET maximum_capacity = 100 WHERE maximum_capacity IS NULL")
             except sqlite3.OperationalError as e:
                 print(f"Warning: Could not backfill maximum_capacity values: {e}")
+            # Add platform column to users table if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN platform TEXT DEFAULT 'browser'")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add platform column: {e}")
             # Add user_full_name to forum_posts if it doesn't exist
             try:
                 cur.execute("ALTER TABLE forum_posts ADD COLUMN user_full_name TEXT")
@@ -3161,6 +3185,7 @@ class UserOut(BaseModel):
     sort_code: Optional[str] = None
     account_number: Optional[str] = None
     theme_preference: str = "nordic_neutral"
+    platform: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -3812,6 +3837,7 @@ def signup(user: UserCreate, background_tasks: BackgroundTasks):
                 user_id = cur.fetchone()['id']
             else:
                 user_id = cur.lastrowid
+            
             background_tasks.add_task(send_direct_notification_email_safe, "welcome_signup", welcome_payload, user.email)
             return UserOut(id=user_id, email=user.email, full_name=user.full_name, user_type='member')
     except HTTPException:
@@ -3977,12 +4003,22 @@ def reset_password(data: ResetPasswordRequest):
         return {"message": "Password reset successful"}
 
 @app.get("/api/me", response_model=UserOut)
-def me(current_user: dict = Depends(get_current_user)):
+def me(current_user: dict = Depends(get_current_user), platform: Optional[str] = None):
+    # Update platform if provided
+    if platform:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"UPDATE users SET platform = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+                (platform, current_user["email"])
+            )
+            conn.commit()
+
     # Fetch user details from database including created_at and last_login
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"SELECT full_name, user_type, is_deleted, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference, payment_mode, payment_mode_edit_at, payment_mode_edit_by FROM users WHERE email = {PLACEHOLDER}", 
+            f"SELECT full_name, user_type, is_deleted, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference, payment_mode, payment_mode_edit_at, payment_mode_edit_by, platform FROM users WHERE email = {PLACEHOLDER}",
             (current_user["email"],)
         )
         row = cur.fetchone()
@@ -4032,6 +4068,7 @@ def me(current_user: dict = Depends(get_current_user)):
             theme_preference = row_dict.get("theme_preference") or "nordic_neutral"
             payment_mode = row_dict.get("payment_mode") or "Daily"
             payment_mode_edit_by = row_dict.get("payment_mode_edit_by")
+            platform = row_dict.get("platform") or "browser"
         else:
             full_name = current_user["full_name"]
             user_type = "member"
@@ -4045,11 +4082,12 @@ def me(current_user: dict = Depends(get_current_user)):
             payment_mode = "Daily"
             payment_mode_edit_at = None
             payment_mode_edit_by = None
-    
+            platform = "browser"
+
     return UserOut(
-        id=current_user["id"], 
-        email=current_user["email"], 
-        full_name=full_name, 
+        id=current_user["id"],
+        email=current_user["email"],
+        full_name=full_name,
         user_type=user_type,
         created_at=created_at,
         last_login=last_login,
@@ -4058,6 +4096,7 @@ def me(current_user: dict = Depends(get_current_user)):
         sort_code=sort_code,
         account_number=account_number,
         theme_preference=theme_preference,
+        platform=platform,
         payment_mode=payment_mode,
         payment_mode_edit_at=payment_mode_edit_at,
         payment_mode_edit_by=payment_mode_edit_by,

@@ -13,7 +13,7 @@ import Profile from './pages/Profile'
 import UserActions from './pages/UserActions'
 import ProtectedRoute from './components/ProtectedRoute'
 import RouteErrorBoundary from './components/RouteErrorBoundary'
-import { apiUrl } from './api'
+import { apiUrl, getPlatform } from './api'
 import clubLogo from './assets/club-logo.jpeg'
 import './index.css'
 
@@ -191,7 +191,7 @@ function App() {
         }
       }
       
-      fetch(apiUrl('/api/me'), {
+      fetch(apiUrl(`/api/me?platform=${getPlatform()}`), {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then(async (r) => {

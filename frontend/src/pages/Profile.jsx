@@ -939,6 +939,29 @@ export default function Profile({ user, setUser, loading }) {
                 {formatDateTime(user.last_login)}
               </span>
             </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>Platform:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                {user.platform === 'pwa' ? (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                      <line x1="12" y1="18" x2="12.01" y2="18" />
+                    </svg>
+                    <span style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--theme-heading)' }}>App</span>
+                  </>
+                ) : (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="2" y1="12" x2="22" y2="12" />
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                    </svg>
+                    <span style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--theme-heading)' }}>Browser</span>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
