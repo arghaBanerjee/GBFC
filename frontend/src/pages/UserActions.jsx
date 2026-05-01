@@ -13,7 +13,6 @@ function UserActions({ user, loading }) {
   const [loadingData, setLoadingData] = useState(true)
   const [error, setError] = useState('')
   const hasLoadedData = useRef(false)
-  const [updatingAvailabilityDates, setUpdatingAvailabilityDates] = useState({})
   const [animatingPaymentId, setAnimatingPaymentId] = useState(null)
 
   const eventTypeLabelMap = {
@@ -149,60 +148,52 @@ function UserActions({ user, loading }) {
     }
   }
 
-  const handleAvailabilityChange = async (sessionId, status) => {
-    if (updatingAvailabilityDates[sessionId]) return
+  const handleAvailabilityChange = (sessionId, status) => {
+    const token = localStorage.getItem('token')
+    const currentCalendarEvent = upcomingCalendarEvents.find((calendarEvent) => calendarEvent.id === sessionId)
+    const currentStatus = currentCalendarEvent?.user_status
+    const newStatus = currentStatus === status ? 'none' : status
+    const previousCalendarEvents = upcomingCalendarEvents
 
-    let previousCalendarEvents = upcomingCalendarEvents
+    setError('')
 
-    try {
-      const token = localStorage.getItem('token')
-      const currentCalendarEvent = upcomingCalendarEvents.find((calendarEvent) => calendarEvent.id === sessionId)
-      const currentStatus = currentCalendarEvent?.user_status
-      const newStatus = currentStatus === status ? 'none' : status
-      previousCalendarEvents = upcomingCalendarEvents
-      setError('')
-      setUpdatingAvailabilityDates(prev => ({ ...prev, [sessionId]: true }))
+    // Optimistic UI update — apply immediately
+    setUpcomingCalendarEvents(prev => prev.map(calendarEvent => {
+      if (calendarEvent.id !== sessionId) return calendarEvent
 
-      setUpcomingCalendarEvents(prev => prev.map(calendarEvent => {
-        if (calendarEvent.id !== sessionId) return calendarEvent
+      const previousWasAvailable = calendarEvent.user_status === 'available'
+      const nextIsAvailable = newStatus === 'available'
+      const availableCount = (calendarEvent.available_count || 0) + (nextIsAvailable ? 1 : 0) - (previousWasAvailable ? 1 : 0)
+      const maximumCapacity = calendarEvent.maximum_capacity || 100
 
-        const previousWasAvailable = calendarEvent.user_status === 'available'
-        const nextIsAvailable = newStatus === 'available'
-        const availableCount = (calendarEvent.available_count || 0) + (nextIsAvailable ? 1 : 0) - (previousWasAvailable ? 1 : 0)
-        const maximumCapacity = calendarEvent.maximum_capacity || 100
+      return {
+        ...calendarEvent,
+        user_status: newStatus === 'none' ? null : newStatus,
+        available_count: availableCount,
+        remaining_slots: Math.max(maximumCapacity - availableCount, 0),
+        capacity_reached: availableCount >= maximumCapacity,
+      }
+    }))
 
-        return {
-          ...calendarEvent,
-          user_status: newStatus === 'none' ? null : newStatus,
-          available_count: availableCount,
-          remaining_slots: Math.max(maximumCapacity - availableCount, 0),
-          capacity_reached: availableCount >= maximumCapacity,
-        }
-      }))
-
-      const response = await fetch(`${API_URL}/api/calendar/events/id/${sessionId}/availability`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: newStatus })
-      })
-
-      if (response.ok) {
-        await refreshUpcomingCalendarEvents()
-      } else {
-        const err = await response.json()
+    // Fire backend update in background; revert on failure
+    fetch(`${API_URL}/api/calendar/events/id/${sessionId}/availability`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ status: newStatus })
+    }).then(async (response) => {
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
         setUpcomingCalendarEvents(previousCalendarEvents)
         setError(err.detail || 'Failed to update availability')
       }
-    } catch (err) {
+    }).catch((err) => {
       setUpcomingCalendarEvents(previousCalendarEvents)
       setError('Failed to update availability')
       console.error(err)
-    } finally {
-      setUpdatingAvailabilityDates(prev => ({ ...prev, [sessionId]: false }))
-    }
+    })
   }
 
   const handlePaymentConfirmation = async (sessionId, paid) => {
@@ -473,9 +464,25 @@ function UserActions({ user, loading }) {
                             </span>
                             <span>Add to Calendar</span>
                           </a>
-                          <span style={{ fontSize: '0.8rem', color: calendarEvent.capacity_reached ? 'var(--theme-warning-strong)' : 'var(--theme-accent-strong)', fontWeight: '500' }}>
-                            {calendarEvent.remaining_slots > 0 ? `${calendarEvent.remaining_slots} slot${calendarEvent.remaining_slots === 1 ? '' : 's'} available` : 'Full'}
-                          </span>
+                          {calendarEvent.remaining_slots > 0 ? (
+                            <span style={{ fontSize: '0.8rem', color: 'var(--theme-accent-strong)', fontWeight: '500' }}>
+                              {`${calendarEvent.remaining_slots} slot${calendarEvent.remaining_slots === 1 ? '' : 's'} available`}
+                            </span>
+                          ) : (
+                            <span style={{
+                              fontSize: '0.8rem',
+                              fontWeight: '700',
+                              color: 'var(--theme-danger-contrast)',
+                              background: 'var(--theme-danger)',
+                              border: '1px solid var(--theme-danger-strong)',
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '999px',
+                              letterSpacing: '0.02em',
+                              boxShadow: '0 1px 3px color-mix(in srgb, var(--theme-danger) 40%, transparent)'
+                            }}>
+                              Full Capacity
+                            </span>
+                          )}
                         </div>
                       )
                     })()}
@@ -486,30 +493,23 @@ function UserActions({ user, loading }) {
                         <button
                           className={`availability-btn available ${calendarEvent.user_status === 'available' ? 'selected' : ''}`}
                           onClick={() => handleAvailabilityChange(calendarEvent.id, 'available')}
-                          disabled={updatingAvailabilityDates[calendarEvent.id] || (calendarEvent.capacity_reached && calendarEvent.user_status !== 'available')}
+                          disabled={calendarEvent.capacity_reached && calendarEvent.user_status !== 'available'}
                         >
-                          {updatingAvailabilityDates[calendarEvent.id] && calendarEvent.user_status === 'available' ? 'Updating...' : 'Available'}
+                          Available
                         </button>
                         <button
                           className={`availability-btn tentative ${calendarEvent.user_status === 'tentative' ? 'selected' : ''}`}
                           onClick={() => handleAvailabilityChange(calendarEvent.id, 'tentative')}
-                          disabled={updatingAvailabilityDates[calendarEvent.id]}
                         >
-                          {updatingAvailabilityDates[calendarEvent.id] && calendarEvent.user_status === 'tentative' ? 'Updating...' : 'Tentative'}
+                          Tentative
                         </button>
                         <button
                           className={`availability-btn not-available ${calendarEvent.user_status === 'not_available' ? 'selected' : ''}`}
                           onClick={() => handleAvailabilityChange(calendarEvent.id, 'not_available')}
-                          disabled={updatingAvailabilityDates[calendarEvent.id]}
                         >
-                          {updatingAvailabilityDates[calendarEvent.id] && calendarEvent.user_status === 'not_available' ? 'Updating...' : 'Unavailable'}
+                          Unavailable
                         </button>
                       </div>
-                      {calendarEvent.capacity_reached && calendarEvent.user_status !== 'available' && (
-                        <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: 'var(--theme-warning-strong, color-mix(in srgb, var(--theme-warning) 84%, black 16%))' }}>
-                          Full capacity. No Availability until a slot opens.
-                        </p>
-                      )}
                     </div>
                   </div>
                 </div>
