@@ -1618,7 +1618,7 @@ export default function Calendar({ user }) {
                 </div>
                 {user && isCapacityReached && selectedStatus !== 'available' && !selectedSession?.payment_requested && !hasSelectedSessionPassed && (
                   <p style={{ marginTop: '0.5rem', color: 'var(--theme-warning-strong)', fontSize: '0.875rem' }}>
-                    Maximum capacity reached. Voting disabled until more slots open up.
+                    ⚠️ Maximum capacity reached.
                   </p>
                 )}
                 {availabilityError && <p style={{ marginTop: '0.5rem', color: 'var(--theme-danger)', fontSize: '0.875rem' }}>{availabilityError}</p>}
