@@ -480,7 +480,7 @@ function UserActions({ user, loading }) {
                               letterSpacing: '0.02em',
                               boxShadow: '0 1px 3px color-mix(in srgb, var(--theme-danger) 40%, transparent)'
                             }}>
-                              Full Capacity
+                              ⚽ Full Capacity
                             </span>
                           )}
                         </div>
