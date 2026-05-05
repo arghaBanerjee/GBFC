@@ -5919,11 +5919,19 @@ def list_expenses(current_user: dict = Depends(get_current_user)):
         
         # Combine and sort
         all_rows = manual_rows + booking_rows
+
+        def _sort_key(value):
+            if value is None:
+                return ""
+            if hasattr(value, "isoformat"):
+                return value.isoformat()
+            return str(value)
+
         all_rows.sort(
             key=lambda r: (
-                r.get("expense_date") or "",
-                r.get("created_at") or "",
-                r.get("title") or "",
+                _sort_key(r.get("expense_date")),
+                _sort_key(r.get("created_at")),
+                _sort_key(r.get("title")),
             ),
             reverse=True
         )
