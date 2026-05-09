@@ -1020,9 +1020,7 @@ export default function Admin({ user, loading }) {
 
   const filteredExpenses = sortedExpenses.filter((expense) => {
     const matchesSearch = !expenseSearchTerm.trim() || searchableExpenseText(expense).includes(expenseSearchTerm.trim().toLowerCase())
-    const matchesCategory = expenseCategoryFilter === 'all' || (expense.category || '') === expenseCategoryFilter
-    const matchesPaidBy = expensePaidByFilter === 'all' || (expense.paid_by || '') === expensePaidByFilter
-    return matchesSearch && matchesCategory && matchesPaidBy
+    return matchesSearch
   })
 
   const filteredExpenseTotal = filteredExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0)
@@ -1127,6 +1125,7 @@ export default function Admin({ user, loading }) {
       {activeTab === 'events' && (
         <>
           <form onSubmit={handleSubmitCalendarEventWithReset} style={{ display: 'grid', gap: '1rem', padding: '1.5rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
+            <h3>Add New Event</h3>
             <div>
               <label>Event Type</label>
               <select value={calendarEventEventType} onChange={(e) => {
@@ -1788,21 +1787,6 @@ export default function Admin({ user, loading }) {
 
       {activeTab === 'expense' && (
         <>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '1rem',
-            marginBottom: '1rem'
-          }}>
-            <div style={{ border: '1px solid #d1d5db', borderRadius: '0.75rem', padding: '1rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)' }}>
-              <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Filtered Total</div>
-              <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>£{filteredExpenseTotal.toFixed(2)}</div>
-            </div>
-            <div style={{ border: '1px solid #d1d5db', borderRadius: '0.75rem', padding: '1rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)' }}>
-              <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Matching Expenses</div>
-              <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{filteredExpenses.length}</div>
-            </div>
-          </div>
 
           <form onSubmit={handleSubmitExpense} style={{
             display: 'flex',
@@ -1815,6 +1799,7 @@ export default function Admin({ user, loading }) {
             background: 'white',
             boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
           }}>
+            <h3>Add New Expense</h3>
             <div>
               <label>Expense Title</label>
               <input value={expenseTitle} onChange={(e) => setExpenseTitle(e.target.value)} required style={{ width: '100%' }} />
@@ -1868,62 +1853,38 @@ export default function Admin({ user, loading }) {
               )}
             </div>
           </form>
+          
+          <hr style={{ marginTop: '2rem', marginBottom: '2rem', border: 'none', borderTop: '1px solid #d1d5db' }} />
+          <h3>All Expenses</h3>
+          
+            <input
+              type="text"
+              value={expenseSearchTerm}
+              onChange={(e) => setExpenseSearchTerm(e.target.value)}
+              placeholder="Search title, description, category, payer..."
+              style={{
+                width: '100%',
+                padding: '0.875rem 1rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '0.75rem',
+                fontSize: '0.95rem'
+              }}
+            />
 
-          <h3 style={{ marginTop: '2rem' }}>Expenses</h3>
           <div style={{
-            border: '1px solid #d1d5db',
-            borderRadius: '0.75rem',
-            padding: '1rem',
-            background: 'white',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
-            marginBottom: '1rem'
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '1rem',
+            marginBottom: '1rem',
+            paddingTop: '1rem'
           }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '1rem'
-            }}>
-              <div>
-                <label>Search</label>
-                <input
-                  value={expenseSearchTerm}
-                  onChange={(e) => setExpenseSearchTerm(e.target.value)}
-                  placeholder="Search title, description, category, payer..."
-                  style={{ width: '100%' }}
-                />
-              </div>
-              <div>
-                <label>Filter by Category</label>
-                <select value={expenseCategoryFilter} onChange={(e) => setExpenseCategoryFilter(e.target.value)} style={{ width: '100%' }}>
-                  <option value="all">All categories</option>
-                  {availableExpenseCategories.map((category) => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label>Filter by Paid By</label>
-                <select value={expensePaidByFilter} onChange={(e) => setExpensePaidByFilter(e.target.value)} style={{ width: '100%' }}>
-                  <option value="all">All users</option>
-                  {users.map((u) => (
-                    <option key={u.email} value={u.email}>{u.full_name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'end' }}>
-                <button
-                  type="button"
-                  className="nav-btn"
-                  onClick={() => {
-                    setExpenseSearchTerm('')
-                    setExpenseCategoryFilter('all')
-                    setExpensePaidByFilter('all')
-                  }}
-                  style={{ border: '1px solid #d1d5db', color: '#111827', width: '100%' }}
-                >
-                  Clear Filters
-                </button>
-              </div>
+            <div style={{ border: '1px solid #d1d5db', borderRadius: '0.75rem', padding: '1rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)' }}>
+              <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Filtered Total</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>£{filteredExpenseTotal.toFixed(2)}</div>
+            </div>
+            <div style={{ border: '1px solid #d1d5db', borderRadius: '0.75rem', padding: '1rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)' }}>
+              <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Matching Expenses</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{filteredExpenses.length}</div>
             </div>
           </div>
           <div style={{ display: 'grid', gap: '1rem' }}>
