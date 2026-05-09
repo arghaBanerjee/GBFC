@@ -1019,9 +1019,11 @@ export default function Admin({ user, loading }) {
     .toLowerCase(), [])
 
   const filteredExpenses = useMemo(() => sortedExpenses.filter((expense) => {
-    const matchesSearch = !expenseSearchTerm.trim() || searchableExpenseText(expense).includes(expenseSearchTerm.trim().toLowerCase())
-    return matchesSearch
-  }), [sortedExpenses, expenseSearchTerm])
+    const searchTerm = expenseSearchTerm.trim().toLowerCase()
+    if (!searchTerm) return true
+    const text = searchableExpenseText(expense)
+    return text.includes(searchTerm)
+  }), [sortedExpenses, expenseSearchTerm, searchableExpenseText])
 
   const filteredExpenseTotal = filteredExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0)
   const availableExpenseCategories = Array.from(new Set(sortedExpenses.map((expense) => expense.category).filter(Boolean)))
@@ -1472,21 +1474,38 @@ export default function Admin({ user, loading }) {
                 <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{mobileAppUsersCount}</div>
               </div>
             </div>
-            <input
-              type="text"
-              value={userSearchTerm}
-              onChange={(e) => setUserSearchTerm(e.target.value)}
-              placeholder="Search users by name or email"
-              style={{
-                width: '100%',
-                padding: '0.875rem 1rem',
-                border: '1px solid #d1d5db',
-                borderRadius: '0.75rem',
-                fontSize: '0.95rem',
-                marginBottom: '1rem',
-                boxSizing: 'border-box'
-              }}
-            />
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem' }}>
+              <input
+                type="text"
+                value={userSearchTerm}
+                onChange={(e) => setUserSearchTerm(e.target.value)}
+                placeholder="Search users by name or email"
+                style={{
+                  flex: 1,
+                  padding: '0.875rem 1rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.75rem',
+                  fontSize: '0.95rem',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <button
+                type="button"
+                className="nav-btn"
+                onClick={() => setUserSearchTerm('')}
+                style={{
+                  background: '#6b7280',
+                  color: 'white',
+                  border: '1px solid #6b7280',
+                  fontWeight: '600',
+                  whiteSpace: 'nowrap',
+                  padding: '0.875rem 1rem',
+                  fontSize: '0.95rem'
+                }}
+              >
+                Clear
+              </button>
+            </div>
             {filteredUsers.map((u) => {
               const isUpcomingBirthdayUser = hasUpcomingBirthday(u.birthday)
               return (
@@ -1846,30 +1865,46 @@ export default function Admin({ user, loading }) {
               <button className="nav-btn" type="submit" style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600' }}>
                 {editingExpenseId ? 'Update Expense' : 'Add Expense'}
               </button>
-              {(editingExpenseId || expenseTitle || expenseAmount || expensePaidBy || expenseDate || expenseCategory || expensePaymentMethod || expenseDescription) && (
-                <button className="nav-btn" type="button" onClick={resetExpenseForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
-                  Clear
-                </button>
-              )}
+              <button className="nav-btn" type="button" onClick={resetExpenseForm} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600' }}>
+                Clear
+              </button>
             </div>
           </form>
           
           <hr style={{ marginTop: '2rem', marginBottom: '2rem', border: 'none', borderTop: '1px solid #d1d5db' }} />
           <h3>All Expenses</h3>
           
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <input
               type="text"
               value={expenseSearchTerm}
               onChange={(e) => setExpenseSearchTerm(e.target.value)}
               placeholder="Search title, description, category, payer..."
               style={{
-                width: '100%',
+                flex: 1,
                 padding: '0.875rem 1rem',
                 border: '1px solid #d1d5db',
                 borderRadius: '0.75rem',
                 fontSize: '0.95rem'
               }}
             />
+            <button
+              type="button"
+              className="nav-btn"
+              onClick={() => setExpenseSearchTerm('')}
+              style={{
+                background: '#6b7280',
+                color: 'white',
+                border: '1px solid #6b7280',
+                fontWeight: '600',
+                whiteSpace: 'nowrap',
+                padding: '0.875rem 1rem',
+                fontSize: '0.95rem'
+              }}
+            >
+              Clear
+            </button>
+          </div>
 
           <div style={{
             display: 'grid',
