@@ -66,6 +66,7 @@ export default function Admin({ user, loading }) {
   const [editingUserId, setEditingUserId] = useState(null)
   const [editingUserName, setEditingUserName] = useState('')
   const [userSearchTerm, setUserSearchTerm] = useState('')
+  const [activeCardFilter, setActiveCardFilter] = useState(null)
   const [userTypeStatusByEmail, setUserTypeStatusByEmail] = useState({})
   const [paymentModeStatusByEmail, setPaymentModeStatusByEmail] = useState({})
 
@@ -885,8 +886,51 @@ export default function Admin({ user, loading }) {
     refreshTabData('users')
   }
 
+  const hasUpcomingBirthday = (birthday) => {
+    if (!birthday) return false
+
+    try {
+      const parts = String(birthday).split('-')
+      if (parts.length < 2) return false
+      
+      const month = parseInt(parts[1], 10) - 1
+      const day = parseInt(parts[2], 10)
+      
+      if (isNaN(month) || isNaN(day) || month < 0 || month > 11 || day < 1 || day > 31) return false
+
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      
+      let nextBirthday = new Date(now.getFullYear(), month, day)
+      
+      if (nextBirthday < today) {
+        nextBirthday = new Date(now.getFullYear() + 1, month, day)
+      }
+      
+      const diffTime = nextBirthday.getTime() - today.getTime()
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      
+      return diffDays >= 0 && diffDays <= 30
+    } catch (e) {
+      console.error('Error checking birthday:', e, 'birthday:', birthday)
+      return false
+    }
+  }
+
   const filteredUsers = [...users]
     .filter((u) => !u.is_deleted)
+    .filter((u) => {
+      if (activeCardFilter === 'mobile_app') {
+        return u.platform === 'pwa'
+      }
+      if (activeCardFilter === 'monthly_subscribed') {
+        return u.payment_mode === 'Monthly'
+      }
+      if (activeCardFilter === 'upcoming_birthdays') {
+        return hasUpcomingBirthday(u.birthday)
+      }
+      return true
+    })
     .filter((u) => {
       const searchTerm = userSearchTerm.trim().toLowerCase()
       return (u.full_name || '').toLowerCase().includes(searchTerm) ||
@@ -918,23 +962,6 @@ export default function Admin({ user, loading }) {
 
   const todayAtMidnight = new Date()
   todayAtMidnight.setHours(0, 0, 0, 0)
-
-  const hasUpcomingBirthday = (birthday) => {
-    if (!birthday) return false
-    const parsedDate = new Date(`${birthday}T00:00:00`)
-    if (Number.isNaN(parsedDate.getTime())) return false
-
-    const nextBirthday = new Date(todayAtMidnight)
-    nextBirthday.setMonth(parsedDate.getMonth(), parsedDate.getDate())
-    nextBirthday.setHours(0, 0, 0, 0)
-
-    if (nextBirthday < todayAtMidnight) {
-      nextBirthday.setFullYear(nextBirthday.getFullYear() + 1)
-    }
-
-    const diffInDays = Math.ceil((nextBirthday.getTime() - todayAtMidnight.getTime()) / (1000 * 60 * 60 * 24))
-    return diffInDays >= 0 && diffInDays <= 30
-  }
 
   const upcomingBirthdaysCount = users.filter((u) => hasUpcomingBirthday(u.birthday)).length
 
@@ -1371,43 +1398,78 @@ export default function Admin({ user, loading }) {
               marginBottom: '1rem'
             }}>
               <div style={{
-                border: '1px solid #d1d5db',
+                border: activeCardFilter === null ? '1px solid #3b82f6' : '1px solid #d1d5db',
                 borderRadius: '0.75rem',
                 padding: '1rem',
-                background: 'white',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
-              }}>
-                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Registered Users</div>
+                background: activeCardFilter === null ? '#eff6ff' : 'white',
+                boxShadow: activeCardFilter === null ? '0 1px 3px rgba(59, 130, 246, 0.2)' : '0 1px 3px rgba(0, 0, 0, 0.08)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }} onClick={() => setActiveCardFilter(null)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                  <span>Registered Users</span>
+                </div>
                 <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{users.length}</div>
               </div>
               <div style={{
-                border: '1px solid #d1d5db',
+                border: activeCardFilter === 'upcoming_birthdays' ? '1px solid #f59e0b' : '1px solid #d1d5db',
                 borderRadius: '0.75rem',
                 padding: '1rem',
-                background: 'white',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
-              }}>
-                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Upcoming Birthdays</div>
+                background: activeCardFilter === 'upcoming_birthdays' ? '#fffbeb' : 'white',
+                boxShadow: activeCardFilter === 'upcoming_birthdays' ? '0 1px 3px rgba(245, 158, 11, 0.2)' : '0 1px 3px rgba(0, 0, 0, 0.08)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }} onClick={() => setActiveCardFilter(activeCardFilter === 'upcoming_birthdays' ? null : 'upcoming_birthdays')}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                    <line x1="16" y1="2" x2="16" y2="6" />
+                    <line x1="8" y1="2" x2="8" y2="6" />
+                    <line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                  <span>Next Birthdays</span>
+                </div>
                 <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{upcomingBirthdaysCount}</div>
               </div>
               <div style={{
-                border: '1px solid #d1d5db',
+                border: activeCardFilter === 'monthly_subscribed' ? '1px solid #8b5cf6' : '1px solid #d1d5db',
                 borderRadius: '0.75rem',
                 padding: '1rem',
-                background: 'white',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
-              }}>
-                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Monthly Subscribed</div>
+                background: activeCardFilter === 'monthly_subscribed' ? '#f5f3ff' : 'white',
+                boxShadow: activeCardFilter === 'monthly_subscribed' ? '0 1px 3px rgba(139, 92, 246, 0.2)' : '0 1px 3px rgba(0, 0, 0, 0.08)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }} onClick={() => setActiveCardFilter(activeCardFilter === 'monthly_subscribed' ? null : 'monthly_subscribed')}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                  </svg>
+                  <span>Monthly Subs</span>
+                </div>
                 <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{monthlySubscribedUsersCount}</div>
               </div>
               <div style={{
-                border: '1px solid #d1d5db',
+                border: activeCardFilter === 'mobile_app' ? '1px solid #10b981' : '1px solid #d1d5db',
                 borderRadius: '0.75rem',
                 padding: '1rem',
-                background: 'white',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
-              }}>
-                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Mobile App Users</div>
+                background: activeCardFilter === 'mobile_app' ? '#ecfdf5' : 'white',
+                boxShadow: activeCardFilter === 'mobile_app' ? '0 1px 3px rgba(16, 185, 129, 0.2)' : '0 1px 3px rgba(0, 0, 0, 0.08)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }} onClick={() => setActiveCardFilter(activeCardFilter === 'mobile_app' ? null : 'mobile_app')}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                    <line x1="12" y1="18" x2="12.01" y2="18" />
+                  </svg>
+                  <span>Mobile App Users</span>
+                </div>
                 <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{mobileAppUsersCount}</div>
               </div>
             </div>
