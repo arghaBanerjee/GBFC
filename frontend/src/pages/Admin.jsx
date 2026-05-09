@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { apiUrl } from '../api'
 import '../styles/Admin.css'
@@ -995,11 +995,11 @@ export default function Admin({ user, loading }) {
       return (b.id || 0) - (a.id || 0)
     })
 
-  const sortedExpenses = [...expenses].sort((a, b) => {
+  const sortedExpenses = useMemo(() => [...expenses].sort((a, b) => {
     const dateCompare = new Date(`${b.expense_date}T00:00:00`) - new Date(`${a.expense_date}T00:00:00`)
     if (dateCompare !== 0) return dateCompare
     return (b.id || 0) - (a.id || 0)
-  })
+  }), [expenses])
 
   const searchableExpenseText = (expense) => [
     expense.title,
@@ -1018,10 +1018,10 @@ export default function Admin({ user, loading }) {
     .join(' ')
     .toLowerCase()
 
-  const filteredExpenses = sortedExpenses.filter((expense) => {
+  const filteredExpenses = useMemo(() => sortedExpenses.filter((expense) => {
     const matchesSearch = !expenseSearchTerm.trim() || searchableExpenseText(expense).includes(expenseSearchTerm.trim().toLowerCase())
     return matchesSearch
-  })
+  }), [sortedExpenses, expenseSearchTerm])
 
   const filteredExpenseTotal = filteredExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0)
   const availableExpenseCategories = Array.from(new Set(sortedExpenses.map((expense) => expense.category).filter(Boolean)))
