@@ -1428,7 +1428,7 @@ export default function Admin({ user, loading }) {
                     <line x1="8" y1="2" x2="8" y2="6" />
                     <line x1="3" y1="10" x2="21" y2="10" />
                   </svg>
-                  <span>Next Birthdays</span>
+                  <span>Birthdays Upnext</span>
                 </div>
                 <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{upcomingBirthdaysCount}</div>
               </div>
