@@ -1907,11 +1907,11 @@ export default function Admin({ user, loading }) {
             marginBottom: '1rem',
             paddingTop: '1rem'
           }}>
-            <div style={{ border: '1px solid #d1d5db', borderRadius: '0.75rem', padding: '1rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)' }}>
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1rem', background: '#e7e8e9', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)' }}>
               <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Filtered Total</div>
               <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>£{filteredExpenseTotal.toFixed(2)}</div>
             </div>
-            <div style={{ border: '1px solid #d1d5db', borderRadius: '0.75rem', padding: '1rem', background: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)' }}>
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1rem', background: '#e7e8e9', boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)' }}>
               <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Matching Expenses</div>
               <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{filteredExpenses.length}</div>
             </div>
