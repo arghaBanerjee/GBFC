@@ -887,7 +887,11 @@ export default function Admin({ user, loading }) {
 
   const filteredUsers = [...users]
     .filter((u) => !u.is_deleted)
-    .filter((u) => (u.full_name || '').toLowerCase().includes(userSearchTerm.trim().toLowerCase()))
+    .filter((u) => {
+      const searchTerm = userSearchTerm.trim().toLowerCase()
+      return (u.full_name || '').toLowerCase().includes(searchTerm) ||
+             (u.email || '').toLowerCase().includes(searchTerm)
+    })
     .sort((a, b) => {
       const aLastLogin = a.last_login ? new Date(a.last_login).getTime() : 0
       const bLastLogin = b.last_login ? new Date(b.last_login).getTime() : 0
@@ -933,6 +937,9 @@ export default function Admin({ user, loading }) {
   }
 
   const upcomingBirthdaysCount = users.filter((u) => hasUpcomingBirthday(u.birthday)).length
+
+  const mobileAppUsersCount = users.filter((u) => u.platform === 'pwa').length
+  const monthlySubscribedUsersCount = users.filter((u) => u.payment_mode === 'Monthly').length
 
   const eventTypeOptions = [
     { value: 'practice', label: 'Practice' },
@@ -1359,7 +1366,7 @@ export default function Admin({ user, loading }) {
           <div style={{ marginTop: '1rem' }}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
               gap: '1rem',
               marginBottom: '1rem'
             }}>
@@ -1382,14 +1389,33 @@ export default function Admin({ user, loading }) {
               }}>
                 <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Upcoming Birthdays</div>
                 <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{upcomingBirthdaysCount}</div>
-                <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.35rem' }}>Next 30 days</div>
+              </div>
+              <div style={{
+                border: '1px solid #d1d5db',
+                borderRadius: '0.75rem',
+                padding: '1rem',
+                background: 'white',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
+              }}>
+                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Monthly Subscribed</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{monthlySubscribedUsersCount}</div>
+              </div>
+              <div style={{
+                border: '1px solid #d1d5db',
+                borderRadius: '0.75rem',
+                padding: '1rem',
+                background: 'white',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
+              }}>
+                <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '0.35rem' }}>Mobile App Users</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#111827' }}>{mobileAppUsersCount}</div>
               </div>
             </div>
             <input
               type="text"
               value={userSearchTerm}
               onChange={(e) => setUserSearchTerm(e.target.value)}
-              placeholder="Search users by name"
+              placeholder="Search users by name or email"
               style={{
                 width: '100%',
                 padding: '0.875rem 1rem',
