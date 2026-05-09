@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { apiUrl } from '../api'
 import '../styles/Admin.css'
@@ -1001,7 +1001,7 @@ export default function Admin({ user, loading }) {
     return (b.id || 0) - (a.id || 0)
   }), [expenses])
 
-  const searchableExpenseText = (expense) => [
+  const searchableExpenseText = useCallback((expense) => [
     expense.title,
     expense.description,
     expense.category,
@@ -1016,7 +1016,7 @@ export default function Admin({ user, loading }) {
   ]
     .filter(Boolean)
     .join(' ')
-    .toLowerCase()
+    .toLowerCase(), [])
 
   const filteredExpenses = useMemo(() => sortedExpenses.filter((expense) => {
     const matchesSearch = !expenseSearchTerm.trim() || searchableExpenseText(expense).includes(expenseSearchTerm.trim().toLowerCase())
