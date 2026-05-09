@@ -1004,15 +1004,9 @@ export default function Admin({ user, loading }) {
   const searchableExpenseText = useCallback((expense) => [
     expense.title,
     expense.description,
-    expense.category,
-    expense.payment_method,
     expense.paid_by_name,
     expense.paid_by,
-    expense.expense_date,
-    expense.practice_session_date,
-    expense.linked_practice_time,
-    expense.linked_practice_location,
-    expense.source,
+    expense.category,
   ]
     .filter(Boolean)
     .join(' ')
@@ -1923,8 +1917,8 @@ export default function Admin({ user, loading }) {
             </div>
           </div>
           <div style={{ display: 'grid', gap: '1rem' }}>
-            {filteredExpenses.map((expense) => (
-              <div key={expense.id} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
+            {filteredExpenses.map((expense, index) => (
+              <div key={`${expense.id || 'expense'}-${expense.expense_date || 'no-date'}-${expense.title || 'untitled'}-${index}`} style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                   <div>
                     <strong>{expense.expense_date}</strong>
