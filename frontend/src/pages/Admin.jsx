@@ -1803,7 +1803,7 @@ export default function Admin({ user, loading }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     {u.platform === 'pwa' ? (
                       <>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
                           <line x1="12" y1="18" x2="12.01" y2="18" />
                         </svg>
