@@ -67,8 +67,6 @@ export default function Admin({ user, loading }) {
   const [editingUserName, setEditingUserName] = useState('')
   const [userSearchTerm, setUserSearchTerm] = useState('')
   const [activeCardFilter, setActiveCardFilter] = useState(null)
-  const [userTypeStatusByEmail, setUserTypeStatusByEmail] = useState({})
-  const [paymentModeStatusByEmail, setPaymentModeStatusByEmail] = useState({})
 
   // Expenses
   const [expenses, setExpenses] = useState([])
@@ -787,9 +785,13 @@ export default function Admin({ user, loading }) {
   }
 
   const handleUpdateUserType = async (email, userType) => {
+    const currentUser = users.find(u => u.email === email)
+    if (currentUser && currentUser.user_type === userType) {
+      return
+    }
     const res = await fetch(apiUrl(`/api/users/${encodeURIComponent(email)}/type`), {
       method: 'PATCH',
-      headers: { 
+      headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
@@ -800,21 +802,7 @@ export default function Admin({ user, loading }) {
       setMessage(data?.detail || 'Failed to update user type')
       return
     }
-    setUserTypeStatusByEmail((prev) => ({
-      ...prev,
-      [email]: userType === 'admin'
-        ? 'User type updated to Admin'
-        : 'User type updated to Member'
-    }))
     refreshTabData('users')
-    // Clear status message after 3 seconds
-    setTimeout(() => {
-      setUserTypeStatusByEmail((prev) => {
-        const newStatus = { ...prev }
-        delete newStatus[email]
-        return newStatus
-      })
-    }, 3000)
   }
 
   const handleSaveUserName = async (email) => {
@@ -843,11 +831,15 @@ export default function Admin({ user, loading }) {
   }
 
   const handleUpdateUserPaymentMode = async (email, paymentMode) => {
+    const currentUser = users.find(u => u.email === email)
+    if (currentUser && currentUser.payment_mode === paymentMode) {
+      return
+    }
     const res = await fetch(apiUrl(`/api/users/${encodeURIComponent(email)}/payment-mode`), {
       method: 'PUT',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}` 
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify({ payment_mode: paymentMode })
     })
@@ -856,19 +848,7 @@ export default function Admin({ user, loading }) {
       setMessage(data?.detail || 'Failed to update user payment mode')
       return
     }
-    setPaymentModeStatusByEmail((prev) => ({
-      ...prev,
-      [email]: `Payment mode updated to ${paymentMode}`
-    }))
     refreshTabData('users')
-    // Clear status message after 3 seconds
-    setTimeout(() => {
-      setPaymentModeStatusByEmail((prev) => {
-        const newStatus = { ...prev }
-        delete newStatus[email]
-        return newStatus
-      })
-    }, 3000)
   }
 
   const handleDeleteUser = async (email) => {
@@ -1506,17 +1486,18 @@ export default function Admin({ user, loading }) {
               <div
                 key={u.email}
                 style={{
-                  border: isUpcomingBirthdayUser ? '1px solid #f59e0b' : u.email === user?.email ? '1px solid #86efac' : u.user_type === 'admin' ? '1px solid #fdba74' : '1px solid #d1d5db',
-                  borderRadius: '0.75rem',
-                  padding: '1rem',
+                  border: isUpcomingBirthdayUser ? '1px solid #f59e0b' : u.user_type === 'admin' ? '1px solid #f97316' : '1px solid #86efac',
+                  borderRadius: '1rem',
+                  padding: '1.25rem',
                   marginBottom: '1rem',
-                  background: isUpcomingBirthdayUser ? 'linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%)' : u.email === user?.email ? '#f0fdf4' : u.user_type === 'admin' ? '#fff7ed' : 'white',
-                  boxShadow: isUpcomingBirthdayUser ? '0 4px 14px rgba(245, 158, 11, 0.15)' : u.user_type === 'admin' ? '0 2px 8px rgba(245, 158, 11, 0.08)' : 'none'
+                  background: u.email === user?.email ? '#fff7ed' : 'white',
+                  boxShadow: u.email === user?.email ? '0 2px 8px rgba(249, 115, 22, 0.15)' : '0 1px 3px rgba(0, 0, 0, 0.08)',
+                  transition: 'box-shadow 0.2s'
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                  <div style={{ flex: '1', minWidth: 0, paddingRight: '0.5rem' }}>
-                    <div style={{ marginBottom: '0.5rem' }}>
+                {/* Header: Name + Action Icons */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     {editingUserId === u.email ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <input
@@ -1526,9 +1507,10 @@ export default function Admin({ user, loading }) {
                           style={{
                             padding: '0.5rem',
                             border: '2px solid #3b82f6',
-                            borderRadius: '0.375rem',
-                            fontSize: '1rem',
-                            flex: '1',
+                            borderRadius: '0.5rem',
+                            fontSize: '1.1rem',
+                            fontWeight: '700',
+                            flex: 1,
                             outline: 'none'
                           }}
                           autoFocus
@@ -1540,12 +1522,12 @@ export default function Admin({ user, loading }) {
                             background: '#10b981',
                             color: 'white',
                             border: 'none',
-                            borderRadius: '0.375rem',
+                            borderRadius: '0.5rem',
                             cursor: 'pointer',
                             fontSize: '1.25rem',
                             lineHeight: '1',
-                            width: '2rem',
-                            height: '2rem'
+                            width: '2.5rem',
+                            height: '2.5rem'
                           }}
                           title="Save"
                         >
@@ -1561,12 +1543,12 @@ export default function Admin({ user, loading }) {
                             background: '#ef4444',
                             color: 'white',
                             border: 'none',
-                            borderRadius: '0.375rem',
+                            borderRadius: '0.5rem',
                             cursor: 'pointer',
                             fontSize: '1.25rem',
                             lineHeight: '1',
-                            width: '2rem',
-                            height: '2rem'
+                            width: '2.5rem',
+                            height: '2.5rem'
                           }}
                           title="Cancel"
                         >
@@ -1574,130 +1556,18 @@ export default function Admin({ user, loading }) {
                         </button>
                       </div>
                     ) : (
-                      <div style={{ fontWeight: '700', fontSize: '1.2rem', lineHeight: '1.25' }}>
+                      <div style={{ fontWeight: '700', fontSize: '1.25rem', lineHeight: '1.3', color: '#111827' }}>
                         {u.full_name}
-                      </div>
-                    )}
-                    </div>
-                    <div style={{ color: '#6b7280', fontSize: '0.95rem', wordBreak: 'break-word', marginBottom: '0.75rem' }}>
-                      {u.email}
-                    </div>
-                    <div style={{ color: '#6b7280', fontSize: '0.95rem', marginBottom: '0.75rem' }}>
-                      Birthday {formatBirthday(u.birthday)}
-                    </div>
-                    {isUpcomingBirthdayUser && (
-                      <div style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        marginBottom: '0.75rem',
-                        padding: '0.35rem 0.6rem',
-                        borderRadius: '999px',
-                        background: '#ffffff',
-                        border: '1px solid #fdba74',
-                        color: '#9a3412',
-                        fontSize: '0.8rem',
-                        fontWeight: '600'
-                      }}>
-                        🎉 Upcoming birthday
-                      </div>
-                    )}
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        
-                        <span style={{ fontSize: '0.95rem', fontWeight: u.user_type === 'member' ? 'bold' : 'normal', color: '#6b7280', minWidth: '4.5rem' }}>Member </span>
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateUserType(u.email, u.user_type === 'admin' ? 'member' : 'admin')}
-                          disabled={u.email === user?.email}
-                          style={{
-                            position: 'relative',
-                            width: '4rem',
-                            height: '1.5rem',
-                            backgroundColor: u.user_type === 'admin' ? '#f97316' : '#3b82f6',
-                            border: 'none',
-                            borderRadius: '0.75rem',
-                            cursor: u.email === user?.email ? 'not-allowed' : 'pointer',
-                            transition: 'background-color 0.2s',
-                            padding: 0
-                          }}
-                        >
-                          <div
-                            style={{
-                              position: 'absolute',
-                              top: '0.125rem',
-                              left: u.user_type === 'admin' ? '2.625rem' : '0.125rem',
-                              width: '1.25rem',
-                              height: '1.25rem',
-                              backgroundColor: 'white',
-                              borderRadius: '50%',
-                              transition: 'transform 0.2s',
-                              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-                            }}
-                          />
-                        </button>
-                        <span style={{ fontSize: '0.95rem', fontWeight: u.user_type === 'admin' ? 'bold' : 'normal', color: '#6b7280', minWidth: '5rem' }}>Admin</span>
-                      </div>
-                    </div>
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        
-                        <span style={{ fontSize: '0.95rem', fontWeight: u.payment_mode === 'Daily' ? 'bold' : 'normal', color: '#6b7280', minWidth: '4.5rem' }}>Pay Daily</span>
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateUserPaymentMode(u.email, u.payment_mode === 'Monthly' ? 'Daily' : 'Monthly')}
-                          disabled={u.email === user?.email}
-                          style={{
-                            position: 'relative',
-                            width: '4rem',
-                            height: '1.5rem',
-                            backgroundColor: u.payment_mode === 'Monthly' ? '#10b981' : '#06b6d4',
-                            border: 'none',
-                            borderRadius: '0.75rem',
-                            cursor: u.email === user?.email ? 'not-allowed' : 'pointer',
-                            transition: 'background-color 0.2s',
-                            padding: 0
-                          }}
-                        >
-                          <div
-                            style={{
-                              position: 'absolute',
-                              top: '0.125rem',
-                              left: u.payment_mode === 'Monthly' ? '2.625rem' : '0.125rem',
-                              width: '1.25rem',
-                              height: '1.25rem',
-                              backgroundColor: 'white',
-                              borderRadius: '50%',
-                              transition: 'transform 0.2s',
-                              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-                            }}
-                          />
-                        </button>
-                        <span style={{ fontSize: '0.95rem', fontWeight: u.payment_mode === 'Monthly' ? 'bold' : 'normal', color: '#6b7280', minWidth: '5rem' }}>Pay Monthly</span>
-                      </div>
-                    </div>
-                    {userTypeStatusByEmail[u.email] && (
-                      <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.75rem' }}>
-                        {userTypeStatusByEmail[u.email]}
-                      </div>
-                    )}
-                    {paymentModeStatusByEmail[u.email] && (
-                      <div style={{ color: '#16a34a', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.75rem' }}>
-                        {paymentModeStatusByEmail[u.email]}
                       </div>
                     )}
                   </div>
                   {editingUserId !== u.email && (
-                    <div className="admin-mobile-action-group" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
-                      <button 
-                        className="nav-btn admin-mobile-action-btn" 
-                        disabled={u.user_type === 'admin' && u.email !== user?.email}
+                    <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                      <button
+                        className="nav-btn"
                         onClick={() => {
                           if (u.email === user?.email) {
                             navigate('/user/profile')
-                            return
-                          }
-                          if (u.user_type === 'admin') {
                             return
                           }
                           setEditingUserId(u.email)
@@ -1705,52 +1575,211 @@ export default function Admin({ user, loading }) {
                         }}
                         aria-label={u.email === user?.email ? 'Edit profile' : 'Edit user'}
                         title={u.email === user?.email ? 'Edit profile' : 'Edit user'}
-                        style={{ 
+                        style={{
+                          padding: '0.5rem 0.75rem',
                           fontSize: '0.875rem',
-                          border: u.email === user?.email ? '1px solid #16a34a' : '1px solid #d1d5db',
-                          color: u.email === user?.email ? '#16a34a' : u.user_type === 'admin' ? '#9ca3af' : '#111827',
-                          background: u.user_type === 'admin' && u.email !== user?.email ? '#f3f4f6' : 'var(--theme-surface-alt)',
-                          cursor: u.user_type === 'admin' && u.email !== user?.email ? 'not-allowed' : 'pointer',
-                          opacity: u.user_type === 'admin' && u.email !== user?.email ? 0.7 : 1
+                          border: u.email === user?.email ? '1px solid #f97316' : u.user_type === 'admin' ? '1px solid #f97316' : '1px solid #16a34a',
+                          color: u.email === user?.email ? '#f97316' : u.user_type === 'admin' ? '#f97316' : '#16a34a',
+                          background: 'white',
+                          cursor: 'pointer',
+                          borderRadius: '0.5rem'
                         }}
                       >
-                        <span className="admin-mobile-action-text">Edit</span>
-                        <span className="admin-mobile-action-icon" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                          </svg>
-                        </span>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                        </svg>
                       </button>
                       <button 
-                        className="nav-btn admin-mobile-action-btn" 
+                        className="nav-btn" 
                         onClick={() => handleDeleteUser(u.email)}
                         disabled={u.email === user?.email || u.user_type === 'admin'}
                         aria-label="Delete user"
                         title="Delete user"
                         style={{ 
-                          background: u.email === user?.email || u.user_type === 'admin' ? '#f3f4f6' : 'var(--theme-danger-soft)', 
-                          color: u.email === user?.email || u.user_type === 'admin' ? '#9ca3af' : 'var(--theme-danger-strong)', 
-                          border: u.email === user?.email || u.user_type === 'admin' ? '1px solid #d1d5db' : '1px solid color-mix(in srgb, var(--theme-danger) 30%, white)',
+                          padding: '0.5rem 0.75rem',
+                          background: u.email === user?.email || u.user_type === 'admin' ? '#f3f4f6' : '#fef2f2', 
+                          color: u.email === user?.email || u.user_type === 'admin' ? '#9ca3af' : '#dc2626', 
+                          border: u.email === user?.email || u.user_type === 'admin' ? '1px solid #d1d5db' : '1px solid #fecaca',
                           fontSize: '0.875rem',
                           cursor: u.email === user?.email || u.user_type === 'admin' ? 'not-allowed' : 'pointer',
-                          opacity: 1
+                          opacity: 1,
+                          borderRadius: '0.5rem'
                         }}
                       >
-                        <span className="admin-mobile-action-text">Delete</span>
-                        <span className="admin-mobile-action-icon" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M3 6h18" />
-                            <path d="M8 6V4h8v2" />
-                            <path d="M19 6l-1 14H6L5 6" />
-                            <path d="M10 11v6" />
-                            <path d="M14 11v6" />
-                          </svg>
-                        </span>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 6h18" />
+                          <path d="M8 6V4h8v2" />
+                          <path d="M19 6l-1 14H6L5 6" />
+                          <path d="M10 11v6" />
+                          <path d="M14 11v6" />
+                        </svg>
                       </button>
                     </div>
                   )}
                 </div>
+
+                {/* Identity: Email + Role Badge */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ color: '#6b7280', fontSize: '0.9rem', wordBreak: 'break-word', marginBottom: '0.5rem' }}>
+                    {u.email}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {u.user_type === 'admin' ? (
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '999px',
+                        background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                        color: 'white',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        boxShadow: '0 1px 2px rgba(249, 115, 22, 0.3)'
+                      }}>
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                        </svg>
+                        Admin
+                      </div>
+                    ) : (
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '999px',
+                        background: '#86efac',
+                        color: '#166534',
+                        fontSize: '0.75rem',
+                        fontWeight: '500',
+                        boxShadow: '0 1px 2px rgba(134, 239, 172, 0.3)'
+                      }}>
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                          <circle cx="12" cy="7" r="4" />
+                        </svg>
+                        Member
+                      </div>
+                    )}
+                    {isUpcomingBirthdayUser && (
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '999px',
+                        background: '#fef3c7',
+                        border: '1px solid #f59e0b',
+                        color: '#9a3412',
+                        fontSize: '0.75rem',
+                        fontWeight: '600'
+                      }}>
+                        🎉 Birthday
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Controls: Role & Billing with Segmented Buttons */}
+                <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Member Type
+                    </div>
+                    <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateUserType(u.email, 'member')}
+                        disabled={u.email === user?.email && u.user_type === 'admin'}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 1rem',
+                          border: 'none',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.875rem',
+                          fontWeight: '500',
+                          cursor: u.email === user?.email && u.user_type === 'admin' ? 'not-allowed' : 'pointer',
+                          background: u.user_type === 'member' ? 'white' : 'transparent',
+                          color: u.user_type === 'member' ? '#111827' : '#6b7280',
+                          boxShadow: u.user_type === 'member' ? '0 1px 2px rgba(0, 0, 0, 0.1)' : 'none',
+                          transition: 'all 0.2s',
+                          opacity: u.email === user?.email && u.user_type === 'admin' ? 0.5 : 1
+                        }}
+                      >
+                        Member
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateUserType(u.email, 'admin')}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 1rem',
+                          border: 'none',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.875rem',
+                          fontWeight: '500',
+                          cursor: 'pointer',
+                          background: u.user_type === 'admin' ? 'white' : 'transparent',
+                          color: u.user_type === 'admin' ? '#111827' : '#6b7280',
+                          boxShadow: u.user_type === 'admin' ? '0 1px 2px rgba(0, 0, 0, 0.1)' : 'none',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        Admin
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Payment Plan
+                    </div>
+                    <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateUserPaymentMode(u.email, 'Daily')}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 1rem',
+                          border: 'none',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.875rem',
+                          fontWeight: '500',
+                          cursor: 'pointer',
+                          background: u.payment_mode === 'Daily' ? 'white' : 'transparent',
+                          color: u.payment_mode === 'Daily' ? '#111827' : '#6b7280',
+                          boxShadow: u.payment_mode === 'Daily' ? '0 1px 2px rgba(0, 0, 0, 0.1)' : 'none',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        Daily
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateUserPaymentMode(u.email, 'Monthly')}
+                        style={{
+                          flex: 1,
+                          padding: '0.5rem 1rem',
+                          border: 'none',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.875rem',
+                          fontWeight: '500',
+                          cursor: 'pointer',
+                          background: u.payment_mode === 'Monthly' ? 'white' : 'transparent',
+                          color: u.payment_mode === 'Monthly' ? '#111827' : '#6b7280',
+                          boxShadow: u.payment_mode === 'Monthly' ? '0 1px 2px rgba(0, 0, 0, 0.1)' : 'none',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        Monthly
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer: System Info */}
                 <div style={{ 
                   display: 'flex', 
                   justifyContent: 'space-between', 
@@ -1758,36 +1787,38 @@ export default function Admin({ user, loading }) {
                   flexWrap: 'wrap',
                   gap: '0.5rem',
                   paddingTop: '0.75rem',
-                  borderTop: '1px solid #e5e7eb'
+                  borderTop: '1px solid #e5e7eb',
+                  fontSize: '0.8rem',
+                  color: '#9ca3af'
                 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                    <div>
-                      <strong>Registered:</strong> {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
-                    </div>
-                    <div>
-                      <strong>Last Login:</strong> {u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <strong>Platform:</strong>
-                      {u.platform === 'pwa' ? (
-                        <>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-                            <line x1="12" y1="18" x2="12.01" y2="18" />
-                          </svg>
-                          <span>Mobile App</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="2" y1="12" x2="22" y2="12" />
-                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                          </svg>
-                          <span>Browser</span>
-                        </>
-                      )}
-                    </div>
+                  <div>
+                    Registered: {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
+                  </div>
+                  <div>
+                    Birthday: {formatBirthday(u.birthday)}
+                  </div>
+                  <div>
+                    Last Login: {u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    {u.platform === 'pwa' ? (
+                      <>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                          <line x1="12" y1="18" x2="12.01" y2="18" />
+                        </svg>
+                        <span>Mobile App</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="2" y1="12" x2="22" y2="12" />
+                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        </svg>
+                        <span>Browser</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
