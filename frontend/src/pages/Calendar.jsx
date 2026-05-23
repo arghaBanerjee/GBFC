@@ -35,9 +35,11 @@ export default function Calendar({ user }) {
   const [paidBy, setPaidBy] = useState('')
   const [maximumCapacity, setMaximumCapacity] = useState('100')
   const [payments, setPayments] = useState({})
+  const [paymentAmounts, setPaymentAmounts] = useState({})
   const [paymentUpdatePending, setPaymentUpdatePending] = useState(false)
   const [showPaymentConfirm, setShowPaymentConfirm] = useState(false)
   const [paymentInfoSaved, setPaymentInfoSaved] = useState(false)
+  const [excludeMonthlySubscribers, setExcludeMonthlySubscribers] = useState(false)
   const [animatingPayment, setAnimatingPayment] = useState(false)
   const [adminControlsOpen, setAdminControlsOpen] = useState(false)
   const [adminUsersLoading, setAdminUsersLoading] = useState(false)
@@ -60,6 +62,7 @@ export default function Calendar({ user }) {
     match: 'Match',
     social: 'Social',
     others: 'Other',
+    payment: 'Payment',
   }
 
   const eventTypeColorMap = {
@@ -67,6 +70,7 @@ export default function Calendar({ user }) {
     match: '#bfdbfe',
     social: '#fed7aa',
     others: '#ddd6fe',
+    payment: '#fde68a',
   }
 
   const eventTypeAccentMap = {
@@ -74,6 +78,7 @@ export default function Calendar({ user }) {
     match: 'var(--theme-accent-strong)',
     social: '#c2410c',
     others: '#6d28d9',
+    payment: '#b45309',
   }
 
   const formatDateStr = (dt) => {
@@ -348,12 +353,25 @@ export default function Calendar({ user }) {
         })
           .then(r => r.json())
           .then((data) => {
-            setPayments(data || {})
+            const paidStatus = {}
+            const amounts = {}
+            for (const [email, info] of Object.entries(data || {})) {
+              if (info && typeof info === 'object') {
+                paidStatus[email] = info.paid
+                if (info.paid_amount !== null && info.paid_amount !== undefined) {
+                  amounts[email] = info.paid_amount
+                }
+              } else {
+                paidStatus[email] = info
+              }
+            }
+            setPayments(paidStatus)
+            setPaymentAmounts(amounts)
           })
           .catch(() => {
             setPayments({})
+            setPaymentAmounts({})
           })
-          .catch(() => setPayments({}))
       )
     }
 
@@ -637,6 +655,7 @@ export default function Calendar({ user }) {
         paid_by: paidBy || null,
         maximum_capacity: maximumCapacity ? parseInt(maximumCapacity, 10) : 100,
         cost_type: calendarEventCostType,
+        exclude_monthly_subscribers: excludeMonthlySubscribers,
       }),
     })
       .then(r => {
@@ -660,25 +679,26 @@ export default function Calendar({ user }) {
 
   const handleRequestPayment = () => {
     if (!selectedSession) return
-    
-    if (!window.confirm(
-      '⚠️ WARNING: This action cannot be reversed!\n\n' +
+
+    const confirmMsg = '⚠️ WARNING: This action cannot be reversed!\n\n' +
       'Before enabling payment request, please review:\n' +
       `• Total Cost: £${calendarEventCost || '0'}\n` +
       `• Paid by: ${paidBy || 'Not set'}\n` +
-      `• Available users: ${voteSummary?.available?.length || 0}\n\n` +
-      'Once enabled, users will be asked to confirm payment.\n\n' +
-      'Do you want to continue?'
-    )) {
+      `• Available users: ${voteSummary?.available?.length || 0}\n` +
+      (excludeMonthlySubscribers ? '• Monthly subscribers will be auto-marked as paid (£0) — no notification sent to them.\n' : '') +
+      '\nOnce enabled, users will be asked to confirm payment.\n\nDo you want to continue?'
+
+    if (!window.confirm(confirmMsg)) {
       return
     }
-    
+
     fetch(apiUrl(`/api/calendar/events/id/${selectedSession.id}/request-payment`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
+      body: JSON.stringify({ exclude_monthly_subscribers: excludeMonthlySubscribers }),
     })
       .then(r => {
         if (!r.ok) {
@@ -689,8 +709,11 @@ export default function Calendar({ user }) {
         return r.json()
       })
       .then(() => {
-        // Refresh admin sessions
-        return loadCalendarEventsForMonth(currentDate, { forceRefresh: true })
+        // Refresh admin sessions and payment data (monthly subscribers may be auto-marked paid)
+        return Promise.all([
+          loadCalendarEventsForMonth(currentDate, { forceRefresh: true }),
+          refreshSelectedDateData(selectedSession, { refreshAvailabilityMap: true, refreshPayments: true }),
+        ])
       })
       .catch(err => console.error('Failed to request payment:', err))
   }
@@ -1073,14 +1096,29 @@ export default function Calendar({ user }) {
         .then(r => r.json())
         .then(data => {
           if (cancelled) return
-          setPayments(data || {})
+          const paidStatus = {}
+          const amounts = {}
+          for (const [email, info] of Object.entries(data || {})) {
+            if (info && typeof info === 'object') {
+              paidStatus[email] = info.paid
+              if (info.paid_amount !== null && info.paid_amount !== undefined) {
+                amounts[email] = info.paid_amount
+              }
+            } else {
+              paidStatus[email] = info
+            }
+          }
+          setPayments(paidStatus)
+          setPaymentAmounts(amounts)
         })
         .catch(() => {
           if (cancelled) return
           setPayments({})
+          setPaymentAmounts({})
         })
     } else {
       setPayments({})
+      setPaymentAmounts({})
     }
 
     Promise.all([availabilityRequest, paymentsRequest]).finally(() => {
@@ -1129,12 +1167,15 @@ export default function Calendar({ user }) {
       setMaximumCapacity((selectedSession.maximum_capacity || 100).toString())
       // Check if payment info is already saved (both fields have values in DB)
       setPaymentInfoSaved(Boolean(selectedSession.session_cost != null && selectedSession.paid_by))
+      setExcludeMonthlySubscribers(Boolean(selectedSession.exclude_monthly_subscribers))
     } else {
       setCalendarEventCost('')
       setCalendarEventCostType('Total')
       setPaidBy('')
       setMaximumCapacity('100')
       setPaymentInfoSaved(false)
+      setExcludeMonthlySubscribers(false)
+      setPaymentAmounts({})
     }
   }, [selectedSession])
 
@@ -1164,7 +1205,7 @@ export default function Calendar({ user }) {
         ? 'B'
         : null
     : null
-  const canSavePaymentInfo = Boolean(calendarEventCost && paidBy && maximumCapacity && Number(maximumCapacity) > 0)
+  const canSavePaymentInfo = Boolean(calendarEventCost && (calendarEventCostType === 'Individual' || paidBy) && maximumCapacity && Number(maximumCapacity) > 0)
   const availablePlayersForPayment = voteSummary?.available?.length || 0
   const paidAvailablePlayersCount = (voteSummary?.available || []).reduce((count, name) => {
     const userEmail = voteSummary?.user_emails?.[name] || name
@@ -1178,8 +1219,13 @@ export default function Calendar({ user }) {
     : paidAvailablePlayersCount >= availablePlayersForPayment
       ? 'Fully Paid'
       : `${availablePlayersForPayment - paidAvailablePlayersCount} Payment${availablePlayersForPayment - paidAvailablePlayersCount === 1 ? '' : 's'} Pending`
-  const adminAvailableBlockedByCapacity = adminSelectedStatus === 'available' && isCapacityReached
+  const adminAvailableBlockedByCapacity = adminSelectedStatus === 'available' && isCapacityReached && selectedSession?.cost_type !== 'Individual'
   const isPaymentRequested = Boolean(selectedSession?.payment_requested)
+  const getUserPaymentAmount = (email) => {
+    if (email && paymentAmounts[email] !== undefined) return paymentAmounts[email]
+    if (selectedSession?.cost_type === 'Individual') return selectedSession?.session_cost || 0
+    return availablePlayersForPayment > 0 ? (selectedSession?.session_cost || 0) / availablePlayersForPayment : 0
+  }
 
   return (
     <div className="container">
@@ -1492,16 +1538,31 @@ export default function Calendar({ user }) {
                           </div>
                         )}
                         {!selectedSession?.payment_requested && (
-                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                            <button onClick={handleSavePaymentInfo} disabled={!canSavePaymentInfo} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: !canSavePaymentInfo ? 'var(--theme-border)' : paymentInfoSaved ? 'var(--theme-success)' : 'var(--theme-accent)', color: !canSavePaymentInfo ? 'var(--theme-text-muted)' : 'var(--theme-accent-contrast)', border: 'none', cursor: !canSavePaymentInfo ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
-                              {paymentInfoSaved ? '✓ Saved - Click to Update' : 'Save Payment Info'}
-                            </button>
-                            <button onClick={handleRequestPayment} disabled={!paymentInfoSaved || !hasSelectedSessionPassed} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'var(--theme-border)' : 'var(--theme-danger)', color: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'var(--theme-text-muted)' : 'var(--theme-danger-contrast)', border: 'none', cursor: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
-                              {!hasSelectedSessionPassed ? 'Request Payment After Event' : !paymentInfoSaved ? 'Save Payment Info First' : '⚠️ Request Payment'}
-                            </button>
-                          </div>
+                          <>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', color: 'var(--theme-text)', marginTop: '0.5rem', marginBottom: '0.25rem' }}>
+                              <input
+                                type="checkbox"
+                                checked={excludeMonthlySubscribers}
+                                onChange={(e) => setExcludeMonthlySubscribers(e.target.checked)}
+                              />
+                              Exclude Monthly Subscribers
+                            </label>
+                            {excludeMonthlySubscribers && (
+                              <div style={{ fontSize: '0.8rem', color: '#7c3aed', marginBottom: '0.5rem', padding: '0.4rem 0.6rem', background: '#f5f3ff', borderRadius: '0.375rem', border: '1px solid #ddd6fe' }}>
+                                Monthly subscribers will be auto-marked as paid (£0) — they will not receive payment notifications.
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                              <button onClick={handleSavePaymentInfo} disabled={!canSavePaymentInfo} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: !canSavePaymentInfo ? 'var(--theme-border)' : paymentInfoSaved ? 'var(--theme-success)' : 'var(--theme-accent)', color: !canSavePaymentInfo ? 'var(--theme-text-muted)' : 'var(--theme-accent-contrast)', border: 'none', cursor: !canSavePaymentInfo ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                                {paymentInfoSaved ? '✓ Saved - Click to Update' : 'Save Payment Info'}
+                              </button>
+                              <button onClick={handleRequestPayment} disabled={!paymentInfoSaved || !hasSelectedSessionPassed} style={{ flex: '1', padding: '0.5rem 1rem', borderRadius: '0.375rem', background: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'var(--theme-border)' : 'var(--theme-danger)', color: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'var(--theme-text-muted)' : 'var(--theme-danger-contrast)', border: 'none', cursor: (!paymentInfoSaved || !hasSelectedSessionPassed) ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '0.875rem', transition: 'all 0.2s' }}>
+                                {!hasSelectedSessionPassed ? 'Request Payment After Event' : !paymentInfoSaved ? 'Save Payment Info First' : '⚠️ Request Payment'}
+                              </button>
+                            </div>
+                          </>
                         )}
-                        {selectedSession?.payment_requested && (
+                        {!!selectedSession?.payment_requested && (
                           <div style={{ padding: '0.5rem', background: 'var(--theme-success-soft)', borderRadius: '0.375rem', fontSize: '0.875rem', color: 'var(--theme-success-strong)', fontWeight: '600', textAlign: 'center' }}>
                             ✓ Payment Requested
                           </div>
@@ -1772,8 +1833,8 @@ export default function Calendar({ user }) {
                         style={{ width: '18px', height: '18px', cursor: paymentUpdatePending ? 'wait' : 'pointer' }}
                       />
                       <label htmlFor="payment-checkbox" style={{ fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>
-                        {selectedSession.session_cost != null && availablePlayersForPayment > 0 ? (
-                          <>Paid £{selectedSession.cost_type=="Individual" ? selectedSession.session_cost.toFixed(2) : (selectedSession.session_cost / availablePlayersForPayment).toFixed(2)} to {selectedSession.paid_by_name || selectedSession.paid_by || 'Unknown User'}</>
+                        {selectedSession.session_cost != null ? (
+                          <>Paid £{getUserPaymentAmount(user?.email).toFixed(2)} to {selectedSession.paid_by_name || selectedSession.paid_by || 'Unknown User'}</>
                         ) : (
                           'Confirm payment made'
                         )}
@@ -1798,7 +1859,7 @@ export default function Calendar({ user }) {
                   </div>
                   )}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isPaymentRequested ? '1fr' : 'repeat(3, 1fr)', gap: '1rem', marginTop: '0.75rem' }}>
                   <div style={{ border: '1px solid color-mix(in srgb, var(--theme-success) 28%, white)', borderRadius: '0.75rem', padding: '0.55rem', background: 'var(--theme-success-soft)' }}>
                     <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-success-strong)' }}>
                       {(voteSummary?.available || []).length}
@@ -1808,10 +1869,16 @@ export default function Calendar({ user }) {
                       {(voteSummary?.available || []).map((n, idx) => {
                         const userEmail = voteSummary?.user_emails?.[n] || n
                         const hasPaid = payments[userEmail] || false
+                        const userAmount = isPaymentRequested ? getUserPaymentAmount(userEmail) : null
                         return (
                           <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
+                              {isPaymentRequested && (
+                                <span style={{ fontSize: '0.75rem', color: hasPaid ? 'var(--theme-success-strong)' : 'var(--theme-text-muted)' }}>
+                                  £{userAmount !== null ? userAmount.toFixed(2) : '0.00'}
+                                </span>
+                              )}
                               {isPaymentRequested && hasPaid && <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>}
                             </div>
                           </div>
@@ -1819,6 +1886,7 @@ export default function Calendar({ user }) {
                       })}
                     </div>
                   </div>
+                  {!isPaymentRequested && (
                   <div style={{ border: '1px solid color-mix(in srgb, var(--theme-warning) 28%, white)', borderRadius: '0.75rem', padding: '0.55rem', background: 'var(--theme-warning-soft)' }}>
                     <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-warning-strong)' }}>
                       {(voteSummary?.tentative || []).length}
@@ -1832,6 +1900,8 @@ export default function Calendar({ user }) {
                       ))}
                     </div>
                   </div>
+                  )}
+                  {!isPaymentRequested && (
                   <div style={{ border: '1px solid color-mix(in srgb, var(--theme-danger) 28%, white)', borderRadius: '0.75rem', padding: '0.55rem', background: 'var(--theme-danger-soft)' }}>
                     <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-danger-strong)' }}>
                       {(voteSummary?.not_available || []).length}
@@ -1845,6 +1915,7 @@ export default function Calendar({ user }) {
                       ))}
                     </div>
                   </div>
+                  )}
                 </div>
               </div>
             </>

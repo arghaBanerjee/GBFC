@@ -101,7 +101,7 @@ whatsapp_scheduler = BackgroundScheduler()
 
 NOTIFICATION_TARGET_OPTIONS = {"all_active_users", "admin_users", "available_players", "direct_user"}
 THEME_PREFERENCES = {"nordic_neutral", "east_bengal", "mohun_bagan"}
-EVENT_TYPE_OPTIONS = {"practice", "match", "social", "others"}
+EVENT_TYPE_OPTIONS = {"practice", "match", "social", "others", "payment"}
 NOTIFICATION_TYPE_DEFAULTS = {
     "practice": {
         "display_name": "New Event Added",
@@ -979,13 +979,24 @@ def init_db():
                     END $$;
                 """)
                 cur.execute("""
-                    DO $$ 
-                    BEGIN 
+                    DO $$
+                    BEGIN
                         IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns 
+                            SELECT 1 FROM information_schema.columns
                             WHERE table_name='events' AND column_name='practice_session_date'
                         ) THEN
                             ALTER TABLE events ADD COLUMN practice_session_date TEXT;
+                        END IF;
+                    END $$;
+                """)
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='practice_sessions' AND column_name='exclude_monthly_subscribers'
+                        ) THEN
+                            ALTER TABLE practice_sessions ADD COLUMN exclude_monthly_subscribers BOOLEAN DEFAULT FALSE;
                         END IF;
                     END $$;
                 """)
@@ -1000,10 +1011,27 @@ def init_db():
                 date VARCHAR(50) NOT NULL,
                 user_email VARCHAR(255) NOT NULL,
                 paid BOOLEAN DEFAULT FALSE,
+                paid_amount DECIMAL(10, 2),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(practice_session_id, user_email)
             )
             """)
+            try:
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='practice_payments' AND column_name='paid_amount'
+                        ) THEN
+                            ALTER TABLE practice_payments ADD COLUMN paid_amount DECIMAL(10, 2);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add paid_amount column to practice_payments: {e}")
+                conn.rollback()
             cur.execute("""
             CREATE TABLE IF NOT EXISTS expenses (
                 id SERIAL PRIMARY KEY,
@@ -1374,6 +1402,16 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add practice_session_date to events: {e}")
+            try:
+                cur.execute("ALTER TABLE practice_sessions ADD COLUMN exclude_monthly_subscribers INTEGER DEFAULT 0")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add exclude_monthly_subscribers column: {e}")
+            try:
+                cur.execute("ALTER TABLE practice_payments ADD COLUMN paid_amount REAL")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add paid_amount column: {e}")
             cur.executescript("""
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1981,7 +2019,7 @@ def should_send_app_notification(cur, notif_type: str) -> bool:
         return True
     return datetime.now() >= last_sent_at + timedelta(days=5)
 
-def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None):
+def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None, exclude_emails: list = None):
     guarded_notif_types = {"practice", "match", "practice_slot_available", "session_capacity_reached"}
     effective_date = related_date or payload.get("date")
     if notif_type in guarded_notif_types and effective_date:
@@ -2002,8 +2040,13 @@ def deliver_notification(notif_type: str, payload: dict, related_date: str = Non
     setting = get_notification_setting(notif_type)
     context = build_notification_context(payload)
     recipients = resolve_notification_recipients(setting["target_audience"], payload, notif_type)
+    excluded = set()
     if exclude_email:
-        recipients = [recipient for recipient in recipients if recipient["email"] != exclude_email]
+        excluded.add(exclude_email)
+    if exclude_emails:
+        excluded.update(exclude_emails)
+    if excluded:
+        recipients = [r for r in recipients if r["email"] not in excluded]
 
     with get_connection() as conn:
         cur = conn.cursor()
@@ -2584,7 +2627,7 @@ def get_calendar_event_basic_by_id(cur, session_id: int) -> Optional[dict]:
 def get_calendar_event_with_capacity_by_id(cur, session_id: int) -> Optional[dict]:
     cur.execute(
         f"""
-        SELECT 
+        SELECT
             ps.id,
             ps.date,
             ps.time,
@@ -2602,6 +2645,7 @@ def get_calendar_event_with_capacity_by_id(cur, session_id: int) -> Optional[dic
             ps.payment_requested,
             ps.payment_requested_at,
             COALESCE(ps.maximum_capacity, 100) as maximum_capacity,
+            COALESCE(ps.exclude_monthly_subscribers, FALSE) as exclude_monthly_subscribers,
             u.full_name as paid_by_name,
             u.bank_name as paid_by_bank_name,
             u.sort_code as paid_by_sort_code,
@@ -2635,6 +2679,7 @@ def get_calendar_event_with_capacity_by_id(cur, session_id: int) -> Optional[dic
     session["paid_by_bank_name"] = session.get("paid_by_bank_name") or None
     session["paid_by_sort_code"] = session.get("paid_by_sort_code") or None
     session["paid_by_account_number"] = session.get("paid_by_account_number") or None
+    session["exclude_monthly_subscribers"] = bool(session.get("exclude_monthly_subscribers") or False)
     available_count = get_available_count_for_calendar_event_id(cur, session_id)
     maximum_capacity = normalize_maximum_capacity(session.get("maximum_capacity"))
     session["maximum_capacity"] = maximum_capacity
@@ -3008,6 +3053,97 @@ def get_practice_availability_summary_by_session(cur, session: dict):
         "capacity_reached": available_count >= maximum_capacity,
     }
 
+def create_monthly_payment_event():
+    """Scheduled job: runs on the 1st of each month.
+    Creates a Payment event with default values, adds all Monthly-payment-mode members
+    as available, then immediately requests payment with notifications.
+    """
+    now = datetime.now()
+    event_date = now.replace(day=1).strftime("%Y-%m-%d")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+
+        # Avoid creating duplicates: skip if a payment event already exists for this month
+        cur.execute(
+            f"SELECT id FROM practice_sessions WHERE event_type = {PLACEHOLDER} AND date = {PLACEHOLDER} LIMIT 1",
+            ("payment", event_date),
+        )
+        if cur.fetchone():
+            print(f"Monthly payment event for {event_date} already exists, skipping creation.")
+            return
+
+        # Create the payment event with default values
+        cur.execute(
+            f"""INSERT INTO practice_sessions
+                (date, time, location, event_type, event_title, session_cost, cost_type,
+                 paid_by, maximum_capacity, exclude_monthly_subscribers)
+                VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER},
+                        {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})""",
+            (event_date, "00:00", "GBFC", "payment", "Monthly Subscription",
+             20.0, "Individual", None, 50, False),
+        )
+        if USE_POSTGRES:
+            cur.execute(
+                f"SELECT id FROM practice_sessions WHERE event_type = {PLACEHOLDER} AND date = {PLACEHOLDER} ORDER BY id DESC LIMIT 1",
+                ("payment", event_date),
+            )
+            row = cur.fetchone()
+            session_id = dict(row)["id"] if row else None
+        else:
+            session_id = cur.lastrowid
+        conn.commit()
+
+        if not session_id:
+            print("Failed to retrieve created monthly payment session ID.")
+            return
+
+        # Add all active Monthly-payment-mode members as available
+        cur.execute(
+            f"SELECT email, full_name FROM users WHERE payment_mode = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+            ("Monthly",),
+        )
+        monthly_members = [dict(r) for r in cur.fetchall()]
+
+        for member in monthly_members:
+            if USE_POSTGRES:
+                cur.execute(
+                    f"""INSERT INTO practice_availability (practice_session_id, date, user_email, user_full_name, status)
+                        VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})
+                        ON CONFLICT (practice_session_id, user_email) DO NOTHING""",
+                    (session_id, event_date, member["email"], member["full_name"], "available"),
+                )
+            else:
+                cur.execute(
+                    f"""INSERT OR IGNORE INTO practice_availability (practice_session_id, date, user_email, user_full_name, status)
+                        VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})""",
+                    (session_id, event_date, member["email"], member["full_name"], "available"),
+                )
+        conn.commit()
+
+        # Request payment immediately (bypass past-date check since this is the scheduled job)
+        cur.execute(
+            f"UPDATE practice_sessions SET payment_requested = {PLACEHOLDER}, payment_requested_at = CURRENT_TIMESTAMP WHERE id = {PLACEHOLDER}",
+            (True if USE_POSTGRES else 1, session_id),
+        )
+        conn.commit()
+
+    # Send payment request notification to all monthly members
+    deliver_notification(
+        "payment_request",
+        {
+            "session_id": session_id,
+            "date": event_date,
+            "time": "00:00",
+            "location": "GBFC",
+            "event_type": "payment",
+            "event_title": "Monthly Subscription",
+        },
+        related_date=event_date,
+    )
+    print(f"Monthly payment event created for {event_date} with {len(monthly_members)} members added as available.")
+
+
 def notify_practice_slots_available():
     now = datetime.now()
     window_end = now + timedelta(hours=72)
@@ -3308,6 +3444,7 @@ class CalendarEventCreate(BaseModel):
     cost_type: str = "Total"
     paid_by: Optional[str] = None
     maximum_capacity: int = 100
+    exclude_monthly_subscribers: bool = False
 
 class CalendarEventOut(BaseModel):
     id: int
@@ -3325,6 +3462,7 @@ class CalendarEventOut(BaseModel):
     cost_type: str = "Total"
     paid_by: Optional[str] = None
     maximum_capacity: int = 100
+    exclude_monthly_subscribers: bool = False
     available_count: Optional[int] = 0
     remaining_slots: Optional[int] = 100
     capacity_reached: Optional[bool] = False
@@ -3389,7 +3527,7 @@ def is_admin(current_user: dict) -> bool:
 def normalize_event_type(value: Optional[str]) -> str:
     normalized = (value or "practice").strip().lower()
     if normalized not in EVENT_TYPE_OPTIONS:
-        raise HTTPException(status_code=400, detail="Event type must be one of: Practice, Match, Social, Others")
+        raise HTTPException(status_code=400, detail="Event type must be one of: Practice, Match, Social, Others, Payment")
     return normalized
 
 def sanitize_forum_comment_text(comment: str) -> str:
@@ -3556,6 +3694,7 @@ def default_event_title_for_type(event_type: str) -> str:
         "match": "Match",
         "social": "Social Event",
         "others": "Other Event",
+        "payment": "Monthly Subscription",
     }.get(event_type, "Event")
 
 def default_event_type_label(event_type: str) -> str:
@@ -3564,6 +3703,7 @@ def default_event_type_label(event_type: str) -> str:
         "match": "Match",
         "social": "Social",
         "others": "Other",
+        "payment": "Payment",
     }.get(event_type, "Event")
 
 def normalize_event_title(event_title: Optional[str], event_type: str) -> str:
@@ -3682,11 +3822,13 @@ async def startup_event():
         whatsapp_scheduler.add_job(keep_whatsapp_instance_alive, "interval", minutes=30, id="whatsapp_keepalive", replace_existing=True)
         whatsapp_scheduler.add_job(notify_practice_slots_available, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
         whatsapp_scheduler.add_job(notify_pending_payment_reminders, "cron", hour=20, minute=0, id="pending_payment_reminder_daily", replace_existing=True)
+        whatsapp_scheduler.add_job(create_monthly_payment_event, "cron", day=1, hour=0, minute=1, id="monthly_payment_event", replace_existing=True)
         whatsapp_scheduler.start()
         print("WhatsApp keep-alive scheduler started")
     elif not whatsapp_scheduler.running:
         whatsapp_scheduler.add_job(notify_practice_slots_available, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
         whatsapp_scheduler.add_job(notify_pending_payment_reminders, "cron", hour=20, minute=0, id="pending_payment_reminder_daily", replace_existing=True)
+        whatsapp_scheduler.add_job(create_monthly_payment_event, "cron", day=1, hour=0, minute=1, id="monthly_payment_event", replace_existing=True)
         whatsapp_scheduler.start()
         print("Notification scheduler started")
 
@@ -5039,8 +5181,8 @@ def create_calendar_event(session: CalendarEventCreate, current_user: dict = Dep
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, description, image_url, youtube_url, option_a_text, option_b_text, session_cost, cost_type, paid_by, maximum_capacity) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
-            (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.cost_type, session.paid_by, maximum_capacity),
+            f"INSERT INTO practice_sessions (date, time, location, event_type, event_title, description, image_url, youtube_url, option_a_text, option_b_text, session_cost, cost_type, paid_by, maximum_capacity, exclude_monthly_subscribers) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+            (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.cost_type, session.paid_by, maximum_capacity, session.exclude_monthly_subscribers),
         )
         created_session_id = cur.lastrowid if not USE_POSTGRES else None
         if USE_POSTGRES:
@@ -5098,8 +5240,8 @@ def update_calendar_event_by_id(session_id: int, session: CalendarEventCreate, c
         if existing_session["payment_requested"]:
             raise HTTPException(status_code=400, detail="Practice session cannot be edited after payment has been requested")
         cur.execute(
-            f"UPDATE practice_sessions SET date = {PLACEHOLDER}, time = {PLACEHOLDER}, location = {PLACEHOLDER}, event_type = {PLACEHOLDER}, event_title = {PLACEHOLDER}, description = {PLACEHOLDER}, image_url = {PLACEHOLDER}, youtube_url = {PLACEHOLDER}, option_a_text = {PLACEHOLDER}, option_b_text = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, cost_type = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER} WHERE id = {PLACEHOLDER}",
-            (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.cost_type, session.paid_by, maximum_capacity, session_id),
+            f"UPDATE practice_sessions SET date = {PLACEHOLDER}, time = {PLACEHOLDER}, location = {PLACEHOLDER}, event_type = {PLACEHOLDER}, event_title = {PLACEHOLDER}, description = {PLACEHOLDER}, image_url = {PLACEHOLDER}, youtube_url = {PLACEHOLDER}, option_a_text = {PLACEHOLDER}, option_b_text = {PLACEHOLDER}, session_cost = {PLACEHOLDER}, cost_type = {PLACEHOLDER}, paid_by = {PLACEHOLDER}, maximum_capacity = {PLACEHOLDER}, exclude_monthly_subscribers = {PLACEHOLDER} WHERE id = {PLACEHOLDER}",
+            (session.date, normalized_time, session.location, normalized_event_type, normalized_event_title, session.description, session.image_url, session.youtube_url, normalized_option_a, normalized_option_b, session.session_cost, session.cost_type, session.paid_by, maximum_capacity, session.exclude_monthly_subscribers, session_id),
         )
         sync_match_session_to_events(cur, {
             "id": session_id,
@@ -5122,10 +5264,16 @@ create_practice_session = create_calendar_event
 update_practice_session_by_id = update_calendar_event_by_id
 
 @app.post("/api/calendar/events/id/{session_id}/request-payment")
-def request_calendar_event_payment_by_id(session_id: int, current_user: dict = Depends(get_current_user)):
-    """Admin endpoint to enable payment request for a specific practice session"""
+def request_calendar_event_payment_by_id(session_id: int, data: dict = None, current_user: dict = Depends(get_current_user)):
+    """Admin endpoint to enable payment request for a specific practice session.
+    Optional body: { exclude_monthly_subscribers: bool }
+    When exclude_monthly_subscribers is true, members with payment_mode='Monthly' who are
+    marked available are immediately marked as paid with paid_amount=0 and excluded from notifications.
+    """
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Admins only")
+
+    exclude_monthly = bool((data or {}).get("exclude_monthly_subscribers", False))
 
     with get_connection() as conn:
         cur = conn.cursor()
@@ -5145,23 +5293,77 @@ def request_calendar_event_payment_by_id(session_id: int, current_user: dict = D
         )
         conn.commit()
 
+        session_cost = session.get("session_cost") or 0
+        cost_type = session.get("cost_type", "Total")
+
+        # Collect available players; mark monthly subscribers as auto-paid if exclude_monthly_subscribers
         cur.execute(
             f"SELECT user_email FROM practice_availability WHERE practice_session_id = {PLACEHOLDER} AND status = {PLACEHOLDER}",
             (session_id, "available"),
         )
-        available_users = cur.fetchall()
+        available_users = [dict(row)["user_email"] for row in cur.fetchall()]
 
+        monthly_exempt_emails = set()
+        non_monthly_users = []
+        if exclude_monthly:
+            for email in available_users:
+                cur.execute(
+                    f"SELECT payment_mode FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+                    (email,),
+                )
+                user_row = cur.fetchone()
+                if user_row and dict(user_row).get("payment_mode") == "Monthly":
+                    monthly_exempt_emails.add(email)
+                else:
+                    non_monthly_users.append(email)
+        else:
+            non_monthly_users = list(available_users)
+
+        # Mark monthly subscribers as paid with £0
+        for email in monthly_exempt_emails:
+            if USE_POSTGRES:
+                cur.execute(
+                    f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid, paid_amount) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (practice_session_id, user_email) DO UPDATE SET paid = EXCLUDED.paid, paid_amount = EXCLUDED.paid_amount",
+                    (session_id, session["date"], email, True, 0),
+                )
+            else:
+                cur.execute(
+                    f"INSERT OR REPLACE INTO practice_payments (id, practice_session_id, date, user_email, paid, paid_amount) VALUES ((SELECT id FROM practice_payments WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}), {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                    (session_id, email, session_id, session["date"], email, 1, 0),
+                )
+
+        # For Total cost with exclude_monthly, store correct per-person amount for non-monthly users
+        if exclude_monthly and cost_type == "Total":
+            non_monthly_count = len(non_monthly_users)
+            per_person_amount = round(session_cost / non_monthly_count, 2) if non_monthly_count > 0 else session_cost
+            for email in non_monthly_users:
+                if USE_POSTGRES:
+                    cur.execute(
+                        f"INSERT INTO practice_payments (practice_session_id, date, user_email, paid, paid_amount) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}) ON CONFLICT (practice_session_id, user_email) DO UPDATE SET paid_amount = EXCLUDED.paid_amount",
+                        (session_id, session["date"], email, False, per_person_amount),
+                    )
+                else:
+                    cur.execute(
+                        f"INSERT OR REPLACE INTO practice_payments (id, practice_session_id, date, user_email, paid, paid_amount) VALUES ((SELECT id FROM practice_payments WHERE practice_session_id = {PLACEHOLDER} AND user_email = {PLACEHOLDER}), {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER})",
+                        (session_id, email, session_id, session["date"], email, 0, per_person_amount),
+                    )
+
+        if monthly_exempt_emails or (exclude_monthly and cost_type == "Total"):
+            conn.commit()
+
+        notification_payload = {
+            "session_id": session["id"],
+            "date": session["date"],
+            "time": session["time"],
+            "location": session["location"],
+            "event_type": session["event_type"],
+            "event_title": session["event_title"],
+        }
         deliver_notification(
             "payment_request",
-            {
-                "session_id": session["id"],
-                "date": session["date"],
-                "time": session["time"],
-                "location": session["location"],
-                "event_type": session["event_type"],
-                "event_title": session["event_title"],
-            },
-            related_date=session["date"]
+            notification_payload,
+            related_date=session["date"],
+            exclude_emails=list(monthly_exempt_emails) if monthly_exempt_emails else None,
         )
 
         return {"message": "Payment requested successfully"}
@@ -5174,13 +5376,16 @@ def get_calendar_event_payments_by_id(session_id: int, current_user: dict = Depe
         if not session:
             raise HTTPException(status_code=404, detail="Practice session not found")
         cur.execute(
-            f"SELECT user_email, paid FROM practice_payments WHERE practice_session_id = {PLACEHOLDER}",
+            f"SELECT user_email, paid, paid_amount FROM practice_payments WHERE practice_session_id = {PLACEHOLDER}",
             (session_id,),
         )
         payments = {}
         for row in cur.fetchall():
             row_dict = dict(row)
-            payments[row_dict["user_email"]] = row_dict["paid"]
+            payments[row_dict["user_email"]] = {
+                "paid": bool(row_dict["paid"]),
+                "paid_amount": row_dict.get("paid_amount"),
+            }
         return payments
 
 @app.post("/api/calendar/events/id/{session_id}/payment")

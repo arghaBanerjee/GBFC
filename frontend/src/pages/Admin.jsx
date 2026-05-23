@@ -57,6 +57,7 @@ export default function Admin({ user, loading }) {
   const [calendarEventCostType, setCalendarEventCostType] = useState('Total')
   const [calendarEventPaidBy, setCalendarEventPaidBy] = useState('')
   const [calendarEventMaximumCapacity, setCalendarEventMaximumCapacity] = useState('18')
+  const [calendarEventExcludeMonthlySubscribers, setCalendarEventExcludeMonthlySubscribers] = useState(false)
   const [calendarEventInlineStatus, setCalendarEventInlineStatus] = useState('')
   const [isSubmittingCalendarEvent, setIsSubmittingCalendarEvent] = useState(false)
   const [practiceListTab, setPracticeListTab] = useState('upcoming')
@@ -511,6 +512,7 @@ export default function Admin({ user, loading }) {
     setCalendarEventCostType('Total')
     setCalendarEventPaidBy('')
     setCalendarEventMaximumCapacity('18')
+    setCalendarEventExcludeMonthlySubscribers(false)
     setCalendarEventInlineStatus('')
   }
 
@@ -633,6 +635,7 @@ export default function Admin({ user, loading }) {
       cost_type: calendarEventCostType || 'Total',
       paid_by: calendarEventPaidBy || null,
       maximum_capacity: calendarEventMaximumCapacity ? parseInt(calendarEventMaximumCapacity, 10) : 100,
+      exclude_monthly_subscribers: calendarEventExcludeMonthlySubscribers,
     }
 
     let res
@@ -707,6 +710,7 @@ export default function Admin({ user, loading }) {
     setCalendarEventCostType(s.cost_type || 'Total')
     setCalendarEventPaidBy(s.paid_by || '')
     setCalendarEventMaximumCapacity((s.maximum_capacity || 100).toString())
+    setCalendarEventExcludeMonthlySubscribers(Boolean(s.exclude_monthly_subscribers))
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -953,6 +957,7 @@ export default function Admin({ user, loading }) {
     { value: 'match', label: 'Match' },
     { value: 'social', label: 'Social' },
     { value: 'others', label: 'Others' },
+    { value: 'payment', label: 'Payment' },
   ]
 
   const formatEventTypeLabel = (value) => {
@@ -1114,6 +1119,20 @@ export default function Admin({ user, loading }) {
                   setCalendarEventOptionAText('')
                   setCalendarEventOptionBText('')
                 }
+                if (nextEventType === 'payment') {
+                  // Pre-fill Payment event defaults
+                  const today = new Date()
+                  const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+                  setCalendarEventTitle('Monthly Subscription')
+                  setCalendarEventDate(firstOfMonth)
+                  setCalendarEventTime('00:00')
+                  setCalendarEventLocation('GBFC')
+                  setCalendarEventCostType('Individual')
+                  setCalendarEventSessionCost('20')
+                  setCalendarEventPaidBy('')
+                  setCalendarEventMaximumCapacity('50')
+                  setCalendarEventExcludeMonthlySubscribers(false)
+                }
               }} style={{ width: '100%' }}>
                 {eventTypeOptions.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -1218,10 +1237,23 @@ export default function Admin({ user, loading }) {
                   ))}
                 </select>
             </div>
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: '500' }}>
+                <input
+                  type="checkbox"
+                  checked={calendarEventExcludeMonthlySubscribers}
+                  onChange={(e) => setCalendarEventExcludeMonthlySubscribers(e.target.checked)}
+                />
+                Exclude Monthly Subscribers
+              </label>
+              <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                When payment is requested for this event, monthly subscribers will be auto-marked as paid (£0) and will not receive payment notifications.
+              </div>
+            </div>
             <hr/>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="nav-btn" type="submit" disabled={isSubmittingCalendarEvent} style={{ background: '#10b981', color: 'white', border: '1px solid #10b981', fontWeight: '600', opacity: isSubmittingCalendarEvent ? 0.7 : 1, cursor: isSubmittingCalendarEvent ? 'not-allowed' : 'pointer' }}>{isSubmittingCalendarEvent ? (editingCalendarEventId ? 'Updating Event...' : 'Adding Event...') : (editingCalendarEventId ? 'Update Event' : 'Add Event')}</button>
-              {(editingCalendarEventId || calendarEventDate || calendarEventTime !== '21:00' || calendarEventLocation || calendarEventEventType !== 'practice' || calendarEventTitle !== 'Session' || calendarEventDescription || calendarEventImageUrl || calendarEventYoutubeUrl || calendarEventOptionAText || calendarEventOptionBText || calendarEventSessionCost || calendarEventCostType !== 'Total' || calendarEventPaidBy || calendarEventMaximumCapacity !== '18') && (
+              {(editingCalendarEventId || calendarEventDate || calendarEventTime !== '21:00' || calendarEventLocation || calendarEventEventType !== 'practice' || calendarEventTitle !== 'Session' || calendarEventDescription || calendarEventImageUrl || calendarEventYoutubeUrl || calendarEventOptionAText || calendarEventOptionBText || calendarEventSessionCost || calendarEventCostType !== 'Total' || calendarEventPaidBy || calendarEventMaximumCapacity !== '18' || calendarEventExcludeMonthlySubscribers) && (
                 <button className="nav-btn" type="button" onClick={resetCalendarEventForm} disabled={isSubmittingCalendarEvent} style={{ background: '#6b7280', color: 'white', border: '1px solid #6b7280', fontWeight: '600', opacity: isSubmittingCalendarEvent ? 0.7 : 1, cursor: isSubmittingCalendarEvent ? 'not-allowed' : 'pointer' }}>
                   Clear
                 </button>
@@ -1276,7 +1308,7 @@ export default function Admin({ user, loading }) {
                   style={{ border: '1px solid #d1d5db', padding: '1rem', borderRadius: 8, background: '#fafafa', cursor: 'pointer' }}
                 >
                   {(() => {
-                    const actionsLocked = s.payment_requested
+                    const actionsLocked = !!s.payment_requested
                     return (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <div>
@@ -1348,7 +1380,12 @@ export default function Admin({ user, loading }) {
                   {s.event_type === 'match' && s.image_url && (
                     <img src={s.image_url} alt={s.event_title || 'Match'} style={{ marginTop: '0.5rem', maxWidth: '100%', maxHeight: 180, borderRadius: 8, objectFit: 'cover' }} />
                   )}
-                  {s.payment_requested && (
+                  {s.exclude_monthly_subscribers && (
+                    <div style={{ marginTop: '0.25rem', fontSize: '0.8125rem', color: '#7c3aed' }}>
+                      Monthly subscribers excluded from payment.
+                    </div>
+                  )}
+                  {!!s.payment_requested && (
                     <div style={{ marginTop: '0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>
                       Payment requested hence changes not allowed.
                     </div>
