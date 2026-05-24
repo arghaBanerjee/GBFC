@@ -62,7 +62,7 @@ export default function Calendar({ user }) {
     match: 'Match',
     social: 'Social',
     others: 'Other',
-    payment: 'Payment',
+    payment: 'Subscription',
   }
 
   const eventTypeColorMap = {

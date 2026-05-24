@@ -536,6 +536,7 @@ function App() {
                             else if (notif.type === 'pending_payment_reminder') navigate('/user/payments')
                             else if (
                               notif.type === 'practice' ||
+                              notif.type === 'payment' ||
                               notif.type === 'payment_request' ||
                               notif.type === 'payment_confirmed' ||
                               notif.type === 'session_capacity_reached' ||

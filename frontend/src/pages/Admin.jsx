@@ -16,6 +16,7 @@ export default function Admin({ user, loading }) {
     { value: 'expense', label: 'Expense' },
     { value: 'reports', label: 'Reports' },
     ...(isSuperAdmin ? [{ value: 'notifications', label: 'Notifications' }] : []),
+  ...(isSuperAdmin ? [{ value: 'jobs', label: 'Jobs' }] : []),
   ]
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
@@ -2249,6 +2250,226 @@ export default function Admin({ user, loading }) {
           </div>
         </>
       )}
+
+      {activeTab === 'jobs' && isSuperAdmin && (
+        <JobsTab token={token} apiUrl={apiUrl} />
+      )}
     </div>
+  )
+}
+
+function JobsTab({ token, apiUrl }) {
+  const [jobs, setJobs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [actionPending, setActionPending] = useState({})
+  const [errors, setErrors] = useState({})
+
+  const fetchJobs = () => {
+    setLoading(true)
+    fetch(apiUrl('/api/admin/jobs'), { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => { setJobs(Array.isArray(data) ? data : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }
+
+  useEffect(() => { fetchJobs() }, [])
+
+  // Poll every 5 seconds to keep running state / last run fresh
+  useEffect(() => {
+    const interval = setInterval(fetchJobs, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const doAction = (jobId, action) => {
+    setActionPending(prev => ({ ...prev, [jobId]: action }))
+    setErrors(prev => ({ ...prev, [jobId]: null }))
+    fetch(apiUrl(`/api/admin/jobs/${jobId}/${action}`), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json().then(body => ({ ok: r.ok, body })))
+      .then(({ ok, body }) => {
+        if (!ok) setErrors(prev => ({ ...prev, [jobId]: body.detail || 'Action failed' }))
+        fetchJobs()
+      })
+      .catch(() => setErrors(prev => ({ ...prev, [jobId]: 'Network error' })))
+      .finally(() => setActionPending(prev => { const n = { ...prev }; delete n[jobId]; return n }))
+  }
+
+  const scheduleColor = '#1e40af'
+  const scheduleBg = '#eff6ff'
+  const scheduleBorder = '#bfdbfe'
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Scheduled Jobs</h3>
+          <p style={{ margin: '0.25rem 0 0', color: '#6b7280', fontSize: '0.875rem' }}>
+            Manage and monitor all background scheduled jobs. Controls are disabled while a job is running.
+          </p>
+        </div>
+        <button
+          onClick={fetchJobs}
+          style={{ padding: '0.4rem 0.85rem', borderRadius: '0.375rem', border: '1px solid #d1d5db', background: '#f9fafb', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: '600' }}
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      {loading && jobs.length === 0 && (
+        <p style={{ color: '#6b7280', marginTop: '1rem' }}>Loading jobs…</p>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+        {jobs.map(job => {
+          const isRunning = job.running
+          const isPending = Boolean(actionPending[job.id])
+          const blocked = isRunning || isPending || !job.exists || !job.enabled
+          const healthy = job.last_status === 'success'
+          const hasRun = Boolean(job.last_run)
+          const errorMsg = errors[job.id]
+
+          const healthDot = !hasRun
+            ? { bg: '#e5e7eb', border: '#9ca3af', label: 'Never run' }
+            : healthy
+            ? { bg: '#22c55e', border: '#16a34a', label: 'Healthy' }
+            : { bg: '#ef4444', border: '#dc2626', label: 'Last run failed' }
+
+          const formatDt = iso => {
+            if (!iso) return '—'
+            const d = new Date(iso)
+            return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          }
+
+          const isDisabled = !job.enabled
+          const togglePending = isPending && (actionPending[job.id] === 'enable' || actionPending[job.id] === 'disable')
+          const toggleBlocked = isRunning || togglePending
+
+          return (
+            <div key={job.id} style={{
+              position: 'relative',
+              border: `1px solid ${isDisabled ? '#e5e7eb' : '#e5e7eb'}`,
+              borderRadius: '0.75rem',
+              background: '#fff',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+              width: '100%',
+              boxSizing: 'border-box',
+              overflow: 'hidden',
+            }}>
+              {/* Greyed overlay when disabled */}
+              {isDisabled && (
+                <div style={{
+                  position: 'absolute', inset: 0, borderRadius: '0.75rem',
+                  background: 'rgba(243,244,246,0.45)',
+                  zIndex: 1,
+                  pointerEvents: 'none',
+                }} />
+              )}
+
+              <div style={{ padding: '1rem 1.25rem' }}>
+                {/* Top row: name + badges + toggle top-right */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                  {/* Left: name + status badges */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', flex: 1 }}>
+                    <span style={{ fontWeight: '700', fontSize: '1rem', color: isDisabled ? '#9ca3af' : '#111827' }}>{job.name}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: '600',
+                      color: !hasRun ? '#6b7280' : healthy ? '#15803d' : '#dc2626' }}>
+                      <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: healthDot.bg, border: `1.5px solid ${healthDot.border}`, display: 'inline-block' }} />
+                      {healthDot.label}
+                    </span>
+                    {isRunning && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: '700', padding: '0.15rem 0.55rem', borderRadius: '999px', background: '#fef3c7', border: '1px solid #fcd34d', color: '#92400e', letterSpacing: '0.03em' }}>
+                        ● RUNNING
+                      </span>
+                    )}
+                    {!job.exists && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', padding: '0.15rem 0.55rem', borderRadius: '999px', background: '#f3f4f6', border: '1px solid #d1d5db', color: '#6b7280' }}>
+                        Not registered
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Right: slide toggle */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0, zIndex: 2, position: 'relative' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: '600', color: isDisabled ? '#9ca3af' : '#15803d' }}>
+                      {togglePending ? '…' : isDisabled ? 'Disabled' : 'Enabled'}
+                    </span>
+                    <button
+                      onClick={() => !toggleBlocked && doAction(job.id, isDisabled ? 'enable' : 'disable')}
+                      disabled={toggleBlocked}
+                      title={isDisabled ? 'Enable job' : 'Disable job'}
+                      style={{
+                        position: 'relative',
+                        width: '42px', height: '24px',
+                        borderRadius: '999px',
+                        border: 'none',
+                        background: toggleBlocked ? '#e5e7eb' : isDisabled ? '#d1d5db' : '#16a34a',
+                        cursor: toggleBlocked ? 'not-allowed' : 'pointer',
+                        transition: 'background 0.2s',
+                        padding: 0,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute',
+                        top: '3px',
+                        left: isDisabled ? '3px' : '21px',
+                        width: '18px', height: '18px',
+                        borderRadius: '50%',
+                        background: '#fff',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                        transition: 'left 0.2s',
+                        display: 'block',
+                      }} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <p style={{ margin: '0 0 0.65rem', fontSize: '0.875rem', color: isDisabled ? '#9ca3af' : '#374151', lineHeight: 1.5 }}>{job.description}</p>
+
+                {/* Meta row */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                    background: isDisabled ? '#f3f4f6' : scheduleBg,
+                    border: `1px solid ${isDisabled ? '#d1d5db' : scheduleBorder}`,
+                    borderRadius: '0.375rem', padding: '0.2rem 0.6rem',
+                    fontWeight: '600', color: isDisabled ? '#9ca3af' : scheduleColor }}>
+                    ⏱ {job.schedule}
+                  </span>
+                  <span><strong>Last run:</strong> {isRunning ? <em style={{ color: '#d97706' }}>Running now…</em> : formatDt(job.last_run)}</span>
+                  {job.next_run && !isDisabled && <span><strong>Next run:</strong> {formatDt(job.next_run)}</span>}
+                  {isDisabled && <span style={{ color: '#ef4444', fontWeight: '600', fontSize: '0.75rem' }}>Scheduled runs paused</span>}
+                </div>
+
+                {/* Error message */}
+                {job.last_status === 'error' && job.last_error && (
+                  <div style={{ marginBottom: '0.65rem', padding: '0.5rem 0.75rem', borderRadius: '0.375rem', background: '#fef2f2', border: '1px solid #fecaca', fontSize: '0.8rem', color: '#991b1b', fontFamily: 'monospace' }}>
+                    ✕ {job.last_error}
+                  </div>
+                )}
+                {errorMsg && (
+                  <div style={{ marginBottom: '0.65rem', padding: '0.5rem 0.75rem', borderRadius: '0.375rem', background: '#fef2f2', border: '1px solid #fecaca', fontSize: '0.8rem', color: '#991b1b' }}>
+                    {errorMsg}
+                  </div>
+                )}
+
+                {/* Run Now control */}
+                <div style={{ position: 'relative', zIndex: 2 }}>
+                  <button
+                    disabled={blocked}
+                    onClick={() => doAction(job.id, 'run')}
+                    style={{ padding: '0.4rem 0.85rem', borderRadius: '0.375rem', border: '1px solid #2563eb', background: blocked ? '#eff6ff' : '#2563eb', color: blocked ? '#93c5fd' : '#fff', fontWeight: '600', fontSize: '0.8125rem', cursor: blocked ? 'not-allowed' : 'pointer', transition: 'background 0.15s' }}
+                  >
+                    {isPending && actionPending[job.id] === 'run' ? 'Starting…' : isRunning ? 'Running…' : '▶ Run Now'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </>
   )
 }

@@ -28,6 +28,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from io import BytesIO
 from apscheduler.schedulers.background import BackgroundScheduler
+import threading
 from local_env import load_local_env
 from seed_world_cup_2026 import seed_world_cup_events
 
@@ -98,6 +99,72 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 WHATSAPP_NOTIFICATIONS_ENABLED = os.environ.get("WHATSAPP_NOTIFICATIONS_ENABLED", "false").lower() == "true"
 
 whatsapp_scheduler = BackgroundScheduler()
+
+# --- Job metadata and run-state tracking ---
+JOB_METADATA = {
+    "practice_slot_available_daily": {
+        "name": "Practice Slot Available Notification",
+        "description": "Checks for the nearest upcoming practice session within 72 hours with available slots and sends a notification to all members.",
+        "schedule": "Daily at 9:00 AM",
+    },
+    "pending_payment_reminder_daily": {
+        "name": "Pending Payment Reminder",
+        "description": "Sends a payment reminder for the most recent session with pending unpaid members where payment was requested more than 72 hours ago.",
+        "schedule": "Daily at 8:00 PM",
+    },
+    "monthly_payment_event": {
+        "name": "Monthly Payment Event Creator",
+        "description": "Creates a monthly subscription payment event on the 1st of each month, adds all monthly-mode members as available, and notifies admins via app to review and request payment manually.",
+        "schedule": "1st of every month at 00:01",
+    },
+    "whatsapp_keepalive": {
+        "name": "WhatsApp Keep-Alive",
+        "description": "Pings the WhatsApp instance every 30 minutes to keep it active. Only present when WhatsApp is configured.",
+        "schedule": "Every 30 minutes",
+    },
+}
+job_run_state: dict = {}   # { job_id: { running, last_run, last_status, last_error } }
+job_function_map: dict = {}  # { job_id: callable (tracked wrapper) }
+
+def make_tracked_job(job_id: str, fn):
+    """Wrap a scheduler function to track running state, last run time, and success/error."""
+    def wrapper():
+        job_run_state.setdefault(job_id, {})
+        job_run_state[job_id]["running"] = True
+        run_time = datetime.now()
+        job_run_state[job_id]["last_run"] = run_time.isoformat()
+        status = "success"
+        error = None
+        try:
+            fn()
+        except Exception as exc:
+            status = "error"
+            error = str(exc)
+            raise
+        finally:
+            job_run_state[job_id]["running"] = False
+            job_run_state[job_id]["last_status"] = status
+            job_run_state[job_id]["last_error"] = error
+            # Persist to DB
+            try:
+                with get_connection() as conn:
+                    cur = conn.cursor()
+                    if USE_POSTGRES:
+                        cur.execute(
+                            f"INSERT INTO job_run_log (job_id, last_run, last_status, last_error, updated_at) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP) ON CONFLICT (job_id) DO UPDATE SET last_run = EXCLUDED.last_run, last_status = EXCLUDED.last_status, last_error = EXCLUDED.last_error, updated_at = CURRENT_TIMESTAMP",
+                            (job_id, run_time, status, error),
+                        )
+                    else:
+                        cur.execute(
+                            f"INSERT OR REPLACE INTO job_run_log (job_id, last_run, last_status, last_error, updated_at) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)",
+                            (job_id, run_time.isoformat(), status, error),
+                        )
+                    conn.commit()
+            except Exception as db_exc:
+                print(f"Warning: Could not persist job run log for {job_id}: {db_exc}")
+    wrapper.__name__ = getattr(fn, "__name__", job_id)
+    return wrapper
+
 
 NOTIFICATION_TARGET_OPTIONS = {"all_active_users", "admin_users", "available_players", "direct_user"}
 THEME_PREFERENCES = {"nordic_neutral", "east_bengal", "mohun_bagan"}
@@ -1033,6 +1100,16 @@ def init_db():
                 print(f"Warning: Could not add paid_amount column to practice_payments: {e}")
                 conn.rollback()
             cur.execute("""
+            CREATE TABLE IF NOT EXISTS job_run_log (
+                job_id VARCHAR(100) PRIMARY KEY,
+                last_run TIMESTAMP,
+                last_status VARCHAR(20),
+                last_error TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            conn.commit()
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS expenses (
                 id SERIAL PRIMARY KEY,
                 title VARCHAR(255) NOT NULL,
@@ -1412,6 +1489,16 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add paid_amount column: {e}")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS job_run_log (
+                    job_id TEXT PRIMARY KEY,
+                    last_run TEXT,
+                    last_status TEXT,
+                    last_error TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
             cur.executescript("""
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2003,7 +2090,9 @@ def record_notification_channel_sent(cur, notif_type: str, channel: str):
             (notif_type, channel),
         )
 
-def should_send_whatsapp_notification(cur, notif_type: str) -> bool:
+def should_send_whatsapp_notification(cur, notif_type: str, force: bool = False) -> bool:
+    if force:
+        return True
     if notif_type != "pending_payment_reminder":
         return True
     last_sent_at = get_notification_channel_last_sent_at(cur, notif_type, "whatsapp")
@@ -2011,7 +2100,9 @@ def should_send_whatsapp_notification(cur, notif_type: str) -> bool:
         return True
     return datetime.now() >= last_sent_at + timedelta(days=5)
 
-def should_send_app_notification(cur, notif_type: str) -> bool:
+def should_send_app_notification(cur, notif_type: str, force: bool = False) -> bool:
+    if force:
+        return True
     if notif_type != "pending_payment_reminder":
         return True
     last_sent_at = get_notification_channel_last_sent_at(cur, notif_type, "app")
@@ -2019,7 +2110,7 @@ def should_send_app_notification(cur, notif_type: str) -> bool:
         return True
     return datetime.now() >= last_sent_at + timedelta(days=5)
 
-def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None, exclude_emails: list = None):
+def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None, exclude_emails: list = None, force: bool = False):
     guarded_notif_types = {"practice", "match", "practice_slot_available", "session_capacity_reached"}
     effective_date = related_date or payload.get("date")
     if notif_type in guarded_notif_types and effective_date:
@@ -2053,7 +2144,7 @@ def deliver_notification(notif_type: str, payload: dict, related_date: str = Non
         practice_session_id = payload.get("session_id") or payload.get("practice_session_id")
 
         if setting["app_enabled"]:
-            if should_send_app_notification(cur, notif_type):
+            if should_send_app_notification(cur, notif_type, force=force):
                 app_message = render_notification_template(setting["app_template"], context)
                 for recipient in recipients:
                     create_notification(recipient["email"], notif_type, app_message, related_date, practice_session_id)
@@ -2066,7 +2157,7 @@ def deliver_notification(notif_type: str, payload: dict, related_date: str = Non
                 send_email(recipient["email"], subject, email_body)
 
         if setting["whatsapp_enabled"]:
-            if should_send_whatsapp_notification(cur, notif_type):
+            if should_send_whatsapp_notification(cur, notif_type, force=force):
                 whatsapp_message = render_notification_template(setting["whatsapp_template"], context)
                 if send_whatsapp_notification(whatsapp_message):
                     record_notification_channel_sent(cur, notif_type, "whatsapp")
@@ -3121,27 +3212,24 @@ def create_monthly_payment_event():
                 )
         conn.commit()
 
-        # Request payment immediately (bypass past-date check since this is the scheduled job)
-        cur.execute(
-            f"UPDATE practice_sessions SET payment_requested = {PLACEHOLDER}, payment_requested_at = CURRENT_TIMESTAMP WHERE id = {PLACEHOLDER}",
-            (True if USE_POSTGRES else 1, session_id),
-        )
         conn.commit()
 
-    # Send payment request notification to all monthly members
-    deliver_notification(
-        "payment_request",
-        {
-            "session_id": session_id,
-            "date": event_date,
-            "time": "00:00",
-            "location": "GBFC",
-            "event_type": "payment",
-            "event_title": "Monthly Subscription",
-        },
-        related_date=event_date,
-    )
-    print(f"Monthly payment event created for {event_date} with {len(monthly_members)} members added as available.")
+    # Notify admins via app notification only (no WhatsApp, no payment request yet)
+    admin_notif_message = f"Monthly Subscription event for {event_date} has been created. {len(monthly_members)} monthly member(s) have been added as available. Please review and request payment when ready."
+    admin_emails = [m["email"] for m in monthly_members if False]  # placeholder init
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT email FROM users WHERE user_type = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+            ("admin",),
+        )
+        admin_emails = [dict(r)["email"] for r in cur.fetchall()]
+        if "super@admin.com" not in admin_emails:
+            admin_emails.append("super@admin.com")
+    for email in admin_emails:
+        create_notification(email, "payment", admin_notif_message, event_date, session_id)
+
+    print(f"Monthly payment event created for {event_date} with {len(monthly_members)} members added as available. Admins notified via app.")
 
 
 def notify_practice_slots_available():
@@ -3203,7 +3291,7 @@ def get_pending_payment_count_for_session(cur, session_id: int) -> int:
     row_dict = dict(row)
     return int(row_dict.get("count", 0))
 
-def notify_pending_payment_reminders():
+def notify_pending_payment_reminders(enforce_time_guard=True):
     now = datetime.now()
     with get_connection() as conn:
         cur = conn.cursor()
@@ -3221,23 +3309,24 @@ def notify_pending_payment_reminders():
         if not sessions:
             return
 
-        latest_request = sessions[0]
-        payment_requested_at = latest_request.get("payment_requested_at")
-        if not payment_requested_at:
-            return
-        if isinstance(payment_requested_at, str):
-            try:
-                payment_requested_at = datetime.fromisoformat(payment_requested_at.replace("Z", "+00:00")).replace(tzinfo=None)
-            except ValueError:
+        if enforce_time_guard:
+            latest_request = sessions[0]
+            payment_requested_at = latest_request.get("payment_requested_at")
+            if not payment_requested_at:
                 return
+            if isinstance(payment_requested_at, str):
+                try:
+                    payment_requested_at = datetime.fromisoformat(payment_requested_at.replace("Z", "+00:00")).replace(tzinfo=None)
+                except ValueError:
+                    return
 
-        if now < payment_requested_at + timedelta(hours=72):
-            return
+            if now < payment_requested_at + timedelta(hours=72):
+                return
 
         has_pending_payments = False
         reminder_session = None
         for candidate_session in sessions:
-            if not is_practice_datetime_in_past(candidate_session["date"], candidate_session.get("time")):
+            if enforce_time_guard and not is_practice_datetime_in_past(candidate_session["date"], candidate_session.get("time")):
                 continue
             pending_count = get_pending_payment_count_for_session(cur, candidate_session["id"])
             if pending_count > 0:
@@ -3260,6 +3349,7 @@ def notify_pending_payment_reminders():
                 "payments_link": "https://glasgow-bengali-fc.vercel.app/user-actions/payments",
             },
             related_date=reminder_session["date"],
+            force=not enforce_time_guard,
         )
 
 def serialize_notification_setting(row: dict) -> dict:
@@ -3818,17 +3908,29 @@ async def startup_event():
         print(f"Warning: Could not check/seed World Cup events: {e}")
     
     print("Database initialized successfully")
+
+    # Build tracked wrappers and populate job_function_map
+    _t_slots = make_tracked_job("practice_slot_available_daily", notify_practice_slots_available)
+    _t_payment_reminder = make_tracked_job("pending_payment_reminder_daily", lambda: notify_pending_payment_reminders(enforce_time_guard=True))
+    _t_payment_reminder_adhoc = make_tracked_job("pending_payment_reminder_daily", lambda: notify_pending_payment_reminders(enforce_time_guard=False))
+    _t_monthly_payment = make_tracked_job("monthly_payment_event", create_monthly_payment_event)
+    job_function_map["practice_slot_available_daily"] = _t_slots
+    job_function_map["pending_payment_reminder_daily"] = _t_payment_reminder_adhoc
+    job_function_map["monthly_payment_event"] = _t_monthly_payment
+
     if whatsapp_is_configured() and not whatsapp_scheduler.running:
-        whatsapp_scheduler.add_job(keep_whatsapp_instance_alive, "interval", minutes=30, id="whatsapp_keepalive", replace_existing=True)
-        whatsapp_scheduler.add_job(notify_practice_slots_available, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
-        whatsapp_scheduler.add_job(notify_pending_payment_reminders, "cron", hour=20, minute=0, id="pending_payment_reminder_daily", replace_existing=True)
-        whatsapp_scheduler.add_job(create_monthly_payment_event, "cron", day=1, hour=0, minute=1, id="monthly_payment_event", replace_existing=True)
+        _t_keepalive = make_tracked_job("whatsapp_keepalive", keep_whatsapp_instance_alive)
+        job_function_map["whatsapp_keepalive"] = _t_keepalive
+        whatsapp_scheduler.add_job(_t_keepalive, "interval", minutes=30, id="whatsapp_keepalive", replace_existing=True)
+        whatsapp_scheduler.add_job(_t_slots, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
+        whatsapp_scheduler.add_job(_t_payment_reminder, "cron", hour=20, minute=0, id="pending_payment_reminder_daily", replace_existing=True)
+        whatsapp_scheduler.add_job(_t_monthly_payment, "cron", day=1, hour=0, minute=1, id="monthly_payment_event", replace_existing=True)
         whatsapp_scheduler.start()
         print("WhatsApp keep-alive scheduler started")
     elif not whatsapp_scheduler.running:
-        whatsapp_scheduler.add_job(notify_practice_slots_available, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
-        whatsapp_scheduler.add_job(notify_pending_payment_reminders, "cron", hour=20, minute=0, id="pending_payment_reminder_daily", replace_existing=True)
-        whatsapp_scheduler.add_job(create_monthly_payment_event, "cron", day=1, hour=0, minute=1, id="monthly_payment_event", replace_existing=True)
+        whatsapp_scheduler.add_job(_t_slots, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
+        whatsapp_scheduler.add_job(_t_payment_reminder, "cron", hour=20, minute=0, id="pending_payment_reminder_daily", replace_existing=True)
+        whatsapp_scheduler.add_job(_t_monthly_payment, "cron", day=1, hour=0, minute=1, id="monthly_payment_event", replace_existing=True)
         whatsapp_scheduler.start()
         print("Notification scheduler started")
 
@@ -3912,6 +4014,100 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         SESSIONS[token] = {**session_user, "expires_at": expires_at}
         conn.commit()
         return session_user
+
+# --- Scheduled Jobs Admin API ---
+def is_super_admin(current_user: dict) -> bool:
+    return current_user.get("email") == "super@admin.com"
+
+@app.get("/api/admin/jobs")
+def list_admin_jobs(current_user: dict = Depends(get_current_user)):
+    if not is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="Super admins only")
+    # Load persisted run logs from DB
+    db_logs = {}
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT job_id, last_run, last_status, last_error FROM job_run_log")
+            for row in cur.fetchall():
+                r = dict(row)
+                db_logs[r["job_id"]] = r
+    except Exception:
+        pass
+    jobs = []
+    for job_id, meta in JOB_METADATA.items():
+        apscheduler_job = None
+        try:
+            apscheduler_job = whatsapp_scheduler.get_job(job_id)
+        except Exception:
+            pass
+        # In-memory state has the live "running" flag; DB has persisted last_run/status
+        mem_state = job_run_state.get(job_id, {})
+        db_state = db_logs.get(job_id, {})
+        last_run = db_state.get("last_run")
+        if last_run and not isinstance(last_run, str):
+            last_run = last_run.isoformat()
+        last_status = db_state.get("last_status")
+        last_error = db_state.get("last_error")
+        next_run = None
+        enabled = False
+        exists = apscheduler_job is not None
+        if apscheduler_job:
+            enabled = apscheduler_job.next_run_time is not None
+            if apscheduler_job.next_run_time:
+                next_run = apscheduler_job.next_run_time.isoformat()
+        jobs.append({
+            "id": job_id,
+            "name": meta["name"],
+            "description": meta["description"],
+            "schedule": meta["schedule"],
+            "exists": exists,
+            "enabled": enabled,
+            "next_run": next_run,
+            "running": mem_state.get("running", False),
+            "last_run": last_run,
+            "last_status": last_status,
+            "last_error": last_error,
+        })
+    return jobs
+
+@app.post("/api/admin/jobs/{job_id}/run")
+def run_admin_job_adhoc(job_id: str, current_user: dict = Depends(get_current_user)):
+    if not is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="Super admins only")
+    if job_id not in JOB_METADATA:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job_id not in job_function_map:
+        raise HTTPException(status_code=400, detail="Job function not registered — scheduler may not have started")
+    if job_run_state.get(job_id, {}).get("running", False):
+        raise HTTPException(status_code=409, detail="Job is already running")
+    thread = threading.Thread(target=job_function_map[job_id], daemon=True, name=f"adhoc_{job_id}")
+    thread.start()
+    return {"message": f"Job '{job_id}' started"}
+
+@app.post("/api/admin/jobs/{job_id}/enable")
+def enable_admin_job(job_id: str, current_user: dict = Depends(get_current_user)):
+    if not is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="Super admins only")
+    if job_id not in JOB_METADATA:
+        raise HTTPException(status_code=404, detail="Job not found")
+    try:
+        whatsapp_scheduler.resume_job(job_id)
+        return {"message": f"Job '{job_id}' enabled"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/admin/jobs/{job_id}/disable")
+def disable_admin_job(job_id: str, current_user: dict = Depends(get_current_user)):
+    if not is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="Super admins only")
+    if job_id not in JOB_METADATA:
+        raise HTTPException(status_code=404, detail="Job not found")
+    try:
+        whatsapp_scheduler.pause_job(job_id)
+        return {"message": f"Job '{job_id}' disabled"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # --- Auth endpoints ---
 @app.post("/api/signup", response_model=UserOut)

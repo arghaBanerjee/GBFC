@@ -70,7 +70,7 @@ function UserActions({ user, loading }) {
       
       if (upcomingRes.ok) {
         const upcomingData = await upcomingRes.json()
-        setUpcomingCalendarEvents((upcomingData.sessions || []).filter((session) => session?.event_type !== 'others'))
+        setUpcomingCalendarEvents((upcomingData.sessions || []).filter((session) => session?.event_type !== 'others' && session?.event_type !== 'payment'))
       } else {
         if (upcomingRes.status === 401) {
           setError('Session expired. Please log in again.')
