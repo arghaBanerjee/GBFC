@@ -580,7 +580,7 @@ export default function Profile({ user, setUser, loading }) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
                     <div>
                       <div style={{ fontWeight: '700', color: 'var(--theme-heading)', marginBottom: '0.2rem' }}>Daily</div>
-                      <div className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>Pay for each practice session individually</div>
+                      <div className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>Pay £8 for each practice session.</div>
                     </div>
                     <div style={{ 
                       width: '20px', 
@@ -615,7 +615,7 @@ export default function Profile({ user, setUser, loading }) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
                     <div>
                       <div style={{ fontWeight: '700', color: 'var(--theme-heading)', marginBottom: '0.2rem' }}>Monthly</div>
-                      <div className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>Pay a fixed monthly amount for all sessions</div>
+                      <div className="theme-subtle-text" style={{ fontSize: '0.875rem' }}>Pay a fixed £20 monthly amount for all practice sessions.</div>
                     </div>
                     <div style={{ 
                       width: '20px', 
@@ -663,7 +663,7 @@ export default function Profile({ user, setUser, loading }) {
                   {user.payment_mode === 'Monthly' ? 'Monthly Payments' : 'Daily Payments'}
                 </div>
                 <div className="theme-subtle-text" style={{ fontSize: '0.875rem', marginTop: '0.25rem' }}>
-                  {user.payment_mode === 'Monthly' ? 'Pay a fixed monthly amount for all practice sessions' : 'Pay for each practice session individually'}
+                  {user.payment_mode === 'Monthly' ? 'Pay a fixed £20 monthly amount for all practice sessions.' : 'Pay £8 for each practice session.'}
                 </div>
               </div>
               <button
