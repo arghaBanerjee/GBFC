@@ -64,3 +64,4 @@ yarn-debug.log*
 yarn-error.log*
 whatsapp-api-prod.http
 .coverage
+.aider*
