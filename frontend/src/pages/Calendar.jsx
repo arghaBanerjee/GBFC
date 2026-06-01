@@ -1877,7 +1877,10 @@ export default function Calendar({ user }) {
                                   £{userAmount !== null ? userAmount.toFixed(2) : '0.00'}
                                 </span>
                               )}
-                              {isPaymentRequested && hasPaid && <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>}
+                              {isPaymentRequested && (hasPaid
+                                ? <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>
+                                : <span style={{ fontSize: '0.9rem' }} title="Pending payment">⏳</span>
+                              )}
                             </div>
                           </div>
                         )
