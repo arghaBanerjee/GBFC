@@ -1629,13 +1629,11 @@ export default function Calendar({ user }) {
                         <option value="">Select a user...</option>
                         {allUsers
                           .filter(u => {
-                            // Check if user is marked as available for this event (required for payment confirmation)
-                            const userName = u.full_name
-                            const userEmail = u.email
-                            return (
-                              voteSummary?.available?.includes(userName) ||
-                              voteSummary?.available?.includes(userEmail)
-                            )
+                            if (!voteSummary?.available) return false
+                            if (voteSummary.user_emails) {
+                              return voteSummary.available.some(name => voteSummary.user_emails[name] === u.email)
+                            }
+                            return voteSummary.available.includes(u.full_name) || voteSummary.available.includes(u.email)
                           })
                           .map((u) => (
                             <option key={u.email} value={u.email}>{u.full_name}</option>
