@@ -1858,35 +1858,91 @@ export default function Calendar({ user }) {
                   )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isPaymentRequested ? '1fr' : 'repeat(3, 1fr)', gap: '1rem', marginTop: '0.75rem' }}>
-                  <div style={{ border: '1px solid color-mix(in srgb, var(--theme-success) 28%, white)', borderRadius: '0.75rem', padding: '0.55rem', background: 'var(--theme-success-soft)' }}>
-                    <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-success-strong)' }}>
-                      {(voteSummary?.available || []).length}
-                    </div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: '500', marginBottom: '0.35rem', color: 'var(--theme-success-strong)' }}>Available</div>
-                    <div style={{ marginTop: '0.5rem', paddingTop: '1rem' }}>
-                      {(voteSummary?.available || []).map((n, idx) => {
-                        const userEmail = voteSummary?.user_emails?.[n] || n
-                        const hasPaid = payments[userEmail] || false
-                        const userAmount = isPaymentRequested ? getUserPaymentAmount(userEmail) : null
-                        return (
-                          <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              {isPaymentRequested && (hasPaid
-                                ? <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>
-                                : <span style={{ fontSize: '0.9rem' }} title="Pending payment">⏳</span>
-                              )}
-                              <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
-                              {isPaymentRequested && (
-                                <span style={{ fontSize: '0.75rem', color: hasPaid ? 'var(--theme-success-strong)' : 'var(--theme-text-muted)' }}>
-                                  £{userAmount !== null ? userAmount.toFixed(2) : '0.00'}
-                                </span>
-                              )}
+                  {(() => {
+                    const availableList = voteSummary?.available || []
+                    const enriched = availableList.map(n => {
+                      const email = voteSummary?.user_emails?.[n] || n
+                      const hasPaid = payments[email] || false
+                      const amount = isPaymentRequested ? getUserPaymentAmount(email) : null
+                      return { n, email, hasPaid, amount }
+                    })
+                    const paidGroup = enriched.filter(m => m.hasPaid)
+                    const pendingGroup = enriched.filter(m => !m.hasPaid)
+                    const totalCollected = paidGroup.reduce((s, m) => s + (m.amount ?? 0), 0)
+                    const totalExpected = enriched.reduce((s, m) => s + (m.amount ?? 0), 0)
+                    const progressPct = availableList.length > 0 ? (paidGroup.length / availableList.length) * 100 : 0
+
+                    const MemberRow = ({ m }) => (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.2rem 0' }}>
+                        <span style={{ display: 'inline-block', width: '1.1rem', textAlign: 'center', flexShrink: 0 }}>
+                          {m.hasPaid
+                            ? <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>
+                            : <span style={{ fontSize: '0.9rem' }} title="Pending payment">⏳</span>
+                          }
+                        </span>
+                        <span style={{ color: 'var(--theme-text)', flex: 1 }}>{getDisplayFirstName(m.n)}</span>
+                        {isPaymentRequested && (
+                          <span style={{ fontSize: '0.75rem', color: m.hasPaid ? 'var(--theme-success-strong)' : 'var(--theme-text-muted)', flexShrink: 0 }}>
+                            £{m.amount !== null ? m.amount.toFixed(2) : '0.00'}
+                          </span>
+                        )}
+                      </div>
+                    )
+
+                    return (
+                      <div style={{ border: '1px solid color-mix(in srgb, var(--theme-success) 28%, white)', borderRadius: '0.75rem', padding: '0.75rem', background: 'var(--theme-success-soft)' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <div>
+                            <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', color: 'var(--theme-success-strong)' }}>{availableList.length}</div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: '500', color: 'var(--theme-success-strong)' }}>Available</div>
+                          </div>
+                          {isPaymentRequested && (
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--theme-success-strong)' }}>{paidGroup.length}/{availableList.length} Paid</div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--theme-text-muted)', marginTop: '0.1rem' }}>£{totalCollected.toFixed(2)} of £{totalExpected.toFixed(2)}</div>
+                            </div>
+                          )}
+                        </div>
+
+                        {isPaymentRequested && (
+                          <div style={{ marginBottom: '0.75rem' }}>
+                            <div style={{ height: '6px', borderRadius: '999px', background: 'color-mix(in srgb, var(--theme-success) 20%, transparent)', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${progressPct}%`, borderRadius: '999px', background: 'var(--theme-success)', transition: 'width 0.4s ease' }} />
                             </div>
                           </div>
-                        )
-                      })}
-                    </div>
-                  </div>
+                        )}
+
+                        {isPaymentRequested ? (
+                          <div>
+                            {paidGroup.length > 0 && (
+                              <div style={{ marginBottom: '0.5rem' }}>
+                                <div style={{ fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--theme-success-strong)', marginBottom: '0.25rem' }}>
+                                  Paid ({paidGroup.length})
+                                </div>
+                                {paidGroup.map((m, i) => <MemberRow key={`paid-${i}`} m={m} />)}
+                              </div>
+                            )}
+                            {pendingGroup.length > 0 && (
+                              <div style={{ marginTop: paidGroup.length > 0 ? '0.5rem' : 0, paddingTop: paidGroup.length > 0 ? '0.5rem' : 0, borderTop: paidGroup.length > 0 ? '1px solid color-mix(in srgb, var(--theme-success) 20%, transparent)' : 'none' }}>
+                                <div style={{ fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--theme-warning-strong)', marginBottom: '0.25rem' }}>
+                                  Pending ({pendingGroup.length})
+                                </div>
+                                {pendingGroup.map((m, i) => <MemberRow key={`pending-${i}`} m={m} />)}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem' }}>
+                            {enriched.map((m, i) => (
+                              <div key={i} style={{ padding: '0.2rem 0' }}>
+                                <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(m.n)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                   {!isPaymentRequested && (
                   <div style={{ border: '1px solid color-mix(in srgb, var(--theme-warning) 28%, white)', borderRadius: '0.75rem', padding: '0.55rem', background: 'var(--theme-warning-soft)' }}>
                     <div style={{ fontSize: '2rem', lineHeight: 1, fontWeight: '800', marginBottom: '0.25rem', color: 'var(--theme-warning-strong)' }}>
