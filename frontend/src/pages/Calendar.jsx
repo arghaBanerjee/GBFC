@@ -1871,15 +1871,15 @@ export default function Calendar({ user }) {
                         return (
                           <div key={`${n}-${idx}`} style={{ marginBottom: '0.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              {isPaymentRequested && (hasPaid
+                                ? <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>
+                                : <span style={{ fontSize: '0.9rem' }} title="Pending payment">⏳</span>
+                              )}
                               <span style={{ color: 'var(--theme-text)' }}>{getDisplayFirstName(n)}</span>
                               {isPaymentRequested && (
                                 <span style={{ fontSize: '0.75rem', color: hasPaid ? 'var(--theme-success-strong)' : 'var(--theme-text-muted)' }}>
                                   £{userAmount !== null ? userAmount.toFixed(2) : '0.00'}
                                 </span>
-                              )}
-                              {isPaymentRequested && (hasPaid
-                                ? <span style={{ color: 'var(--theme-success)', fontWeight: 'bold', fontSize: '1rem' }} title="Payment confirmed">✓</span>
-                                : <span style={{ fontSize: '0.9rem' }} title="Pending payment">⏳</span>
                               )}
                             </div>
                           </div>
