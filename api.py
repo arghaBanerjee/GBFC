@@ -4711,13 +4711,28 @@ def update_theme_preference(data: dict, current_user: dict = Depends(get_current
         
         return {"message": "Theme preference updated successfully", "theme_preference": theme_preference}
 
+def _payment_mode_change_allowed() -> bool:
+    """Returns True only after the last Thursday of the current month."""
+    today = date.today()
+    last_day = calendar.monthrange(today.year, today.month)[1]
+    for day in range(last_day, 0, -1):
+        if date(today.year, today.month, day).weekday() == 3:  # Thursday
+            return today.day > day
+    return False
+
 @app.put("/api/users/me/payment-mode")
 def update_payment_mode(data: dict, current_user: dict = Depends(get_current_user)):
     """Update user's payment mode"""
+    if not _payment_mode_change_allowed():
+        raise HTTPException(
+            status_code=403,
+            detail="Payment mode can only be changed after the last Thursday of each month."
+        )
+
     payment_mode = data.get("payment_mode")
     if not payment_mode:
         raise HTTPException(status_code=400, detail="Payment mode is required")
-    
+
     # Validate payment mode
     valid_payment_modes = ["Monthly", "Daily"]
     if payment_mode not in valid_payment_modes:

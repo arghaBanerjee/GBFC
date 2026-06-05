@@ -2,6 +2,20 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiUrl } from '../api'
 
+function getLastThursdayOfMonth(year, month) {
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  for (let day = lastDay; day >= 1; day--) {
+    if (new Date(year, month, day).getDay() === 4) return day
+  }
+  return null
+}
+
+function isPaymentModeChangeAllowed() {
+  const today = new Date()
+  const lastThursday = getLastThursdayOfMonth(today.getFullYear(), today.getMonth())
+  return today.getDate() > lastThursday
+}
+
 export default function Profile({ user, setUser, loading }) {
   const [editMode, setEditMode] = useState(null) // 'name', 'password', or 'birthday'
   const [fullName, setFullName] = useState('')
@@ -665,11 +679,17 @@ export default function Profile({ user, setUser, loading }) {
                 <div className="theme-subtle-text" style={{ fontSize: '0.875rem', marginTop: '0.25rem' }}>
                   {user.payment_mode === 'Monthly' ? 'Pay a fixed £20 monthly amount for all practice sessions.' : 'Pay £8 for each practice session.'}
                 </div>
+                {!isPaymentModeChangeAllowed() && (
+                  <div className="theme-subtle-text" style={{ fontSize: '0.8rem', marginTop: '0.4rem', color: 'var(--theme-accent)' }}>
+                    Payment mode can only be changed after the last Thursday of each month.
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => setEditMode('payment-mode')}
                 className="nav-btn theme-secondary-btn"
-                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', flexShrink: 0 }}
+                disabled={!isPaymentModeChangeAllowed()}
+                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', flexShrink: 0, opacity: isPaymentModeChangeAllowed() ? 1 : 0.4, cursor: isPaymentModeChangeAllowed() ? 'pointer' : 'not-allowed' }}
               >
                 Edit
               </button>
