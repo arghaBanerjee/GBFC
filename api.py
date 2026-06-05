@@ -394,7 +394,9 @@ def init_db():
                 is_deleted BOOLEAN DEFAULT FALSE,
                 deleted_at TIMESTAMP,
                 deleted_by VARCHAR(255),
-                is_approved BOOLEAN DEFAULT TRUE
+                is_approved BOOLEAN DEFAULT TRUE,
+                user_type_edit_at TIMESTAMP,
+                user_type_edit_by VARCHAR(255)
             )
             """)
             # Add user_type column if it doesn't exist (for existing databases)
@@ -688,6 +690,42 @@ def init_db():
                 conn.commit()
             except Exception as e:
                 print(f"Warning: Could not add is_approved column: {e}")
+                conn.rollback()
+
+            # Add user_type_edit_at column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='users' AND column_name='user_type_edit_at'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN user_type_edit_at TIMESTAMP;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add user_type_edit_at column: {e}")
+                conn.rollback()
+
+            # Add user_type_edit_by column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='users' AND column_name='user_type_edit_by'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN user_type_edit_by VARCHAR(255);
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add user_type_edit_by column: {e}")
                 conn.rollback()
 
             # Add session_cost column to practice_sessions if it doesn't exist
@@ -1306,7 +1344,9 @@ def init_db():
                 is_deleted BOOLEAN DEFAULT 0,
                 deleted_at TIMESTAMP,
                 deleted_by TEXT,
-                is_approved INTEGER DEFAULT 1
+                is_approved INTEGER DEFAULT 1,
+                user_type_edit_at TIMESTAMP,
+                user_type_edit_by TEXT
             )
             """)
             cur.execute("""
@@ -1428,6 +1468,18 @@ def init_db():
                 cur.execute("UPDATE users SET is_approved = 1 WHERE is_approved IS NULL")
             except sqlite3.OperationalError as e:
                 print(f"Warning: Could not backfill is_approved: {e}")
+            # Add user_type_edit_at column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN user_type_edit_at TIMESTAMP")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add user_type_edit_at column: {e}")
+            # Add user_type_edit_by column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN user_type_edit_by TEXT")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add user_type_edit_by column: {e}")
             # Add session_cost column to practice_sessions if it doesn't exist
             try:
                 cur.execute("ALTER TABLE practice_sessions ADD COLUMN session_cost REAL")
@@ -3530,6 +3582,8 @@ class UserOut(BaseModel):
     theme_preference: str = "nordic_neutral"
     platform: Optional[str] = None
     is_approved: bool = True
+    user_type_edit_at: Optional[str] = None
+    user_type_edit_by: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -4588,7 +4642,7 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
     
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference, payment_mode, payment_mode_edit_at, payment_mode_edit_by, platform, is_approved FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
+        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference, payment_mode, payment_mode_edit_at, payment_mode_edit_by, platform, is_approved, user_type_edit_at, user_type_edit_by FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
         users = []
         for row in cur.fetchall():
             user_dict = dict(row)
@@ -4628,6 +4682,11 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
             # Normalise is_approved: SQLite stores as 0/1, Postgres as bool; default True for existing rows
             raw_approved = user_dict.get("is_approved")
             user_dict["is_approved"] = bool(raw_approved) if raw_approved is not None else True
+            if user_dict.get("user_type_edit_at"):
+                if hasattr(user_dict["user_type_edit_at"], "isoformat"):
+                    user_dict["user_type_edit_at"] = user_dict["user_type_edit_at"].isoformat()
+                else:
+                    user_dict["user_type_edit_at"] = str(user_dict["user_type_edit_at"])
             users.append(UserOut(**user_dict))
         return users
 
@@ -4650,10 +4709,12 @@ def update_user_type(email: str, data: dict, current_user: dict = Depends(get_cu
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # Update user type
-        cur.execute(f"UPDATE users SET user_type = {PLACEHOLDER} WHERE email = {PLACEHOLDER}", (user_type, email))
+        cur.execute(
+            f"UPDATE users SET user_type = {PLACEHOLDER}, user_type_edit_at = CURRENT_TIMESTAMP, user_type_edit_by = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+            (user_type, current_user["email"], email),
+        )
         conn.commit()
-        
+
         return {"message": f"User type updated to {user_type}"}
 
 @app.put("/api/users/{email}/name")
