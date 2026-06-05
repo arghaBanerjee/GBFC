@@ -267,8 +267,32 @@ NOTIFICATION_TYPE_DEFAULTS = {
         "whatsapp_enabled": False,
         "target_audience": "direct_user",
         "app_template": "",
-        "email_subject": "Welcome to Glasgow Bengali FC",
-        "email_template": "Hi {{full_name}},\n\nWelcome to Glasgow Bengali FC. Thanks for joining our ever-growing club, where fun meets football.\n\nBest wishes,\nGlasgow Bengali FC",
+        "email_subject": "Welcome to Glasgow Bengali FC — Access Pending Approval",
+        "email_template": "Hi {{full_name}},\n\nThank you for registering with Glasgow Bengali FC!\n\nYour account is currently pending review. An admin will check your details and approve your access shortly. Once approved, you will receive a confirmation email and will then be able to log in to the club app.\n\nThank you for your patience.\n\nBest wishes,\nGlasgow Bengali FC",
+        "whatsapp_template": "",
+    },
+    "user_registration_request": {
+        "display_name": "New User Registration Request",
+        "description": "Sent to all admins in the app when a new user registers and is waiting for approval.",
+        "app_enabled": True,
+        "email_enabled": False,
+        "whatsapp_enabled": False,
+        "target_audience": "admin_users",
+        "app_template": "New registration request from {{full_name}} ({{email}}). Please review and approve or reject in the Users tab.",
+        "email_subject": "",
+        "email_template": "",
+        "whatsapp_template": "",
+    },
+    "approval_confirmation": {
+        "display_name": "Account Approved Confirmation",
+        "description": "Sent by email to the user when an admin approves their registration request.",
+        "app_enabled": False,
+        "email_enabled": True,
+        "whatsapp_enabled": False,
+        "target_audience": "direct_user",
+        "app_template": "",
+        "email_subject": "Your Glasgow Bengali FC account has been approved!",
+        "email_template": "Hi {{full_name}},\n\nGreat news! Your Glasgow Bengali FC account has been approved. You can now log in to the club app at any time.\n\nWelcome aboard!\n\nBest wishes,\nGlasgow Bengali FC",
         "whatsapp_template": "",
     },
     "payment_mode_window": {
@@ -369,7 +393,8 @@ def init_db():
                 payment_mode_edit_by VARCHAR(255),
                 is_deleted BOOLEAN DEFAULT FALSE,
                 deleted_at TIMESTAMP,
-                deleted_by VARCHAR(255)
+                deleted_by VARCHAR(255),
+                is_approved BOOLEAN DEFAULT TRUE
             )
             """)
             # Add user_type column if it doesn't exist (for existing databases)
@@ -631,10 +656,10 @@ def init_db():
             # Add payment_mode_edit_by column if it doesn't exist (for existing databases)
             try:
                 cur.execute("""
-                    DO $$ 
-                    BEGIN 
+                    DO $$
+                    BEGIN
                         IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns 
+                            SELECT 1 FROM information_schema.columns
                             WHERE table_name='users' AND column_name='payment_mode_edit_by'
                         ) THEN
                             ALTER TABLE users ADD COLUMN payment_mode_edit_by VARCHAR(255);
@@ -645,7 +670,26 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not add payment_mode_edit_by column: {e}")
                 conn.rollback()
-            
+
+            # Add is_approved column if it doesn't exist (for existing databases)
+            try:
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='users' AND column_name='is_approved'
+                        ) THEN
+                            ALTER TABLE users ADD COLUMN is_approved BOOLEAN DEFAULT TRUE;
+                            UPDATE users SET is_approved = TRUE WHERE is_approved IS NULL;
+                        END IF;
+                    END $$;
+                """)
+                conn.commit()
+            except Exception as e:
+                print(f"Warning: Could not add is_approved column: {e}")
+                conn.rollback()
+
             # Add session_cost column to practice_sessions if it doesn't exist
             try:
                 cur.execute("""
@@ -1261,7 +1305,8 @@ def init_db():
                 payment_mode_edit_by TEXT,
                 is_deleted BOOLEAN DEFAULT 0,
                 deleted_at TIMESTAMP,
-                deleted_by TEXT
+                deleted_by TEXT,
+                is_approved INTEGER DEFAULT 1
             )
             """)
             cur.execute("""
@@ -1373,6 +1418,16 @@ def init_db():
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     print(f"Warning: Could not add payment_mode_edit_by column: {e}")
+            # Add is_approved column if it doesn't exist
+            try:
+                cur.execute("ALTER TABLE users ADD COLUMN is_approved INTEGER DEFAULT 1")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning: Could not add is_approved column: {e}")
+            try:
+                cur.execute("UPDATE users SET is_approved = 1 WHERE is_approved IS NULL")
+            except sqlite3.OperationalError as e:
+                print(f"Warning: Could not backfill is_approved: {e}")
             # Add session_cost column to practice_sessions if it doesn't exist
             try:
                 cur.execute("ALTER TABLE practice_sessions ADD COLUMN session_cost REAL")
@@ -1822,6 +1877,7 @@ def build_notification_context(payload: dict) -> dict:
         "event_title": event_title_value,
         "author_name": payload.get("author_name") or "",
         "full_name": payload.get("full_name") or "",
+        "email": payload.get("email") or "",
         "member_name": payload.get("member_name") or payload.get("full_name") or "",
         "club_name": payload.get("club_name") or "Glasgow Bengali FC",
         "payments_link": payload.get("payments_link") or "https://glasgow-bengali-fc.vercel.app/user-actions/payments",
@@ -1942,6 +1998,20 @@ def seed_notification_settings():
                         notif_type,
                     ),
                 )
+        conn.commit()
+
+        # Always refresh the welcome_signup email so existing DBs get the updated approval-pending text
+        welcome_defaults = NOTIFICATION_TYPE_DEFAULTS["welcome_signup"]
+        if USE_POSTGRES:
+            cur.execute(
+                f"UPDATE notification_settings SET email_subject = {PLACEHOLDER}, email_template = {PLACEHOLDER} WHERE notif_type = {PLACEHOLDER}",
+                (welcome_defaults["email_subject"], welcome_defaults["email_template"], "welcome_signup"),
+            )
+        else:
+            cur.execute(
+                "UPDATE notification_settings SET email_subject = ?, email_template = ? WHERE notif_type = ?",
+                (welcome_defaults["email_subject"], welcome_defaults["email_template"], "welcome_signup"),
+            )
         conn.commit()
 
 def get_notification_settings_map() -> dict:
@@ -3459,6 +3529,7 @@ class UserOut(BaseModel):
     account_number: Optional[str] = None
     theme_preference: str = "nordic_neutral"
     platform: Optional[str] = None
+    is_approved: bool = True
 
 class Token(BaseModel):
     access_token: str
@@ -4160,6 +4231,14 @@ def disable_admin_job(job_id: str, current_user: dict = Depends(get_current_user
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+def _notify_admins_new_registration(new_email: str, full_name: str):
+    """Background task: send in-app notification to all admins when a new user registers."""
+    try:
+        payload = {"email": new_email, "full_name": full_name}
+        deliver_notification("user_registration_request", payload)
+    except Exception as exc:
+        print(f"Failed to notify admins of new registration ({new_email}): {exc}")
+
 # --- Auth endpoints ---
 @app.post("/api/signup", response_model=UserOut)
 def signup(user: UserCreate, background_tasks: BackgroundTasks):
@@ -4186,49 +4265,49 @@ def signup(user: UserCreate, background_tasks: BackgroundTasks):
             if existing:
                 existing_dict = dict(existing)
                 if existing_dict.get('is_deleted'):
-                    # Reactivate deleted account
+                    # Reactivate deleted account — requires re-approval
                     if USE_POSTGRES:
                         cur.execute(
                             f"UPDATE users SET is_deleted = FALSE, deleted_at = NULL, "
                             f"full_name = {PLACEHOLDER}, password = {PLACEHOLDER}, user_type = 'member', "
-                            f"last_login = CURRENT_TIMESTAMP WHERE email = {PLACEHOLDER}",
+                            f"is_approved = FALSE, last_login = CURRENT_TIMESTAMP WHERE email = {PLACEHOLDER}",
                             (user.full_name, hash_password(user.password), user.email)
                         )
                     else:
                         cur.execute(
                             f"UPDATE users SET is_deleted = 0, deleted_at = NULL, "
                             f"full_name = {PLACEHOLDER}, password = {PLACEHOLDER}, user_type = 'member', "
-                            f"last_login = CURRENT_TIMESTAMP WHERE email = {PLACEHOLDER}",
+                            f"is_approved = 0, last_login = CURRENT_TIMESTAMP WHERE email = {PLACEHOLDER}",
                             (user.full_name, hash_password(user.password), user.email)
                         )
                     conn.commit()
                     background_tasks.add_task(send_direct_notification_email_safe, "welcome_signup", welcome_payload, user.email)
-                    return UserOut(id=existing_dict['id'], email=user.email, full_name=user.full_name, user_type='member')
+                    background_tasks.add_task(_notify_admins_new_registration, user.email, user.full_name)
+                    return UserOut(id=existing_dict['id'], email=user.email, full_name=user.full_name, user_type='member', is_approved=False)
                 else:
-                    # Active user already exists
                     raise HTTPException(status_code=400, detail="Email already registered")
-            
-            # Create new user with initial last_login timestamp
+
+            # Create new user as pending approval
             if USE_POSTGRES:
                 cur.execute(
-                    f"INSERT INTO users (email, full_name, password, last_login) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)",
+                    f"INSERT INTO users (email, full_name, password, last_login, is_approved) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP, FALSE)",
                     (user.email, user.full_name, hash_password(user.password)),
                 )
             else:
                 cur.execute(
-                    f"INSERT INTO users (email, full_name, password, last_login) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP)",
+                    f"INSERT INTO users (email, full_name, password, last_login, is_approved) VALUES ({PLACEHOLDER}, {PLACEHOLDER}, {PLACEHOLDER}, CURRENT_TIMESTAMP, 0)",
                     (user.email, user.full_name, hash_password(user.password)),
                 )
             conn.commit()
             if USE_POSTGRES:
-                # PostgreSQL doesn't support lastrowid, need to fetch the inserted row
                 cur.execute(f"SELECT id FROM users WHERE email = {PLACEHOLDER}", (user.email,))
                 user_id = cur.fetchone()['id']
             else:
                 user_id = cur.lastrowid
-            
+
             background_tasks.add_task(send_direct_notification_email_safe, "welcome_signup", welcome_payload, user.email)
-            return UserOut(id=user_id, email=user.email, full_name=user.full_name, user_type='member')
+            background_tasks.add_task(_notify_admins_new_registration, user.email, user.full_name)
+            return UserOut(id=user_id, email=user.email, full_name=user.full_name, user_type='member', is_approved=False)
     except HTTPException:
         raise
     except Exception as e:
@@ -4256,6 +4335,11 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         if not verify_password(form_data.password, user["password"]):
             print("Login failed: password mismatch")
             raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        user_dict = dict(user)
+        is_approved = user_dict.get("is_approved")
+        if is_approved is not None and not bool(is_approved):
+            raise HTTPException(status_code=403, detail="Your account is pending admin approval. You will receive a confirmation email once approved.")
         
         # Update last_login timestamp
         if USE_POSTGRES:
@@ -4504,7 +4588,7 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
     
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference, payment_mode, payment_mode_edit_at, payment_mode_edit_by, platform FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
+        cur.execute("SELECT id, email, full_name, user_type, created_at, last_login, birthday, bank_name, sort_code, account_number, theme_preference, payment_mode, payment_mode_edit_at, payment_mode_edit_by, platform, is_approved FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY id DESC")
         users = []
         for row in cur.fetchall():
             user_dict = dict(row)
@@ -4539,9 +4623,11 @@ def get_all_users(current_user: dict = Depends(get_current_user)):
             user_dict["sort_code"] = user_dict.get("sort_code") or None
             user_dict["account_number"] = user_dict.get("account_number") or None
             user_dict["theme_preference"] = user_dict.get("theme_preference") or "nordic_neutral"
-            # Ensure user_type has a default
             if not user_dict.get("user_type"):
                 user_dict["user_type"] = "member"
+            # Normalise is_approved: SQLite stores as 0/1, Postgres as bool; default True for existing rows
+            raw_approved = user_dict.get("is_approved")
+            user_dict["is_approved"] = bool(raw_approved) if raw_approved is not None else True
             users.append(UserOut(**user_dict))
         return users
 
@@ -4605,6 +4691,62 @@ def update_user_name(email: str, data: dict, current_user: dict = Depends(get_cu
         conn.commit()
         
         return {"message": "User name updated successfully"}
+
+
+@app.put("/api/users/{email}/approve")
+def approve_user(email: str, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+    """Admin endpoint: approve a pending user registration."""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id, full_name, is_approved FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+            (email,),
+        )
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if USE_POSTGRES:
+            cur.execute(f"UPDATE users SET is_approved = TRUE WHERE email = {PLACEHOLDER}", (email,))
+        else:
+            cur.execute(f"UPDATE users SET is_approved = 1 WHERE email = {PLACEHOLDER}", (email,))
+        conn.commit()
+    full_name = dict(user).get("full_name") or email
+    approval_payload = {"email": email, "full_name": full_name}
+    background_tasks.add_task(send_direct_notification_email_safe, "approval_confirmation", approval_payload, email)
+    return {"message": f"User {email} approved successfully"}
+
+
+@app.put("/api/users/{email}/reject")
+def reject_user(email: str, current_user: dict = Depends(get_current_user)):
+    """Admin endpoint: reject and remove a pending user registration."""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id, is_approved FROM users WHERE email = {PLACEHOLDER} AND (is_deleted = FALSE OR is_deleted IS NULL)",
+            (email,),
+        )
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user_dict = dict(user)
+        if bool(user_dict.get("is_approved")):
+            raise HTTPException(status_code=400, detail="Cannot reject an already approved user")
+        if USE_POSTGRES:
+            cur.execute(
+                f"UPDATE users SET is_deleted = TRUE, deleted_at = CURRENT_TIMESTAMP, deleted_by = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+                (current_user["email"], email),
+            )
+        else:
+            cur.execute(
+                f"UPDATE users SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP, deleted_by = {PLACEHOLDER} WHERE email = {PLACEHOLDER}",
+                (current_user["email"], email),
+            )
+        conn.commit()
+    return {"message": f"User {email} rejected and removed"}
 
 
 @app.get("/api/matches/likes/me")

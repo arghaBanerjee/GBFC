@@ -856,6 +856,35 @@ export default function Admin({ user, loading }) {
     refreshTabData('users')
   }
 
+  const handleApproveUser = async (email) => {
+    const res = await fetch(apiUrl(`/api/users/${encodeURIComponent(email)}/approve`), {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMessage(data?.detail || 'Failed to approve user')
+      return
+    }
+    setMessage('User approved. A confirmation email has been sent.')
+    refreshTabData('users')
+  }
+
+  const handleRejectUser = async (email) => {
+    if (!confirm(`Reject registration for ${email}? This will remove their account.`)) return
+    const res = await fetch(apiUrl(`/api/users/${encodeURIComponent(email)}/reject`), {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMessage(data?.detail || 'Failed to reject user')
+      return
+    }
+    setMessage('Registration rejected.')
+    refreshTabData('users')
+  }
+
   const handleDeleteUser = async (email) => {
     if (!confirm(`Delete user ${email}? This will also delete all their posts, comments, and likes.`)) return
     const res = await fetch(apiUrl(`/api/users/${encodeURIComponent(email)}`), {
@@ -1520,11 +1549,12 @@ export default function Admin({ user, loading }) {
             </div>
             {filteredUsers.map((u) => {
               const isUpcomingBirthdayUser = hasUpcomingBirthday(u.birthday)
+              const isPending = u.is_approved === false
               return (
               <div
                 key={u.email}
                 style={{
-                  border: isUpcomingBirthdayUser ? '1px solid #f59e0b' : u.user_type === 'admin' ? '1px solid #f97316' : '1px solid #86efac',
+                  border: isPending ? '1px solid #a78bfa' : isUpcomingBirthdayUser ? '1px solid #f59e0b' : u.user_type === 'admin' ? '1px solid #f97316' : '1px solid #86efac',
                   borderRadius: '1rem',
                   padding: '1.25rem',
                   marginBottom: '1rem',
@@ -1701,6 +1731,22 @@ export default function Admin({ user, loading }) {
                         Member
                       </div>
                     )}
+                    {isPending && (
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '999px',
+                        background: '#ede9fe',
+                        border: '1px solid #a78bfa',
+                        color: '#5b21b6',
+                        fontSize: '0.75rem',
+                        fontWeight: '600'
+                      }}>
+                        Pending Approval
+                      </div>
+                    )}
                     {isUpcomingBirthdayUser && (
                       <div style={{
                         display: 'inline-flex',
@@ -1720,8 +1766,31 @@ export default function Admin({ user, loading }) {
                   </div>
                 </div>
 
+                {/* Pending approval: show approve/reject instead of normal controls */}
+                {isPending && (
+                  <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f5f3ff', borderRadius: '0.75rem', border: '1px solid #ddd6fe' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#5b21b6', marginBottom: '0.75rem', fontWeight: '500' }}>
+                      This user is awaiting admin approval to access the app.
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => handleApproveUser(u.email)}
+                        style={{ flex: 1, padding: '0.5rem 1rem', background: '#16a34a', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: '600', fontSize: '0.875rem', cursor: 'pointer' }}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleRejectUser(u.email)}
+                        style={{ flex: 1, padding: '0.5rem 1rem', background: '#dc2626', color: 'white', border: 'none', borderRadius: '0.5rem', fontWeight: '600', fontSize: '0.875rem', cursor: 'pointer' }}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Controls: Role & Billing with Segmented Buttons */}
-                <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', display: isPending ? 'none' : 'flex' }}>
                   <div>
                     <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                       Member Type

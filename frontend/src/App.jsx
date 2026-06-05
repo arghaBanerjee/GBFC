@@ -534,6 +534,7 @@ function App() {
                             if (notif.type === 'forum_post') navigate('/forum')
                             else if (notif.type === 'match') navigate('/matches/upcoming')
                             else if (notif.type === 'pending_payment_reminder') navigate('/user/payments')
+                            else if (notif.type === 'user_registration_request') navigate('/admin/users')
                             else if (
                               notif.type === 'practice' ||
                               notif.type === 'payment' ||
