@@ -20,6 +20,7 @@ import './index.css'
 
 const THEME_COOKIE_NAME = 'theme_preference'
 const CACHED_USER_STORAGE_KEY = 'cachedUser'
+const WORLD_CUP_ENABLED = import.meta.env.VITE_WORLD_CUP_ENABLED !== 'false'
 
 function readThemeCookie() {
   if (typeof document === 'undefined') return null
@@ -324,7 +325,7 @@ function App() {
   }, [notificationsOpen])
 
 
-  const navItems = ['Home', 'Matches', 'Calendar', 'Forum', '🏆 World Cup']
+  const navItems = ['Home', 'Matches', 'Calendar', 'Forum', ...(WORLD_CUP_ENABLED ? ['🏆 World Cup'] : [])]
   const isActive = (path) => location.pathname === path
   const isSectionActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`)
   const isUserActionsActive = location.pathname === '/user' || location.pathname.startsWith('/user/')
@@ -842,11 +843,13 @@ function App() {
             </ProtectedRoute>
           } />
           <Route path="/user/pending-payments" element={<Navigate to="/user/payments" replace />} />
-          <Route path="/world-cup" element={
-            <ProtectedRoute user={user} loading={loading}>
-              <WorldCup user={user} />
-            </ProtectedRoute>
-          } />
+          {WORLD_CUP_ENABLED && (
+            <Route path="/world-cup" element={
+              <ProtectedRoute user={user} loading={loading}>
+                <WorldCup user={user} />
+              </ProtectedRoute>
+            } />
+          )}
         </Routes>
       </RouteErrorBoundary>
     </div>
