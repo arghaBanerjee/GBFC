@@ -2660,43 +2660,41 @@ function WorldCupResultsTab({ token, apiUrl }) {
               const isSaving = saving === m.id
 
               return (
-                <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto auto', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: `1px solid ${hasResult ? 'color-mix(in srgb, var(--theme-success) 40%, transparent)' : 'var(--theme-border)'}` }}>
-                  {/* Home team */}
-                  <div style={{ fontWeight: '600', fontSize: '0.9rem', textAlign: 'right' }}>{m.home_team}</div>
-
-                  {/* Score inputs */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <input
-                      type="number" min={0} max={30}
-                      value={s.home}
-                      onChange={e => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && +v <= 30)) setScores(prev => ({ ...prev, [m.id]: { ...prev[m.id], home: v } })) }}
-                      placeholder="—"
-                      style={{ width: '3rem', padding: '0.35rem', textAlign: 'center', fontWeight: '700', fontSize: '1rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)' }}
-                    />
-                    <span style={{ fontWeight: '700', color: 'var(--theme-text-muted)' }}>–</span>
-                    <input
-                      type="number" min={0} max={30}
-                      value={s.away}
-                      onChange={e => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && +v <= 30)) setScores(prev => ({ ...prev, [m.id]: { ...prev[m.id], away: v } })) }}
-                      placeholder="—"
-                      style={{ width: '3rem', padding: '0.35rem', textAlign: 'center', fontWeight: '700', fontSize: '1rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)' }}
-                    />
+                <div key={m.id} style={{ padding: '0.75rem 1rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: `1px solid ${hasResult ? 'color-mix(in srgb, var(--theme-success) 40%, transparent)' : 'var(--theme-border)'}` }}>
+                  {/* Row 1: teams + score inputs */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
+                    <div style={{ fontWeight: '600', fontSize: '0.9rem', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.home_team}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+                      <input
+                        type="number" min={0} max={30}
+                        value={s.home}
+                        onChange={e => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && +v <= 30)) setScores(prev => ({ ...prev, [m.id]: { ...prev[m.id], home: v } })) }}
+                        placeholder="—"
+                        style={{ width: '2.8rem', padding: '0.35rem', textAlign: 'center', fontWeight: '700', fontSize: '1rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)' }}
+                      />
+                      <span style={{ fontWeight: '700', color: 'var(--theme-text-muted)' }}>–</span>
+                      <input
+                        type="number" min={0} max={30}
+                        value={s.away}
+                        onChange={e => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && +v <= 30)) setScores(prev => ({ ...prev, [m.id]: { ...prev[m.id], away: v } })) }}
+                        placeholder="—"
+                        style={{ width: '2.8rem', padding: '0.35rem', textAlign: 'center', fontWeight: '700', fontSize: '1rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)' }}
+                      />
+                    </div>
+                    <div style={{ fontWeight: '600', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.away_team}</div>
                   </div>
 
-                  {/* Away team */}
-                  <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{m.away_team}</div>
-
-                  {/* Date */}
-                  <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{fmtDate(m.date)}</div>
-
-                  {/* Save button */}
-                  <button
-                    onClick={() => handleSave(m.id)}
-                    disabled={!canSave || isSaving}
-                    style={{ padding: '0.35rem 0.85rem', borderRadius: '0.375rem', border: 'none', fontWeight: '600', fontSize: '0.8rem', cursor: canSave && !isSaving ? 'pointer' : 'not-allowed', background: hasResult ? 'color-mix(in srgb, var(--theme-success) 20%, transparent)' : canSave ? 'var(--theme-accent)' : 'var(--theme-border)', color: hasResult ? 'var(--theme-success-strong)' : canSave ? 'var(--theme-accent-contrast)' : 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}
-                  >
-                    {isSaving ? 'Saving…' : hasResult ? '✓ Saved' : 'Save'}
-                  </button>
+                  {/* Row 2: date + save button */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{fmtDate(m.date)}</div>
+                    <button
+                      onClick={() => handleSave(m.id)}
+                      disabled={!canSave || isSaving}
+                      style={{ padding: '0.35rem 1rem', borderRadius: '0.375rem', border: 'none', fontWeight: '600', fontSize: '0.8rem', cursor: canSave && !isSaving ? 'pointer' : 'not-allowed', background: hasResult ? 'color-mix(in srgb, var(--theme-success) 20%, transparent)' : canSave ? 'var(--theme-accent)' : 'var(--theme-border)', color: hasResult ? 'var(--theme-success-strong)' : canSave ? 'var(--theme-accent-contrast)' : 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}
+                    >
+                      {isSaving ? 'Saving…' : hasResult ? '✓ Saved' : 'Save'}
+                    </button>
+                  </div>
                 </div>
               )
             })}
