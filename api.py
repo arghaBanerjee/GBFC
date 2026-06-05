@@ -1290,6 +1290,30 @@ def init_db():
                 PRIMARY KEY (notif_type, channel)
             )
             """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS world_cup_predictions (
+                id SERIAL PRIMARY KEY,
+                user_email VARCHAR(255) NOT NULL,
+                match_id INTEGER NOT NULL,
+                predicted_home_goals INTEGER NOT NULL,
+                predicted_away_goals INTEGER NOT NULL,
+                points_awarded INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (user_email, match_id)
+            )
+            """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS world_cup_results (
+                id SERIAL PRIMARY KEY,
+                match_id INTEGER NOT NULL UNIQUE,
+                home_goals INTEGER NOT NULL,
+                away_goals INTEGER NOT NULL,
+                match_stage VARCHAR(30) NOT NULL DEFAULT 'group',
+                entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                entered_by VARCHAR(255)
+            )
+            """)
             try:
                 cur.execute("""
                     DO $$ 
@@ -1766,6 +1790,26 @@ def init_db():
                 channel TEXT NOT NULL,
                 last_sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (notif_type, channel)
+            );
+            CREATE TABLE IF NOT EXISTS world_cup_predictions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email TEXT NOT NULL,
+                match_id INTEGER NOT NULL,
+                predicted_home_goals INTEGER NOT NULL,
+                predicted_away_goals INTEGER NOT NULL,
+                points_awarded INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (user_email, match_id)
+            );
+            CREATE TABLE IF NOT EXISTS world_cup_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match_id INTEGER NOT NULL UNIQUE,
+                home_goals INTEGER NOT NULL,
+                away_goals INTEGER NOT NULL,
+                match_stage TEXT NOT NULL DEFAULT 'group',
+                entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                entered_by TEXT
             );
             """)
             try:
@@ -4048,7 +4092,7 @@ async def startup_event():
     try:
         with get_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM practice_sessions WHERE event_type = 'others'")
+            cur.execute("SELECT COUNT(*) FROM practice_sessions WHERE event_type = 'others' AND description = '2026 FIFA World Cup Match'")
             result = cur.fetchone()
             if not result:
                 world_cup_count = 0
@@ -4553,12 +4597,13 @@ def me(current_user: dict = Depends(get_current_user), platform: Optional[str] =
                     created_at = str(row_dict["created_at"])
             
             last_login = None
+            last_login = None
             if row_dict.get("last_login"):
                 if hasattr(row_dict["last_login"], 'isoformat'):
                     last_login = row_dict["last_login"].isoformat()
                 else:
                     last_login = str(row_dict["last_login"])
-            
+
             # Convert birthday date to ISO string
             birthday = None
             if row_dict.get("birthday"):
@@ -7290,6 +7335,291 @@ def get_about():
             {"name": "Tariq Mehmood", "intro": "Defender, joined 2021"},
         ],
     }
+
+# =============================================================================
+# --- World Cup Challenge ---
+# =============================================================================
+
+WC_STAGE_MULTIPLIERS = {
+    "group":        1,
+    "round_of_32":  2,
+    "round_of_16":  3,
+    "quarter_final": 4,
+    "semi_final":   5,
+    "third_place":  5,
+    "final":        6,
+}
+
+WC_STAGE_LABELS = {
+    "group":        "Group Stage",
+    "round_of_32":  "Round of 32",
+    "round_of_16":  "Round of 16",
+    "quarter_final": "Quarter-Final",
+    "semi_final":   "Semi-Final",
+    "third_place":  "Third Place",
+    "final":        "Final",
+}
+
+def _wc_infer_stage(match_date: str) -> str:
+    d = datetime.strptime(match_date, "%Y-%m-%d").date()
+    if d <= date(2026, 6, 27):   return "group"
+    if d <= date(2026, 7, 3):    return "round_of_32"
+    if d <= date(2026, 7, 7):    return "round_of_16"
+    if d <= date(2026, 7, 11):   return "quarter_final"
+    if d <= date(2026, 7, 15):   return "semi_final"
+    if d == date(2026, 7, 18):   return "third_place"
+    return "final"
+
+def _wc_points(pred_home: int, pred_away: int, actual_home: int, actual_away: int, multiplier: int) -> int:
+    pts = 0
+    def winner(h, a): return 'home' if h > a else ('away' if a > h else 'draw')
+    if winner(pred_home, pred_away) == winner(actual_home, actual_away):
+        pts += 10
+    h_ok = pred_home == actual_home
+    a_ok = pred_away == actual_away
+    if h_ok and a_ok:
+        pts += 20
+    elif h_ok or a_ok:
+        pts += 10
+    return pts * multiplier
+
+def _wc_match_row(row: dict, result: dict | None, prediction: dict | None) -> dict:
+    stage = (result or {}).get("match_stage") or _wc_infer_stage(row["date"])
+    return {
+        "id": row["id"],
+        "date": row["date"],
+        "time": row.get("time"),
+        "location": row.get("location"),
+        "home_team": (row.get("event_title") or "").split(" vs ")[0].strip(),
+        "away_team": (row.get("event_title") or "").split(" vs ")[-1].strip(),
+        "event_title": row.get("event_title"),
+        "stage": stage,
+        "stage_label": WC_STAGE_LABELS.get(stage, stage),
+        "multiplier": WC_STAGE_MULTIPLIERS.get(stage, 1),
+        "result": {"home_goals": result["home_goals"], "away_goals": result["away_goals"]} if result else None,
+        "prediction": {
+            "home_goals": prediction["predicted_home_goals"],
+            "away_goals": prediction["predicted_away_goals"],
+            "points_awarded": prediction["points_awarded"],
+        } if prediction else None,
+    }
+
+@app.get("/api/worldcup/matches")
+def wc_get_matches(current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id, date, time, location, event_title FROM practice_sessions "
+            f"WHERE event_type = {PLACEHOLDER} AND description = {PLACEHOLDER} ORDER BY date ASC, time ASC",
+            ("others", "2026 FIFA World Cup Match"),
+        )
+        matches = [dict(r) for r in cur.fetchall()]
+
+        ids = [m["id"] for m in matches]
+        results_map = {}
+        preds_map = {}
+        if ids:
+            fmt = ",".join([PLACEHOLDER] * len(ids))
+            cur.execute(f"SELECT * FROM world_cup_results WHERE match_id IN ({fmt})", ids)
+            for r in cur.fetchall():
+                d = dict(r); results_map[d["match_id"]] = d
+            cur.execute(
+                f"SELECT * FROM world_cup_predictions WHERE user_email = {PLACEHOLDER} AND match_id IN ({fmt})",
+                [current_user["email"]] + ids,
+            )
+            for r in cur.fetchall():
+                d = dict(r); preds_map[d["match_id"]] = d
+
+    return [_wc_match_row(m, results_map.get(m["id"]), preds_map.get(m["id"])) for m in matches]
+
+
+@app.post("/api/worldcup/predict")
+def wc_submit_prediction(data: dict, current_user: dict = Depends(get_current_user)):
+    match_id = data.get("match_id")
+    home_goals = data.get("home_goals")
+    away_goals = data.get("away_goals")
+    if match_id is None or home_goals is None or away_goals is None:
+        raise HTTPException(status_code=400, detail="match_id, home_goals and away_goals are required")
+    if not isinstance(home_goals, int) or not isinstance(away_goals, int) or home_goals < 0 or away_goals < 0:
+        raise HTTPException(status_code=400, detail="Goals must be non-negative integers")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id, date, time FROM practice_sessions WHERE id = {PLACEHOLDER} AND event_type = {PLACEHOLDER} AND description = {PLACEHOLDER}",
+            (match_id, "others", "2026 FIFA World Cup Match"),
+        )
+        match = cur.fetchone()
+        if not match:
+            raise HTTPException(status_code=404, detail="World Cup match not found")
+        match = dict(match)
+
+        # Prediction window closes at match kick-off
+        match_dt_str = f"{match['date']} {match['time'] or '00:00'}"
+        try:
+            match_dt = datetime.strptime(match_dt_str, "%Y-%m-%d %H:%M")
+        except ValueError:
+            match_dt = datetime.strptime(match['date'], "%Y-%m-%d")
+        if datetime.utcnow() >= match_dt:
+            raise HTTPException(status_code=403, detail="Prediction window has closed for this match")
+
+        # Upsert
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO world_cup_predictions (user_email, match_id, predicted_home_goals, predicted_away_goals, updated_at) "
+                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},CURRENT_TIMESTAMP) "
+                f"ON CONFLICT (user_email, match_id) DO UPDATE SET "
+                f"predicted_home_goals=EXCLUDED.predicted_home_goals, predicted_away_goals=EXCLUDED.predicted_away_goals, updated_at=CURRENT_TIMESTAMP",
+                (current_user["email"], match_id, home_goals, away_goals),
+            )
+        else:
+            cur.execute(
+                f"INSERT INTO world_cup_predictions (user_email, match_id, predicted_home_goals, predicted_away_goals, updated_at) "
+                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},CURRENT_TIMESTAMP) "
+                f"ON CONFLICT (user_email, match_id) DO UPDATE SET "
+                f"predicted_home_goals=excluded.predicted_home_goals, predicted_away_goals=excluded.predicted_away_goals, updated_at=CURRENT_TIMESTAMP",
+                (current_user["email"], match_id, home_goals, away_goals),
+            )
+        conn.commit()
+    return {"message": "Prediction saved"}
+
+
+@app.post("/api/worldcup/results/{match_id}")
+def wc_enter_result(match_id: int, data: dict, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    home_goals = data.get("home_goals")
+    away_goals = data.get("away_goals")
+    match_stage = data.get("match_stage")
+    if home_goals is None or away_goals is None:
+        raise HTTPException(status_code=400, detail="home_goals and away_goals are required")
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id, date FROM practice_sessions WHERE id = {PLACEHOLDER} AND event_type = {PLACEHOLDER} AND description = {PLACEHOLDER}",
+            (match_id, "others", "2026 FIFA World Cup Match"),
+        )
+        match = cur.fetchone()
+        if not match:
+            raise HTTPException(status_code=404, detail="World Cup match not found")
+        match = dict(match)
+
+        inferred_stage = match_stage or _wc_infer_stage(match["date"])
+        multiplier = WC_STAGE_MULTIPLIERS.get(inferred_stage, 1)
+
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO world_cup_results (match_id, home_goals, away_goals, match_stage, entered_by) "
+                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER}) "
+                f"ON CONFLICT (match_id) DO UPDATE SET home_goals=EXCLUDED.home_goals, away_goals=EXCLUDED.away_goals, "
+                f"match_stage=EXCLUDED.match_stage, entered_at=CURRENT_TIMESTAMP, entered_by=EXCLUDED.entered_by",
+                (match_id, home_goals, away_goals, inferred_stage, current_user["email"]),
+            )
+        else:
+            cur.execute(
+                f"INSERT INTO world_cup_results (match_id, home_goals, away_goals, match_stage, entered_by) "
+                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER}) "
+                f"ON CONFLICT (match_id) DO UPDATE SET home_goals=excluded.home_goals, away_goals=excluded.away_goals, "
+                f"match_stage=excluded.match_stage, entered_at=CURRENT_TIMESTAMP, entered_by=excluded.entered_by",
+                (match_id, home_goals, away_goals, inferred_stage, current_user["email"]),
+            )
+
+        # Recalculate points for all predictions on this match
+        cur.execute(
+            f"SELECT id, user_email, predicted_home_goals, predicted_away_goals FROM world_cup_predictions WHERE match_id = {PLACEHOLDER}",
+            (match_id,),
+        )
+        for pred in cur.fetchall():
+            p = dict(pred)
+            pts = _wc_points(p["predicted_home_goals"], p["predicted_away_goals"], home_goals, away_goals, multiplier)
+            cur.execute(
+                f"UPDATE world_cup_predictions SET points_awarded = {PLACEHOLDER} WHERE id = {PLACEHOLDER}",
+                (pts, p["id"]),
+            )
+        conn.commit()
+
+    return {"message": "Result saved and points calculated", "match_stage": inferred_stage, "multiplier": multiplier}
+
+
+@app.get("/api/worldcup/leaderboard")
+def wc_leaderboard(current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT wcp.user_email, u.full_name, "
+            f"COALESCE(SUM(wcp.points_awarded), 0) AS total_points, "
+            f"COUNT(wcp.id) AS predictions_made, "
+            f"COUNT(CASE WHEN wcp.points_awarded IS NOT NULL THEN 1 END) AS results_in "
+            f"FROM world_cup_predictions wcp "
+            f"JOIN users u ON u.email = wcp.user_email AND (u.is_deleted = FALSE OR u.is_deleted IS NULL) "
+            f"GROUP BY wcp.user_email, u.full_name "
+            f"ORDER BY total_points DESC, predictions_made DESC"
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+
+    leaderboard = []
+    for i, r in enumerate(rows):
+        leaderboard.append({
+            "rank": i + 1,
+            "email": r["user_email"],
+            "name": r["full_name"] or r["user_email"],
+            "total_points": int(r["total_points"]),
+            "predictions_made": int(r["predictions_made"]),
+            "results_in": int(r["results_in"]),
+            "is_me": r["user_email"] == current_user["email"],
+        })
+    return leaderboard
+
+
+@app.get("/api/worldcup/my-predictions")
+def wc_my_predictions(current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT wcp.match_id, wcp.predicted_home_goals, wcp.predicted_away_goals, wcp.points_awarded, "
+            f"ps.date, ps.time, ps.location, ps.event_title, "
+            f"wcr.home_goals AS actual_home, wcr.away_goals AS actual_away, wcr.match_stage "
+            f"FROM world_cup_predictions wcp "
+            f"JOIN practice_sessions ps ON ps.id = wcp.match_id "
+            f"LEFT JOIN world_cup_results wcr ON wcr.match_id = wcp.match_id "
+            f"WHERE wcp.user_email = {PLACEHOLDER} "
+            f"ORDER BY ps.date ASC, ps.time ASC",
+            (current_user["email"],),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+
+    result = []
+    for r in rows:
+        stage = r.get("match_stage") or _wc_infer_stage(r["date"])
+        result.append({
+            "match_id": r["match_id"],
+            "date": r["date"],
+            "time": r["time"],
+            "location": r["location"],
+            "home_team": (r.get("event_title") or "").split(" vs ")[0].strip(),
+            "away_team": (r.get("event_title") or "").split(" vs ")[-1].strip(),
+            "predicted_home": r["predicted_home_goals"],
+            "predicted_away": r["predicted_away_goals"],
+            "actual_home": r.get("actual_home"),
+            "actual_away": r.get("actual_away"),
+            "points_awarded": r.get("points_awarded"),
+            "stage": stage,
+            "stage_label": WC_STAGE_LABELS.get(stage, stage),
+            "multiplier": WC_STAGE_MULTIPLIERS.get(stage, 1),
+        })
+    return result
+
+# Admin: list all results entered so far
+@app.get("/api/worldcup/results")
+def wc_get_results(current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM world_cup_results ORDER BY entered_at DESC")
+        return [dict(r) for r in cur.fetchall()]
+
 
 if __name__ == "__main__":
     init_db()

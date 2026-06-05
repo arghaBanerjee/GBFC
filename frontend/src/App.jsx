@@ -11,6 +11,7 @@ import ResetPassword from './pages/ResetPassword'
 import Admin from './pages/Admin'
 import Profile from './pages/Profile'
 import UserActions from './pages/UserActions'
+import WorldCup from './pages/WorldCup'
 import ProtectedRoute from './components/ProtectedRoute'
 import RouteErrorBoundary from './components/RouteErrorBoundary'
 import { apiUrl, getPlatform } from './api'
@@ -323,7 +324,7 @@ function App() {
   }, [notificationsOpen])
 
 
-  const navItems = ['Home', 'Matches', 'Calendar', 'Forum']
+  const navItems = ['Home', 'Matches', 'Calendar', 'Forum', '🏆 World Cup']
   const isActive = (path) => location.pathname === path
   const isSectionActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`)
   const isUserActionsActive = location.pathname === '/user' || location.pathname.startsWith('/user/')
@@ -401,7 +402,7 @@ function App() {
           {/* Desktop Navigation */}
           <div className="desktop-menu">
             {navItems.map((item) => {
-              const path = item === 'Home' ? '/' : `/${item.toLowerCase().replace(' ', '-')}`
+              const path = item === 'Home' ? '/' : `/${item.replace(/^[^\w]+/, '').toLowerCase().replace(/\s+/g, '-')}`
               return (
                 <Link key={item} to={path} className="nav-link">
                   <button className={`nav-btn ${(path === '/matches' ? isSectionActive(path) : isActive(path)) ? 'active' : ''}`}>
@@ -628,7 +629,7 @@ function App() {
           <div className="mobile-menu">
             <div className="mobile-nav-items">
               {navItems.map((item) => {
-                const path = item === 'Home' ? '/' : `/${item.toLowerCase().replace(' ', '-')}`
+                const path = item === 'Home' ? '/' : `/${item.replace(/^[^\w]+/, '').toLowerCase().replace(/\s+/g, '-')}`
                 return (
                   <Link 
                     key={item} 
@@ -841,6 +842,11 @@ function App() {
             </ProtectedRoute>
           } />
           <Route path="/user/pending-payments" element={<Navigate to="/user/payments" replace />} />
+          <Route path="/world-cup" element={
+            <ProtectedRoute user={user} loading={loading}>
+              <WorldCup user={user} />
+            </ProtectedRoute>
+          } />
         </Routes>
       </RouteErrorBoundary>
     </div>
