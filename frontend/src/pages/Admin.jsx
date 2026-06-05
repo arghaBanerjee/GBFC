@@ -17,6 +17,7 @@ export default function Admin({ user, loading }) {
     { value: 'reports', label: 'Reports' },
     ...(isSuperAdmin ? [{ value: 'notifications', label: 'Notifications' }] : []),
   ...(isSuperAdmin ? [{ value: 'jobs', label: 'Jobs' }] : []),
+  { value: 'worldcup', label: '🏆 World Cup' },
   ]
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
@@ -2323,6 +2324,10 @@ export default function Admin({ user, loading }) {
       {activeTab === 'jobs' && isSuperAdmin && (
         <JobsTab token={token} apiUrl={apiUrl} />
       )}
+
+      {activeTab === 'worldcup' && (
+        <WorldCupResultsTab token={token} apiUrl={apiUrl} />
+      )}
     </div>
   )
 }
@@ -2540,5 +2545,170 @@ function JobsTab({ token, apiUrl }) {
         })}
       </div>
     </>
+  )
+}
+
+function WorldCupResultsTab({ token, apiUrl }) {
+  const [matches, setMatches] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(null)
+  const [scores, setScores] = useState({})
+  const [savedIds, setSavedIds] = useState(new Set())
+  const [error, setError] = useState('')
+
+  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+
+  const isPast = (dateStr, timeStr) => {
+    const dt = new Date(`${dateStr}T${timeStr || '00:00'}:00Z`)
+    return Date.now() >= dt.getTime()
+  }
+
+  const fmtDate = (d) => {
+    if (!d) return ''
+    return new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(apiUrl('/api/worldcup/matches'), { headers })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        setMatches(data)
+        const initial = {}
+        data.forEach(m => {
+          if (m.result) {
+            initial[m.id] = { home: String(m.result.home_goals), away: String(m.result.away_goals) }
+          } else {
+            initial[m.id] = { home: '', away: '' }
+          }
+        })
+        setScores(initial)
+        setSavedIds(new Set(data.filter(m => m.result).map(m => m.id)))
+      })
+      .catch(() => setError('Failed to load matches'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleSave = async (matchId) => {
+    const s = scores[matchId]
+    if (s?.home === '' || s?.away === '') return
+    setSaving(matchId)
+    setError('')
+    try {
+      const res = await fetch(apiUrl(`/api/worldcup/results/${matchId}`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ home_goals: parseInt(s.home), away_goals: parseInt(s.away) }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.detail || 'Failed to save result'); return }
+      setSavedIds(prev => new Set([...prev, matchId]))
+      setMatches(prev => prev.map(m => m.id === matchId
+        ? { ...m, result: { home_goals: parseInt(s.home), away_goals: parseInt(s.away) } }
+        : m
+      ))
+    } catch {
+      setError('Failed to save result')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const STAGE_ORDER = ['group', 'round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'third_place', 'final']
+  const STAGE_LABELS = { group: 'Group Stage', round_of_32: 'Round of 32', round_of_16: 'Round of 16', quarter_final: 'Quarter-Finals', semi_final: 'Semi-Finals', third_place: 'Third Place', final: '🏆 Final' }
+
+  const pastMatches = matches.filter(m => isPast(m.date, m.time))
+  const upcomingMatches = matches.filter(m => !isPast(m.date, m.time))
+
+  const grouped = STAGE_ORDER.reduce((acc, stage) => {
+    const ms = pastMatches.filter(m => m.stage === stage)
+    if (ms.length) acc[stage] = ms
+    return acc
+  }, {})
+
+  if (loading) return <div style={{ padding: '2rem', color: 'var(--theme-text-muted)', textAlign: 'center' }}>Loading matches…</div>
+
+  return (
+    <div style={{ padding: '0.5rem 0' }}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.25rem' }}>World Cup Results</h2>
+      <p style={{ fontSize: '0.85rem', color: 'var(--theme-text-muted)', marginBottom: '1.25rem' }}>
+        Enter the final score for each completed match. Points are recalculated instantly for all predictions.
+      </p>
+
+      {error && (
+        <div style={{ padding: '0.75rem 1rem', background: 'var(--theme-danger-soft)', color: 'var(--theme-danger)', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem' }}>
+          {error}
+        </div>
+      )}
+
+      {pastMatches.length === 0 && (
+        <div style={{ textAlign: 'center', color: 'var(--theme-text-muted)', padding: '2rem', fontSize: '0.9rem' }}>
+          No matches have started yet.
+        </div>
+      )}
+
+      {Object.entries(grouped).map(([stage, stageMatches]) => (
+        <div key={stage} style={{ marginBottom: '1.5rem' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--theme-text-muted)', marginBottom: '0.6rem', paddingBottom: '0.4rem', borderBottom: '1px solid var(--theme-border)' }}>
+            {STAGE_LABELS[stage] || stage}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {stageMatches.map(m => {
+              const s = scores[m.id] || { home: '', away: '' }
+              const hasResult = savedIds.has(m.id)
+              const canSave = s.home !== '' && s.away !== ''
+              const isSaving = saving === m.id
+
+              return (
+                <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto auto', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: `1px solid ${hasResult ? 'color-mix(in srgb, var(--theme-success) 40%, transparent)' : 'var(--theme-border)'}` }}>
+                  {/* Home team */}
+                  <div style={{ fontWeight: '600', fontSize: '0.9rem', textAlign: 'right' }}>{m.home_team}</div>
+
+                  {/* Score inputs */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <input
+                      type="number" min={0} max={30}
+                      value={s.home}
+                      onChange={e => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && +v <= 30)) setScores(prev => ({ ...prev, [m.id]: { ...prev[m.id], home: v } })) }}
+                      placeholder="—"
+                      style={{ width: '3rem', padding: '0.35rem', textAlign: 'center', fontWeight: '700', fontSize: '1rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)' }}
+                    />
+                    <span style={{ fontWeight: '700', color: 'var(--theme-text-muted)' }}>–</span>
+                    <input
+                      type="number" min={0} max={30}
+                      value={s.away}
+                      onChange={e => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && +v <= 30)) setScores(prev => ({ ...prev, [m.id]: { ...prev[m.id], away: v } })) }}
+                      placeholder="—"
+                      style={{ width: '3rem', padding: '0.35rem', textAlign: 'center', fontWeight: '700', fontSize: '1rem', borderRadius: '0.375rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface-alt)', color: 'var(--theme-text)' }}
+                    />
+                  </div>
+
+                  {/* Away team */}
+                  <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{m.away_team}</div>
+
+                  {/* Date */}
+                  <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{fmtDate(m.date)}</div>
+
+                  {/* Save button */}
+                  <button
+                    onClick={() => handleSave(m.id)}
+                    disabled={!canSave || isSaving}
+                    style={{ padding: '0.35rem 0.85rem', borderRadius: '0.375rem', border: 'none', fontWeight: '600', fontSize: '0.8rem', cursor: canSave && !isSaving ? 'pointer' : 'not-allowed', background: hasResult ? 'color-mix(in srgb, var(--theme-success) 20%, transparent)' : canSave ? 'var(--theme-accent)' : 'var(--theme-border)', color: hasResult ? 'var(--theme-success-strong)' : canSave ? 'var(--theme-accent-contrast)' : 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}
+                  >
+                    {isSaving ? 'Saving…' : hasResult ? '✓ Saved' : 'Save'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      {upcomingMatches.length > 0 && (
+        <div style={{ marginTop: '1.5rem', padding: '0.75rem 1rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid var(--theme-border)', fontSize: '0.85rem', color: 'var(--theme-text-muted)' }}>
+          {upcomingMatches.length} upcoming match{upcomingMatches.length !== 1 ? 'es' : ''} will appear here once they start.
+        </div>
+      )}
+    </div>
   )
 }
