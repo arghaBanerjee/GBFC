@@ -117,6 +117,11 @@ JOB_METADATA = {
         "description": "Creates a monthly subscription payment event on the 1st of each month, adds all monthly-mode members as available, and notifies admins via app to review and request payment manually.",
         "schedule": "1st of every month at 00:01",
     },
+    "payment_mode_window_friday": {
+        "name": "Payment Mode Window Notification",
+        "description": "Runs every Friday at 7 AM GMT. If it is the last Friday of the month with no Thursdays remaining in the month, sends a WhatsApp notification informing members the payment mode change window is open.",
+        "schedule": "Every Friday at 07:00 GMT",
+    },
     "whatsapp_keepalive": {
         "name": "WhatsApp Keep-Alive",
         "description": "Pings the WhatsApp instance every 30 minutes to keep it active. Only present when WhatsApp is configured.",
@@ -265,6 +270,18 @@ NOTIFICATION_TYPE_DEFAULTS = {
         "email_subject": "Welcome to Glasgow Bengali FC",
         "email_template": "Hi {{full_name}},\n\nWelcome to Glasgow Bengali FC. Thanks for joining our ever-growing club, where fun meets football.\n\nBest wishes,\nGlasgow Bengali FC",
         "whatsapp_template": "",
+    },
+    "payment_mode_window": {
+        "display_name": "Payment Mode Change Window Open",
+        "description": "Sent every month on the last Friday that has no Thursdays remaining in the month (07:00 GMT). Notifies all members that the payment mode change window is now open until the end of the month.",
+        "app_enabled": True,
+        "email_enabled": False,
+        "whatsapp_enabled": True,
+        "target_audience": "all_active_users",
+        "app_template": "Hello GBFCians, the window to make any changes to your Payment Mode is open now. You can choose from 'Monthly' or 'Per Session' payment options based on your preference. Please note all changes will be frozen from the 1st till the last Thursday of every month. Thank you.",
+        "email_subject": "",
+        "email_template": "",
+        "whatsapp_template": "Hello GBFCians, the window to make any changes to your Payment Mode is open now. You can choose from 'Monthly' or 'Per Session' payment options based on your preference. Please note all changes will be frozen from the 1st till the last Thursday of every month. Thank you.",
     },
 }
 
@@ -2110,7 +2127,7 @@ def should_send_app_notification(cur, notif_type: str, force: bool = False) -> b
         return True
     return datetime.now() >= last_sent_at + timedelta(days=5)
 
-def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None, exclude_emails: list = None, force: bool = False):
+def deliver_notification(notif_type: str, payload: dict, related_date: str = None, exclude_email: str = None, exclude_emails: list = None, force: bool = False, suppress_whatsapp: bool = False):
     guarded_notif_types = {"practice", "match", "practice_slot_available", "session_capacity_reached"}
     effective_date = related_date or payload.get("date")
     if notif_type in guarded_notif_types and effective_date:
@@ -2156,7 +2173,7 @@ def deliver_notification(notif_type: str, payload: dict, related_date: str = Non
             for recipient in recipients:
                 send_email(recipient["email"], subject, email_body)
 
-        if setting["whatsapp_enabled"]:
+        if setting["whatsapp_enabled"] and not suppress_whatsapp:
             if should_send_whatsapp_notification(cur, notif_type, force=force):
                 whatsapp_message = render_notification_template(setting["whatsapp_template"], context)
                 if send_whatsapp_notification(whatsapp_message):
@@ -3232,6 +3249,36 @@ def create_monthly_payment_event():
     print(f"Monthly payment event created for {event_date} with {len(monthly_members)} members added as available. Admins notified via app.")
 
 
+def notify_payment_mode_window_open():
+    """Scheduled job: runs every Friday at 07:00 GMT.
+    Sends a WhatsApp + in-app notification when this Friday is the last Friday of the
+    month with no Thursdays remaining — i.e. the payment mode change window has opened.
+    """
+    today = date.today()
+    if today.weekday() != 4:  # Safety guard: must be Friday
+        return
+    last_day = calendar.monthrange(today.year, today.month)[1]
+    for day in range(today.day + 1, last_day + 1):
+        if date(today.year, today.month, day).weekday() in (3, 4):  # Thursday or Friday still ahead
+            return
+    message = (
+        "Hello GBFCians, the window to make any changes to your Payment Mode is open now. "
+        "You can choose from 'Monthly' or 'Per Session' payment options based on your preference. "
+        "Please note all changes will be frozen from the 1st till the last Thursday of every month. "
+        "Thank you."
+    )
+    # In-app notification to all active members
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT email FROM users WHERE (is_deleted = FALSE OR is_deleted IS NULL)")
+        member_emails = [dict(row)["email"] for row in cur.fetchall()]
+    for email in member_emails:
+        create_notification(email, "payment_mode_window", message)
+    # WhatsApp group notification
+    send_whatsapp_notification(message)
+    print(f"Payment mode window notification sent to {len(member_emails)} members on {today}.")
+
+
 def notify_practice_slots_available():
     now = datetime.now()
     window_end = now + timedelta(hours=72)
@@ -3914,9 +3961,11 @@ async def startup_event():
     _t_payment_reminder = make_tracked_job("pending_payment_reminder_daily", lambda: notify_pending_payment_reminders(enforce_time_guard=True))
     _t_payment_reminder_adhoc = make_tracked_job("pending_payment_reminder_daily", lambda: notify_pending_payment_reminders(enforce_time_guard=False))
     _t_monthly_payment = make_tracked_job("monthly_payment_event", create_monthly_payment_event)
+    _t_payment_mode_window = make_tracked_job("payment_mode_window_friday", notify_payment_mode_window_open)
     job_function_map["practice_slot_available_daily"] = _t_slots
     job_function_map["pending_payment_reminder_daily"] = _t_payment_reminder_adhoc
     job_function_map["monthly_payment_event"] = _t_monthly_payment
+    job_function_map["payment_mode_window_friday"] = _t_payment_mode_window
 
     if whatsapp_is_configured() and not whatsapp_scheduler.running:
         _t_keepalive = make_tracked_job("whatsapp_keepalive", keep_whatsapp_instance_alive)
@@ -3925,12 +3974,14 @@ async def startup_event():
         whatsapp_scheduler.add_job(_t_slots, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
         whatsapp_scheduler.add_job(_t_payment_reminder, "cron", hour=20, minute=0, id="pending_payment_reminder_daily", replace_existing=True)
         whatsapp_scheduler.add_job(_t_monthly_payment, "cron", day=1, hour=0, minute=1, id="monthly_payment_event", replace_existing=True)
+        whatsapp_scheduler.add_job(_t_payment_mode_window, "cron", day_of_week="fri", hour=7, minute=0, timezone="UTC", id="payment_mode_window_friday", replace_existing=True)
         whatsapp_scheduler.start()
         print("WhatsApp keep-alive scheduler started")
     elif not whatsapp_scheduler.running:
         whatsapp_scheduler.add_job(_t_slots, "cron", hour=9, minute=0, id="practice_slot_available_daily", replace_existing=True)
         whatsapp_scheduler.add_job(_t_payment_reminder, "cron", hour=20, minute=0, id="pending_payment_reminder_daily", replace_existing=True)
         whatsapp_scheduler.add_job(_t_monthly_payment, "cron", day=1, hour=0, minute=1, id="monthly_payment_event", replace_existing=True)
+        whatsapp_scheduler.add_job(_t_payment_mode_window, "cron", day_of_week="fri", hour=7, minute=0, timezone="UTC", id="payment_mode_window_friday", replace_existing=True)
         whatsapp_scheduler.start()
         print("Notification scheduler started")
 
@@ -5562,6 +5613,9 @@ def request_calendar_event_payment_by_id(session_id: int, data: dict = None, cur
         if monthly_exempt_emails or (exclude_monthly and cost_type == "Total"):
             conn.commit()
 
+        # Suppress WhatsApp only when exclude_monthly is ticked and every available member is monthly
+        has_daily_payer = (not exclude_monthly) or (len(non_monthly_users) > 0)
+
         notification_payload = {
             "session_id": session["id"],
             "date": session["date"],
@@ -5575,6 +5629,7 @@ def request_calendar_event_payment_by_id(session_id: int, data: dict = None, cur
             notification_payload,
             related_date=session["date"],
             exclude_emails=list(monthly_exempt_emails) if monthly_exempt_emails else None,
+            suppress_whatsapp=not has_daily_payer,
         )
 
         return {"message": "Payment requested successfully"}
