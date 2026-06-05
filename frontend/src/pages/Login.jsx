@@ -68,7 +68,12 @@ export default function Login({ setUser }) {
       const from = location.state?.from || '/'
       navigate(from, { replace: true })
     } else {
-      setError('Invalid email or password')
+      try {
+        const err = await res.json()
+        setError(err.detail || 'Invalid email or password')
+      } catch {
+        setError('Invalid email or password')
+      }
     }
   }
 

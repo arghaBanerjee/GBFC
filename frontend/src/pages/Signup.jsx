@@ -9,6 +9,7 @@ export default function Signup({ setUser }) {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [validationErrors, setValidationErrors] = useState({})
+  const [submitted, setSubmitted] = useState(false)
   const navigate = useNavigate()
 
   const validateFullName = (name) => {
@@ -61,7 +62,12 @@ export default function Signup({ setUser }) {
       body: JSON.stringify({ email, full_name: fullName, password }),
     })
     if (res.ok) {
-      // Auto-login after signup
+      const data = await res.json()
+      if (data.is_approved === false) {
+        setSubmitted(true)
+        return
+      }
+      // Approved immediately (e.g. first admin) — auto-login
       const form = new FormData()
       form.append('username', email)
       form.append('password', password)
@@ -79,6 +85,28 @@ export default function Signup({ setUser }) {
       const err = await res.json()
       setError(err.detail || 'Signup failed')
     }
+  }
+
+  if (submitted) {
+    return (
+      <div className="container" style={{ maxWidth: '380px', margin: '2rem auto', padding: '0 1rem' }}>
+        <div className="theme-card" style={{ padding: '2rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📋</div>
+          <h2 className="theme-section-title" style={{ marginTop: 0, marginBottom: '0.75rem' }}>Request Submitted</h2>
+          <p style={{ color: 'var(--theme-text-muted)', fontSize: '0.95rem', lineHeight: '1.6', marginBottom: '1.5rem' }}>
+            Your account request has been received. An admin will review your details and approve your access shortly.
+            You will receive a confirmation email once your account is approved.
+          </p>
+          <button
+            onClick={() => navigate('/login')}
+            className="nav-btn theme-primary-btn"
+            style={{ width: '100%', fontWeight: '600' }}
+          >
+            Back to Login
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (

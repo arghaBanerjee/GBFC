@@ -1790,7 +1790,7 @@ export default function Admin({ user, loading }) {
                 )}
 
                 {/* Controls: Role & Billing with Segmented Buttons */}
-                <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', display: isPending ? 'none' : 'flex' }}>
+                <div style={{ marginBottom: '1rem', flexDirection: 'column', gap: '0.75rem', display: isPending ? 'none' : 'flex' }}>
                   <div>
                     <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#6b7280', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                       Member Type

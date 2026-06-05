@@ -2052,20 +2052,6 @@ def seed_notification_settings():
                 )
         conn.commit()
 
-        # Always refresh the welcome_signup email so existing DBs get the updated approval-pending text
-        welcome_defaults = NOTIFICATION_TYPE_DEFAULTS["welcome_signup"]
-        if USE_POSTGRES:
-            cur.execute(
-                f"UPDATE notification_settings SET email_subject = {PLACEHOLDER}, email_template = {PLACEHOLDER} WHERE notif_type = {PLACEHOLDER}",
-                (welcome_defaults["email_subject"], welcome_defaults["email_template"], "welcome_signup"),
-            )
-        else:
-            cur.execute(
-                "UPDATE notification_settings SET email_subject = ?, email_template = ? WHERE notif_type = ?",
-                (welcome_defaults["email_subject"], welcome_defaults["email_template"], "welcome_signup"),
-            )
-        conn.commit()
-
 def get_notification_settings_map() -> dict:
     seed_notification_settings()
     settings_map = {}
