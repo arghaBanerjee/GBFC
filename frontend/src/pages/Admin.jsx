@@ -2548,12 +2548,17 @@ function JobsTab({ token, apiUrl }) {
   )
 }
 
+const WC_STAGE_ORDER = ['group','round_of_32','round_of_16','quarter_final','semi_final','third_place','final']
+const WC_STAGE_LABELS_ADMIN = { group: 'Group Stage', round_of_32: 'Round of 32', round_of_16: 'Round of 16', quarter_final: 'Quarter-Finals', semi_final: 'Semi-Finals', third_place: 'Third Place', final: 'Final' }
+
 function WorldCupResultsTab({ token, apiUrl }) {
   const [matches, setMatches] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
   const [scores, setScores] = useState({})
   const [savedIds, setSavedIds] = useState(new Set())
+  const [stageLocks, setStageLocks] = useState({})
+  const [lockSaving, setLockSaving] = useState(null)
   const [error, setError] = useState('')
 
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
@@ -2567,6 +2572,27 @@ function WorldCupResultsTab({ token, apiUrl }) {
     if (!d) return ''
     return new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
   }
+
+  const handleToggleLock = async (stage, currentValue) => {
+    setLockSaving(stage)
+    try {
+      const res = await fetch(apiUrl('/api/worldcup/stage-locks'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ stage, unlocked: !currentValue }),
+      })
+      if (res.ok) setStageLocks(prev => ({ ...prev, [stage]: !currentValue }))
+      else setError('Failed to update stage lock')
+    } catch { setError('Failed to update stage lock') }
+    finally { setLockSaving(null) }
+  }
+
+  useEffect(() => {
+    fetch(apiUrl('/api/worldcup/stage-locks'), { headers })
+      .then(r => r.ok ? r.json() : {})
+      .then(setStageLocks)
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -2614,13 +2640,10 @@ function WorldCupResultsTab({ token, apiUrl }) {
     }
   }
 
-  const STAGE_ORDER = ['group', 'round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'third_place', 'final']
-  const STAGE_LABELS = { group: 'Group Stage', round_of_32: 'Round of 32', round_of_16: 'Round of 16', quarter_final: 'Quarter-Finals', semi_final: 'Semi-Finals', third_place: 'Third Place', final: '🏆 Final' }
-
   const pastMatches = matches.filter(m => isPast(m.date, m.time))
   const upcomingMatches = matches.filter(m => !isPast(m.date, m.time))
 
-  const grouped = STAGE_ORDER.reduce((acc, stage) => {
+  const grouped = WC_STAGE_ORDER.reduce((acc, stage) => {
     const ms = pastMatches.filter(m => m.stage === stage)
     if (ms.length) acc[stage] = ms
     return acc
@@ -2630,8 +2653,42 @@ function WorldCupResultsTab({ token, apiUrl }) {
 
   return (
     <div style={{ padding: '0.5rem 0' }}>
-      <h2 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.25rem' }}>World Cup Results</h2>
-      <p style={{ fontSize: '0.85rem', color: 'var(--theme-text-muted)', marginBottom: '1.25rem' }}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.25rem' }}>WC Game Controls</h2>
+
+      {/* Stage Lock Controls */}
+      <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'var(--theme-surface)', borderRadius: '0.5rem', border: '1px solid var(--theme-border)' }}>
+        <div style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--theme-text-muted)', marginBottom: '0.75rem' }}>
+          Prediction Windows — open stages for user predictions
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {WC_STAGE_ORDER.map(stage => {
+            const unlocked = stageLocks[stage] ?? false
+            const isSaving = lockSaving === stage
+            return (
+              <div key={stage} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>{WC_STAGE_LABELS_ADMIN[stage]}</span>
+                <button
+                  onClick={() => handleToggleLock(stage, unlocked)}
+                  disabled={isSaving}
+                  style={{
+                    padding: '0.3rem 0.9rem', borderRadius: '999px', border: 'none', fontWeight: '600', fontSize: '0.78rem',
+                    cursor: isSaving ? 'not-allowed' : 'pointer',
+                    background: unlocked ? 'color-mix(in srgb, var(--theme-success) 18%, transparent)' : 'var(--theme-border)',
+                    color: unlocked ? 'var(--theme-success-strong)' : 'var(--theme-text-muted)',
+                    border: `1px solid ${unlocked ? 'color-mix(in srgb, var(--theme-success) 40%, transparent)' : 'var(--theme-border)'}`,
+                    minWidth: '5.5rem', textAlign: 'center',
+                  }}
+                >
+                  {isSaving ? '…' : unlocked ? '🔓 Open' : '🔒 Locked'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <h3 style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '0.25rem' }}>Match Results</h3>
+      <p style={{ fontSize: '0.85rem', color: 'var(--theme-text-muted)', marginBottom: '1rem' }}>
         Enter the final score for each completed match. Points are recalculated instantly for all predictions.
       </p>
 
@@ -2650,7 +2707,7 @@ function WorldCupResultsTab({ token, apiUrl }) {
       {Object.entries(grouped).map(([stage, stageMatches]) => (
         <div key={stage} style={{ marginBottom: '1.5rem' }}>
           <div style={{ fontSize: '0.75rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--theme-text-muted)', marginBottom: '0.6rem', paddingBottom: '0.4rem', borderBottom: '1px solid var(--theme-border)' }}>
-            {STAGE_LABELS[stage] || stage}
+            {WC_STAGE_LABELS_ADMIN[stage] || stage}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             {stageMatches.map(m => {

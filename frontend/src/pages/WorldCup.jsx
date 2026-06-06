@@ -78,7 +78,7 @@ function StagePill({ stage, label }) {
 
 // ── match card ────────────────────────────────────────────────────────────────
 function MatchCard({ match, onPredict, saving }) {
-  const locked   = isPast(match.date, match.time)
+  const locked   = isPast(match.date, match.time) || !match.stage_unlocked
   const hasResult = !!match.result
   const pred      = match.prediction
   const sc        = STAGE_COLORS[match.stage] || STAGE_COLORS.group
@@ -226,7 +226,7 @@ function MatchCard({ match, onPredict, saving }) {
       {/* locked without prediction */}
       {locked && !pred && (
         <div style={{ textAlign:'center', color: C.muted, fontSize: 12 }}>
-          🔒 Predictions closed — no prediction submitted
+          🔒 Predictions locked — will open soon
         </div>
       )}
     </div>
@@ -442,7 +442,7 @@ export default function WorldCup({ user }) {
     ? grouped
     : Object.fromEntries(Object.entries(grouped).filter(([k]) => k === filterStage))
 
-  const upcomingCount = matches.filter(m => !isPast(m.date, m.time) && !m.prediction).length
+  const upcomingCount = matches.filter(m => !isPast(m.date, m.time) && m.stage_unlocked && !m.prediction).length
 
   return (
     <div style={{ minHeight:'100vh', background: C.bg, color: C.text, paddingBottom: 60 }}>
@@ -479,11 +479,11 @@ export default function WorldCup({ user }) {
           ))}
         </div>
         <div style={{ fontSize: 12, color: C.muted }}>
-          Points multiplied by round — max <span style={{ color: C.gold, fontWeight:700 }}>180 pts</span> per Final prediction!
+          Points multiplied by round — upto <span style={{ color: C.gold, fontWeight:700 }}>180 pts</span> per prediction!
         </div>
         {upcomingCount > 0 && (
           <div style={{ marginTop: 12, background:`${C.gold}22`, border:`1px solid ${C.gold}`, borderRadius:10, display:'inline-block', padding:'6px 16px', fontSize:13, color: C.gold, fontWeight:600 }}>
-            🔮 {upcomingCount} match{upcomingCount !== 1 ? 'es' : ''} still open for prediction!
+            🔮 {upcomingCount} match{upcomingCount !== 1 ? 'es' : ''} now open for prediction!
           </div>
         )}
       </div>
