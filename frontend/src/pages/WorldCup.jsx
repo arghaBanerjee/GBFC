@@ -34,6 +34,36 @@ const STAGE_COLORS = {
 const MEDAL = ['🥇','🥈','🥉']
 const TABS  = ['Fixtures & Predict','My Predictions','Leaderboard']
 
+// ── team flags ────────────────────────────────────────────────────────────────
+const TEAM_FLAGS = {
+  'Algeria': '🇩🇿', 'Argentina': '🇦🇷', 'Australia': '🇦🇺', 'Austria': '🇦🇹',
+  'Belgium': '🇧🇪', 'Bosnia and Herzegovina': '🇧🇦', 'Brazil': '🇧🇷',
+  'Canada': '🇨🇦', 'Cape Verde': '🇨🇻', 'Colombia': '🇨🇴', 'Croatia': '🇭🇷',
+  'Curaçao': '🇨🇼', 'Czechia': '🇨🇿',
+  'DR Congo': '🇨🇩',
+  'Ecuador': '🇪🇨', 'Egypt': '🇪🇬', 'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+  'France': '🇫🇷',
+  'Germany': '🇩🇪', 'Ghana': '🇬🇭',
+  'Haiti': '🇭🇹',
+  'Iran': '🇮🇷', 'Iraq': '🇮🇶', 'Ivory Coast': '🇨🇮',
+  'Japan': '🇯🇵', 'Jordan': '🇯🇴',
+  'Korea Republic': '🇰🇷',
+  'Mexico': '🇲🇽', 'Morocco': '🇲🇦',
+  'Netherlands': '🇳🇱', 'New Zealand': '🇳🇿', 'Norway': '🇳🇴',
+  'Panama': '🇵🇦', 'Paraguay': '🇵🇾', 'Portugal': '🇵🇹',
+  'Qatar': '🇶🇦',
+  'Saudi Arabia': '🇸🇦', 'Scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Senegal': '🇸🇳',
+  'South Africa': '🇿🇦', 'Spain': '🇪🇸', 'Sweden': '🇸🇪', 'Switzerland': '🇨🇭',
+  'Tunisia': '🇹🇳', 'Türkiye': '🇹🇷',
+  'United States': '🇺🇸', 'Uruguay': '🇺🇾', 'Uzbekistan': '🇺🇿',
+}
+
+function teamFlag(name) {
+  const flag = TEAM_FLAGS[name]
+  if (!flag) return ''
+  return <span style={{ fontSize: '2.0em' }}>{flag}</span>
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 function isPast(dateStr, timeStr) {
   const dt = new Date(`${dateStr}T${timeStr || '00:00'}:00Z`)
@@ -125,7 +155,9 @@ function MatchCard({ match, onPredict, saving }) {
       <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', alignItems:'center', gap: '0.5rem', marginBottom:'0.85rem' }}>
         {/* home team */}
         <div style={{ textAlign:'right' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>{match.home_team}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>
+            {match.home_team} {teamFlag(match.home_team)}
+          </div>
         </div>
 
         {/* centre: result or VS */}
@@ -143,7 +175,9 @@ function MatchCard({ match, onPredict, saving }) {
 
         {/* away team */}
         <div style={{ textAlign:'left' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>{match.away_team}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>
+            {teamFlag(match.away_team)} {match.away_team}
+          </div>
         </div>
       </div>
 
@@ -166,7 +200,7 @@ function MatchCard({ match, onPredict, saving }) {
         <div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 32px 1fr', alignItems:'center', gap: 8, marginBottom: 10 }}>
             <div style={{ textAlign:'center' }}>
-              <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>{match.home_team}</div>
+              <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>{teamFlag(match.home_team)} {match.home_team}</div>
               <input
                 type="number" min={0} max={30}
                 value={home}
@@ -181,7 +215,7 @@ function MatchCard({ match, onPredict, saving }) {
             </div>
             <div style={{ textAlign:'center', color: C.muted, fontWeight: 700 }}>–</div>
             <div style={{ textAlign:'center' }}>
-              <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>{match.away_team}</div>
+              <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>{match.away_team} {teamFlag(match.away_team)}</div>
               <input
                 type="number" min={0} max={30}
                 value={away}
@@ -343,7 +377,7 @@ function MyPredictions({ data, loading }) {
                 <span style={{ color: C.muted, fontSize: 11 }}>{fmtDate(p.date)}</span>
               </div>
               <div style={{ fontWeight: 700, color: C.text, fontSize: 14, marginBottom: 4 }}>
-                {p.home_team} vs {p.away_team}
+                {teamFlag(p.home_team)} {p.home_team} vs {p.away_team} {teamFlag(p.away_team)}
               </div>
               <div style={{ fontSize: 12, color: C.muted }}>
                 Your pick: <span style={{ color: correct_score ? C.gold : C.text, fontWeight: 700 }}>
@@ -483,7 +517,7 @@ export default function WorldCup({ user }) {
         </div>
         {upcomingCount > 0 && (
           <div style={{ marginTop: 12, background:`${C.gold}22`, border:`1px solid ${C.gold}`, borderRadius:10, display:'inline-block', padding:'6px 16px', fontSize:13, color: C.gold, fontWeight:600 }}>
-            🔮 {upcomingCount} match{upcomingCount !== 1 ? 'es' : ''} now open for prediction!
+            🔮 Upcoming matches are now open for prediction!
           </div>
         )}
       </div>
