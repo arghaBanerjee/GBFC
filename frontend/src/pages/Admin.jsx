@@ -2671,7 +2671,7 @@ function WorldCupResultsTab({ token, apiUrl }) {
                   onClick={() => handleToggleLock(stage, unlocked)}
                   disabled={isSaving}
                   style={{
-                    padding: '0.3rem 0.9rem', borderRadius: '999px', border: 'none', fontWeight: '600', fontSize: '0.78rem',
+                    padding: '0.3rem 0.9rem', borderRadius: '999px', fontWeight: '600', fontSize: '0.78rem',
                     cursor: isSaving ? 'not-allowed' : 'pointer',
                     background: unlocked ? 'color-mix(in srgb, var(--theme-success) 18%, transparent)' : 'var(--theme-border)',
                     color: unlocked ? 'var(--theme-success-strong)' : 'var(--theme-text-muted)',
