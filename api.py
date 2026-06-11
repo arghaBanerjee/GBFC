@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from typing import List, Optional
 import calendar
@@ -7455,12 +7455,14 @@ def wc_submit_prediction(data: dict, current_user: dict = Depends(get_current_us
         match = dict(match)
 
         # Prediction window closes at match kick-off
+        # Times are stored as BST (UTC+1); compare against UTC-aware now
+        BST = timezone(timedelta(hours=1))
         match_dt_str = f"{match['date']} {match['time'] or '00:00'}"
         try:
-            match_dt = datetime.strptime(match_dt_str, "%Y-%m-%d %H:%M")
+            match_dt = datetime.strptime(match_dt_str, "%Y-%m-%d %H:%M").replace(tzinfo=BST)
         except ValueError:
-            match_dt = datetime.strptime(match['date'], "%Y-%m-%d")
-        if datetime.utcnow() >= match_dt:
+            match_dt = datetime.strptime(match['date'], "%Y-%m-%d").replace(tzinfo=BST)
+        if datetime.now(timezone.utc) >= match_dt:
             raise HTTPException(status_code=403, detail="Prediction window has closed for this match")
 
         # Upsert

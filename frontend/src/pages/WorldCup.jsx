@@ -36,7 +36,8 @@ const TABS  = ['Fixtures & Predict','My Predictions','Leaderboard']
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function isPast(dateStr, timeStr) {
-  const dt = new Date(`${dateStr}T${timeStr || '00:00'}:00Z`)
+  // Times stored as BST (UTC+1)
+  const dt = new Date(`${dateStr}T${timeStr || '00:00'}:00+01:00`)
   return Date.now() >= dt.getTime()
 }
 
