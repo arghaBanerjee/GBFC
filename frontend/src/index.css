@@ -471,6 +471,10 @@ h1, h2, h3, h4, h5, h6 {
   transition: all 0.2s ease;
 }
 
+.worldcup-nav-icon {
+  display: none;
+}
+
 .mobile-menu-btn:hover {
   background-color: var(--theme-surface-alt);
   border-color: var(--theme-border);
@@ -559,11 +563,15 @@ h1, h2, h3, h4, h5, h6 {
   .desktop-menu {
     display: none;
   }
-  
+
   .desktop-auth {
     display: none;
   }
-  
+
+  .worldcup-nav-icon {
+    display: flex;
+  }
+
   .mobile-menu-btn {
     display: flex;
   }

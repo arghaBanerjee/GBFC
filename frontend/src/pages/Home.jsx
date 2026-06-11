@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 
+const WORLD_CUP_ENABLED = import.meta.env.VITE_WORLD_CUP_ENABLED !== 'false'
+
 export default function Home({ user }) {
   const navigate = useNavigate()
 
@@ -12,6 +14,36 @@ export default function Home({ user }) {
           <p className="hero-subtitle">
             A community-driven Bengali football club in Glasgow, bringing players, families, and fans together for the love of the beautiful game.
           </p>
+          {WORLD_CUP_ENABLED && (
+            <div
+              onClick={() => navigate('/world-cup')}
+              style={{
+                cursor: 'pointer',
+                marginBottom: '1.25rem',
+                padding: '1.1rem 1.25rem',
+                borderRadius: '0.75rem',
+                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '1rem',
+                boxShadow: '0 4px 16px rgba(217, 119, 6, 0.35)',
+                transition: 'transform 0.15s, box-shadow 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(217, 119, 6, 0.45)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 4px 16px rgba(217, 119, 6, 0.35)' }}
+            >
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.85, marginBottom: '0.2rem' }}>Now Live</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: '700' }}>🏆 World Cup Prediction Game</div>
+                <div style={{ fontSize: '0.85rem', opacity: 0.9, marginTop: '0.2rem' }}>Predict results, compete with club members and climb the leaderboard.</div>
+              </div>
+              <svg style={{ flexShrink: 0, opacity: 0.9 }} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </div>
+          )}
           <div className="hero-grid">
             <div className="hero-card" onClick={() => navigate('/matches/upcoming')}>
               <h4>Match Centre</h4>

@@ -1314,6 +1314,17 @@ def init_db():
                 entered_by VARCHAR(255)
             )
             """)
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS world_cup_stage_locks (
+                stage VARCHAR(30) PRIMARY KEY,
+                unlocked BOOLEAN NOT NULL DEFAULT FALSE
+            )
+            """)
+            for stage in ('group','round_of_32','round_of_16','quarter_final','semi_final','third_place','final'):
+                cur.execute(
+                    f"INSERT INTO world_cup_stage_locks (stage, unlocked) VALUES ({PLACEHOLDER},{PLACEHOLDER}) ON CONFLICT (stage) DO NOTHING",
+                    (stage, stage == 'group')
+                )
             try:
                 cur.execute("""
                     DO $$ 
@@ -1811,7 +1822,16 @@ def init_db():
                 entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 entered_by TEXT
             );
+            CREATE TABLE IF NOT EXISTS world_cup_stage_locks (
+                stage TEXT PRIMARY KEY,
+                unlocked INTEGER NOT NULL DEFAULT 0
+            );
             """)
+            for stage in ('group','round_of_32','round_of_16','quarter_final','semi_final','third_place','final'):
+                cur.execute(
+                    "INSERT OR IGNORE INTO world_cup_stage_locks (stage, unlocked) VALUES (?,?)",
+                    (stage, 1 if stage == 'group' else 0)
+                )
             try:
                 cur.execute("PRAGMA table_info(events)")
                 event_columns = [row[1] for row in cur.fetchall()]
@@ -7360,12 +7380,19 @@ WC_STAGE_LABELS = {
     "final":        "Final",
 }
 
-def _wc_infer_stage(match_date: str) -> str:
+def _wc_infer_stage(match_date: str, match_time: str = None) -> str:
     d = datetime.strptime(match_date, "%Y-%m-%d").date()
-    if d <= date(2026, 6, 27):   return "group"
+    t = match_time or "12:00"
+    if d < date(2026, 6, 28):    return "group"
+    if d == date(2026, 6, 28):
+        # June 28 has group stage matches at 00:30/03:00 UTC, first R32 at 20:00 UTC
+        return "group" if t < "12:00" else "round_of_32"
     if d <= date(2026, 7, 3):    return "round_of_32"
+    if d == date(2026, 7, 4):
+        # July 4 has last R32 at 02:30 UTC, R16 from 18:00 UTC onwards
+        return "round_of_32" if t < "12:00" else "round_of_16"
     if d <= date(2026, 7, 7):    return "round_of_16"
-    if d <= date(2026, 7, 11):   return "quarter_final"
+    if d <= date(2026, 7, 12):   return "quarter_final"
     if d <= date(2026, 7, 15):   return "semi_final"
     if d == date(2026, 7, 18):   return "third_place"
     return "final"
@@ -7384,7 +7411,7 @@ def _wc_points(pred_home: int, pred_away: int, actual_home: int, actual_away: in
     return pts * multiplier
 
 def _wc_match_row(row: dict, result: dict | None, prediction: dict | None) -> dict:
-    stage = (result or {}).get("match_stage") or _wc_infer_stage(row["date"])
+    stage = (result or {}).get("match_stage") or _wc_infer_stage(row["date"], row.get("time"))
     return {
         "id": row["id"],
         "date": row["date"],
@@ -7430,7 +7457,15 @@ def wc_get_matches(current_user: dict = Depends(get_current_user)):
             for r in cur.fetchall():
                 d = dict(r); preds_map[d["match_id"]] = d
 
-    return [_wc_match_row(m, results_map.get(m["id"]), preds_map.get(m["id"])) for m in matches]
+        cur.execute("SELECT stage, unlocked FROM world_cup_stage_locks")
+        stage_locks = {row["stage"]: bool(row["unlocked"]) for row in cur.fetchall()}
+
+    rows = []
+    for m in matches:
+        row = _wc_match_row(m, results_map.get(m["id"]), preds_map.get(m["id"]))
+        row["stage_unlocked"] = stage_locks.get(row["stage"], False)
+        rows.append(row)
+    return rows
 
 
 @app.post("/api/worldcup/predict")
@@ -7464,6 +7499,13 @@ def wc_submit_prediction(data: dict, current_user: dict = Depends(get_current_us
             match_dt = datetime.strptime(match['date'], "%Y-%m-%d").replace(tzinfo=BST)
         if datetime.now(timezone.utc) >= match_dt:
             raise HTTPException(status_code=403, detail="Prediction window has closed for this match")
+
+        # Check stage lock
+        stage = _wc_infer_stage(match["date"], match.get("time"))
+        cur.execute(f"SELECT unlocked FROM world_cup_stage_locks WHERE stage = {PLACEHOLDER}", (stage,))
+        lock_row = cur.fetchone()
+        if lock_row is None or not bool(lock_row["unlocked"]):
+            raise HTTPException(status_code=403, detail="Predictions for this stage are not yet open")
 
         # Upsert
         if USE_POSTGRES:
@@ -7507,7 +7549,7 @@ def wc_enter_result(match_id: int, data: dict, current_user: dict = Depends(get_
             raise HTTPException(status_code=404, detail="World Cup match not found")
         match = dict(match)
 
-        inferred_stage = match_stage or _wc_infer_stage(match["date"])
+        inferred_stage = match_stage or _wc_infer_stage(match["date"], match.get("time"))
         multiplier = WC_STAGE_MULTIPLIERS.get(inferred_stage, 1)
 
         if USE_POSTGRES:
@@ -7593,7 +7635,7 @@ def wc_my_predictions(current_user: dict = Depends(get_current_user)):
 
     result = []
     for r in rows:
-        stage = r.get("match_stage") or _wc_infer_stage(r["date"])
+        stage = r.get("match_stage") or _wc_infer_stage(r["date"], r.get("time"))
         result.append({
             "match_id": r["match_id"],
             "date": r["date"],
@@ -7611,6 +7653,37 @@ def wc_my_predictions(current_user: dict = Depends(get_current_user)):
             "multiplier": WC_STAGE_MULTIPLIERS.get(stage, 1),
         })
     return result
+
+@app.get("/api/worldcup/stage-locks")
+def wc_get_stage_locks(current_user: dict = Depends(get_current_user)):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT stage, unlocked FROM world_cup_stage_locks")
+        return {row["stage"]: bool(row["unlocked"]) for row in cur.fetchall()}
+
+@app.post("/api/worldcup/stage-locks")
+def wc_set_stage_lock(data: dict, current_user: dict = Depends(get_current_user)):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Admins only")
+    stage = data.get("stage")
+    unlocked = data.get("unlocked")
+    if stage not in WC_STAGE_MULTIPLIERS or unlocked is None:
+        raise HTTPException(status_code=400, detail="Invalid stage or unlocked value")
+    with get_connection() as conn:
+        cur = conn.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                f"INSERT INTO world_cup_stage_locks (stage, unlocked) VALUES ({PLACEHOLDER},{PLACEHOLDER}) "
+                f"ON CONFLICT (stage) DO UPDATE SET unlocked = EXCLUDED.unlocked",
+                (stage, unlocked)
+            )
+        else:
+            cur.execute(
+                "INSERT OR REPLACE INTO world_cup_stage_locks (stage, unlocked) VALUES (?,?)",
+                (stage, 1 if unlocked else 0)
+            )
+        conn.commit()
+    return {"stage": stage, "unlocked": unlocked}
 
 # Admin: list all results entered so far
 @app.get("/api/worldcup/results")

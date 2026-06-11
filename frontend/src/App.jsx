@@ -354,50 +354,6 @@ function App() {
               <span className="logo-club-name">GBFC</span>
               <span className="logo-text">Glasgow Bengali FC</span>
             </Link>
-            <div className="social-icons">
-              <a
-                href="https://www.instagram.com/glasgowbengalifc/"
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Instagram"
-                className="social-icon"
-              >
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-                  <path
-                    d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5Z"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                  />
-                  <path
-                    d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                  />
-                  <path d="M17.5 6.5h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                </svg>
-              </a>
-              <a
-                href="https://www.youtube.com/@GlasgowBengaliFC"
-                target="_blank"
-                rel="noreferrer"
-                aria-label="YouTube"
-                className="social-icon"
-              >
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-                  <path
-                    d="M21.6 7.2s-.2-1.4-.8-2c-.8-.8-1.7-.8-2.1-.9C15.8 4 12 4 12 4h0s-3.8 0-6.7.3c-.4.1-1.3.1-2.1.9-.6.6-.8 2-.8 2S2 8.8 2 10.4v1.5c0 1.6.4 3.2.4 3.2s.2 1.4.8 2c.8.8 1.9.8 2.4.9 1.7.2 6.4.3 6.4.3s3.8 0 6.7-.3c.4-.1 1.3-.1 2.1-.9.6-.6.8-2 .8-2s.4-1.6.4-3.2v-1.5c0-1.6-.4-3.2-.4-3.2Z"
-                    fill="currentColor"
-                    opacity="0.18"
-                  />
-                  <path d="M10 9.5v5l5-2.5-5-2.5Z" fill="currentColor" />
-                  <path
-                    d="M21.6 7.2s-.2-1.4-.8-2c-.8-.8-1.7-.8-2.1-.9C15.8 4 12 4 12 4h0s-3.8 0-6.7.3c-.4.1-1.3.1-2.1.9-.6.6-.8 2-.8 2S2 8.8 2 10.4v1.5c0 1.6.4 3.2.4 3.2s.2 1.4.8 2c.8.8 1.9.8 2.4.9 1.7.2 6.4.3 6.4.3s3.8 0 6.7-.3c.4-.1 1.3-.1 2.1-.9.6-.6.8-2 .8-2s.4-1.6.4-3.2v-1.5c0-1.6-.4-3.2-.4-3.2Z"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                  />
-                </svg>
-              </a>
-            </div>
           </div>
 
           {/* Desktop Navigation */}
@@ -420,6 +376,23 @@ function App() {
           </div>
 
           <div className="nav-actions">
+            {/* World Cup Icon - mobile only (hidden on desktop via CSS) */}
+            {WORLD_CUP_ENABLED && user && (
+              <Link to="/world-cup" className="worldcup-nav-icon" style={{ textDecoration: 'none' }} title="World Cup">
+                <button
+                  className="social-icon nav-action-icon"
+                  style={{
+                    background: isActive('/world-cup') ? '#f59e0b' : 'var(--theme-surface-raised)',
+                    color: isActive('/world-cup') ? '#fff' : 'var(--theme-text)',
+                    borderColor: isActive('/world-cup') ? '#f59e0b' : 'var(--theme-border)',
+                    fontSize: '1rem',
+                  }}
+                >
+                  🏆
+                </button>
+              </Link>
+            )}
+
             {/* User Actions Icon - visible on both desktop and mobile */}
             {user && (
               <Link to="/user/events" style={{ textDecoration: 'none' }} title="My Actions">
