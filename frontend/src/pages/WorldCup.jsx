@@ -343,9 +343,6 @@ function Leaderboard({ data, loading }) {
               <div style={{ fontWeight: 600, color: entry.is_me ? C.gold : C.text, fontSize: 14 }}>
                 {entry.name} {entry.is_me && <span style={{ fontSize: 10, color: C.gold }}>(You)</span>}
               </div>
-              <div style={{ fontSize: 11, color: C.muted }}>
-                {entry.predictions_made} predictions · {entry.results_in} results in
-              </div>
             </div>
             <div style={{ textAlign:'right' }}>
               <div style={{ fontSize: 20, fontWeight: 800, color: entry.is_me ? C.gold : C.text }}>{entry.total_points}</div>
