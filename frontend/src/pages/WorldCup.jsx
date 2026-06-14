@@ -71,6 +71,12 @@ function isPast(dateStr, timeStr) {
   return Date.now() >= dt.getTime()
 }
 
+function isWithin24h(dateStr, timeStr) {
+  const dt = new Date(`${dateStr}T${timeStr || '00:00'}:00+01:00`)
+  const diff = dt.getTime() - Date.now()
+  return diff > 0 && diff <= 24 * 60 * 60 * 1000
+}
+
 function fmtDate(d) {
   if (!d) return ''
   return new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' })
@@ -109,11 +115,12 @@ function StagePill({ stage, label }) {
 
 // ── match card ────────────────────────────────────────────────────────────────
 function MatchCard({ match, onPredict, saving }) {
-  const locked   = isPast(match.date, match.time) || !match.stage_unlocked
-  const hasResult = !!match.result
-  const pred      = match.prediction
-  const sc        = STAGE_COLORS[match.stage] || STAGE_COLORS.group
-  const isFinal   = match.stage === 'final'
+  const locked        = isPast(match.date, match.time) || !match.stage_unlocked
+  const hasResult     = !!match.result
+  const pred          = match.prediction
+  const sc            = STAGE_COLORS[match.stage] || STAGE_COLORS.group
+  const isFinal       = match.stage === 'final'
+  const kickingOffSoon = isWithin24h(match.date, match.time)
 
   const [home, setHome] = useState(pred?.home_goals ?? '')
   const [away, setAway] = useState(pred?.away_goals ?? '')
@@ -133,16 +140,35 @@ function MatchCard({ match, onPredict, saving }) {
   return (
     <div style={{
       background: C.card,
-      border: `1px solid ${isFinal ? C.gold : sc.border}`,
+      border: `1px solid ${isFinal || kickingOffSoon ? C.gold : sc.border}`,
       borderRadius: 14,
       padding: '1.1rem 1.25rem',
-      boxShadow: isFinal ? `0 0 18px ${C.gold}44` : `0 2px 8px #0008`,
+      boxShadow: isFinal ? `0 0 18px ${C.gold}44` : kickingOffSoon ? `0 0 12px ${C.gold}33` : `0 2px 8px #0008`,
       transition: 'transform 0.15s',
       position: 'relative',
       overflow: 'hidden',
     }}>
       {/* top stripe */}
-      <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background: isFinal ? `linear-gradient(90deg,${C.gold},${C.red})` : sc.border }} />
+      <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background: isFinal ? `linear-gradient(90deg,${C.gold},${C.red})` : kickingOffSoon ? C.gold : sc.border }} />
+
+      {/* kicking off soon banner */}
+      {kickingOffSoon && (
+        <div style={{
+          background: `${C.gold}1a`,
+          border: `1px solid ${C.gold}77`,
+          borderRadius: 8,
+          padding: '4px 12px',
+          marginBottom: '0.65rem',
+          textAlign: 'center',
+          fontSize: 11,
+          fontWeight: 700,
+          color: C.gold,
+          letterSpacing: 1,
+          textTransform: 'uppercase',
+        }}>
+          ⚡ Kicking Off Within 24 Hours
+        </div>
+      )}
 
       {/* header row */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.65rem', gap: 8 }}>
@@ -468,7 +494,7 @@ export default function WorldCup({ user }) {
   // Group matches by stage for display
   const stages = ['group','round_of_32','round_of_16','quarter_final','semi_final','third_place','final']
   const grouped = stages.reduce((acc, s) => {
-    const ms = matches.filter(m => m.stage === s)
+    const ms = matches.filter(m => m.stage === s && !isPast(m.date, m.time))
     if (ms.length) acc[s] = ms
     return acc
   }, {})

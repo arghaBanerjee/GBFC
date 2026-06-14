@@ -2643,8 +2643,14 @@ function WorldCupResultsTab({ token, apiUrl }) {
   const pastMatches = matches.filter(m => isPast(m.date, m.time))
   const upcomingMatches = matches.filter(m => !isPast(m.date, m.time))
 
-  const grouped = WC_STAGE_ORDER.reduce((acc, stage) => {
-    const ms = pastMatches.filter(m => m.stage === stage)
+  const grouped = [...WC_STAGE_ORDER].reverse().reduce((acc, stage) => {
+    const ms = pastMatches
+      .filter(m => m.stage === stage)
+      .sort((a, b) => {
+        const da = `${a.date}T${a.time || '00:00'}`
+        const db = `${b.date}T${b.time || '00:00'}`
+        return db.localeCompare(da)
+      })
     if (ms.length) acc[stage] = ms
     return acc
   }, {})
