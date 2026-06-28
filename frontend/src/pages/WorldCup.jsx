@@ -89,6 +89,17 @@ function fmtTime(t) {
   return `${hh > 12 ? hh - 12 : hh || 12}:${m} ${hh >= 12 ? 'PM' : 'AM'}`
 }
 
+function formatWcScore(home, away, homeEt, awayEt, homePens, awayPens) {
+  if (home === null || home === undefined || home === '') return '';
+  if (homeEt !== null && homeEt !== undefined && homeEt !== '') {
+    if (homePens !== null && homePens !== undefined && homePens !== '') {
+      return `${home} – ${away} (AET: ${homeEt} – ${awayEt}, Pens: ${homePens} – ${awayPens})`;
+    }
+    return `${home} – ${away} (AET: ${homeEt} – ${awayEt})`;
+  }
+  return `${home} – ${away}`;
+}
+
 function PointsBadge({ pts, multiplier }) {
   if (pts === null || pts === undefined) return (
     <span style={{ background: '#334155', color: C.muted, borderRadius: 8, padding: '2px 8px', fontSize: 11 }}>
@@ -124,18 +135,43 @@ function MatchCard({ match, onPredict, saving }) {
 
   const [home, setHome] = useState(pred?.home_goals ?? '')
   const [away, setAway] = useState(pred?.away_goals ?? '')
+  const [homeEt, setHomeEt] = useState(pred?.home_goals_et ?? '')
+  const [awayEt, setAwayEt] = useState(pred?.away_goals_et ?? '')
+  const [homePens, setHomePens] = useState(pred?.home_pens ?? '')
+  const [awayPens, setAwayPens] = useState(pred?.away_pens ?? '')
+  const [includeEt, setIncludeEt] = useState(pred?.home_goals_et !== null && pred?.home_goals_et !== undefined)
+  const [includePens, setIncludePens] = useState(pred?.home_pens !== null && pred?.home_pens !== undefined)
 
   useEffect(() => {
     setHome(pred?.home_goals ?? '')
     setAway(pred?.away_goals ?? '')
-  }, [pred?.home_goals, pred?.away_goals])
+    setHomeEt(pred?.home_goals_et ?? '')
+    setAwayEt(pred?.away_goals_et ?? '')
+    setHomePens(pred?.home_pens ?? '')
+    setAwayPens(pred?.away_pens ?? '')
+    setIncludeEt(pred?.home_goals_et !== null && pred?.home_goals_et !== undefined)
+    setIncludePens(pred?.home_pens !== null && pred?.home_pens !== undefined)
+  }, [pred])
 
   const handleChange = (setter) => (e) => {
     const v = e.target.value
     if (v === '' || (/^\d+$/.test(v) && parseInt(v) <= 30)) setter(v)
   }
 
-  const canSave = home !== '' && away !== '' && !locked
+  // Knockout condition
+  const isKnockout = match.stage !== 'group'
+  const isDraw90 = home !== '' && away !== '' && parseInt(home) === parseInt(away)
+  const isDrawEt = includeEt && homeEt !== '' && awayEt !== '' && parseInt(homeEt) === parseInt(awayEt)
+
+  const canSave = home !== '' && away !== '' && !locked && (
+    !isKnockout || !isDraw90 || !includeEt || (
+      homeEt !== '' && awayEt !== '' && (
+        !isDrawEt || !includePens || (
+          homePens !== '' && awayPens !== '' && parseInt(homePens) !== parseInt(awayPens)
+        )
+      )
+    )
+  )
 
   return (
     <div style={{
@@ -190,8 +226,18 @@ function MatchCard({ match, onPredict, saving }) {
         {/* centre: result or VS */}
         <div style={{ textAlign:'center', minWidth: 64 }}>
           {hasResult ? (
-            <div style={{ fontSize: 20, fontWeight: 800, color: C.gold, letterSpacing: 2 }}>
-              {match.result.home_goals} – {match.result.away_goals}
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.gold, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ fontSize: 18 }}>{match.result.home_goals} – {match.result.away_goals}</div>
+              {match.result.home_goals_et !== null && match.result.home_goals_et !== undefined && (
+                <div style={{ fontSize: 10, color: C.muted }}>
+                  AET: {match.result.home_goals_et} – {match.result.away_goals_et}
+                </div>
+              )}
+              {match.result.home_pens !== null && match.result.home_pens !== undefined && (
+                <div style={{ fontSize: 10, color: C.gold }}>
+                  Pens: {match.result.home_pens} – {match.result.away_pens}
+                </div>
+              )}
             </div>
           ) : locked ? (
             <div style={{ fontSize: 13, color: C.muted, fontWeight: 600 }}>Started</div>
@@ -256,8 +302,149 @@ function MatchCard({ match, onPredict, saving }) {
               />
             </div>
           </div>
+
+          {/* Extra Time Checkbox */}
+          {isKnockout && isDraw90 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', margin: '8px 0' }}>
+              <input
+                type="checkbox"
+                id={`et-chk-${match.id}`}
+                checked={includeEt}
+                onChange={e => {
+                  setIncludeEt(e.target.checked)
+                  if (!e.target.checked) {
+                    setIncludePens(false)
+                    setHomeEt('')
+                    setAwayEt('')
+                    setHomePens('')
+                    setAwayPens('')
+                  }
+                }}
+                style={{ cursor: 'pointer' }}
+              />
+              <label htmlFor={`et-chk-${match.id}`} style={{ fontSize: 12, color: C.text, fontWeight: 600, cursor: 'pointer' }}>
+                Predict Extra Time?
+              </label>
+            </div>
+          )}
+
+          {/* Extra Time Inputs */}
+          {includeEt && isKnockout && isDraw90 && (
+            <div style={{ marginTop: 12, borderTop: `1px dashed ${sc.border}44`, paddingTop: 12 }}>
+              <div style={{ color: C.gold, fontSize: 11, fontWeight: 700, textAlign: 'center', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                ⏱️ Extra Time (120 Mins)
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 32px 1fr', alignItems:'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ textAlign:'center' }}>
+                  <input
+                    type="number" min={0} max={30}
+                    value={homeEt}
+                    onChange={handleChange(setHomeEt)}
+                    placeholder="0"
+                    style={{
+                      width: '100%', padding: '6px 4px', textAlign:'center', fontSize: 18, fontWeight: 700,
+                      background: '#0f172a', color: C.text, border: `2px solid ${homeEt !== '' ? sc.border : '#334155'}`,
+                      borderRadius: 10, outline:'none',
+                    }}
+                  />
+                </div>
+                <div style={{ textAlign:'center', color: C.muted, fontWeight: 700 }}>–</div>
+                <div style={{ textAlign:'center' }}>
+                  <input
+                    type="number" min={0} max={30}
+                    value={awayEt}
+                    onChange={handleChange(setAwayEt)}
+                    placeholder="0"
+                    style={{
+                      width: '100%', padding: '6px 4px', textAlign:'center', fontSize: 18, fontWeight: 700,
+                      background: '#0f172a', color: C.text, border: `2px solid ${awayEt !== '' ? sc.border : '#334155'}`,
+                      borderRadius: 10, outline:'none',
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Penalty Shootout Checkbox */}
+          {includeEt && isKnockout && isDraw90 && isDrawEt && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', margin: '8px 0' }}>
+              <input
+                type="checkbox"
+                id={`pens-chk-${match.id}`}
+                checked={includePens}
+                onChange={e => {
+                  setIncludePens(e.target.checked)
+                  if (!e.target.checked) {
+                    setHomePens('')
+                    setAwayPens('')
+                  }
+                }}
+                style={{ cursor: 'pointer' }}
+              />
+              <label htmlFor={`pens-chk-${match.id}`} style={{ fontSize: 12, color: C.text, fontWeight: 600, cursor: 'pointer' }}>
+                Predict Penalty Shootout?
+              </label>
+            </div>
+          )}
+
+          {/* Penalty Shootout Inputs */}
+          {includePens && includeEt && isKnockout && isDraw90 && isDrawEt && (
+            <div style={{ marginTop: 12, borderTop: `1px dashed ${sc.border}44`, paddingTop: 12 }}>
+              <div style={{ color: C.gold, fontSize: 11, fontWeight: 700, textAlign: 'center', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                ⚽ Penalty Shootout Score
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 32px 1fr', alignItems:'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ textAlign:'center' }}>
+                  <input
+                    type="number" min={0} max={30}
+                    value={homePens}
+                    onChange={handleChange(setHomePens)}
+                    placeholder="0"
+                    style={{
+                      width: '100%', padding: '6px 4px', textAlign:'center', fontSize: 18, fontWeight: 700,
+                      background: '#0f172a', color: C.text, border: `2px solid ${homePens !== '' ? sc.border : '#334155'}`,
+                      borderRadius: 10, outline:'none',
+                    }}
+                  />
+                </div>
+                <div style={{ textAlign:'center', color: C.muted, fontWeight: 700 }}>–</div>
+                <div style={{ textAlign:'center' }}>
+                  <input
+                    type="number" min={0} max={30}
+                    value={awayPens}
+                    onChange={handleChange(setAwayPens)}
+                    placeholder="0"
+                    style={{
+                      width: '100%', padding: '6px 4px', textAlign:'center', fontSize: 18, fontWeight: 700,
+                      background: '#0f172a', color: C.text, border: `2px solid ${awayPens !== '' ? sc.border : '#334155'}`,
+                      borderRadius: 10, outline:'none',
+                    }}
+                  />
+                </div>
+              </div>
+              {homePens !== '' && awayPens !== '' && parseInt(homePens) === parseInt(awayPens) && (
+                <div style={{ color: C.red, fontSize: 11, textAlign: 'center', marginTop: 4 }}>
+                  ⚠️ Penalty shootouts cannot end in a draw
+                </div>
+              )}
+            </div>
+          )}
+
           <button
-            onClick={() => { if (canSave) onPredict(match.id, parseInt(home), parseInt(away)) }}
+            onClick={() => {
+              if (canSave) {
+                onPredict(
+                  match.id,
+                  parseInt(home),
+                  parseInt(away),
+                  includeEt ? parseInt(homeEt) : null,
+                  includeEt ? parseInt(awayEt) : null,
+                  includePens ? parseInt(homePens) : null,
+                  includePens ? parseInt(awayPens) : null
+                )
+              }
+            }}
             disabled={!canSave || saving === match.id}
             style={{
               width: '100%', padding: '9px', borderRadius: 10, border:'none',
@@ -277,8 +464,8 @@ function MatchCard({ match, onPredict, saving }) {
       {locked && pred && (
         <div style={{ textAlign:'center' }}>
           <div style={{ color: C.muted, fontSize: 12, marginBottom: 4 }}>Your prediction</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 6 }}>
-            {pred.home_goals} – {pred.away_goals}
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 6 }}>
+            {formatWcScore(pred.home_goals, pred.away_goals, pred.home_goals_et, pred.away_goals_et, pred.home_pens, pred.away_pens)}
           </div>
           <PointsBadge pts={pred.points_awarded} multiplier={match.multiplier} />
         </div>
@@ -387,7 +574,15 @@ function MyPredictions({ data, loading }) {
 
       {data.map(p => {
         const hasResult = p.actual_home !== null && p.actual_home !== undefined
-        const correct_score = hasResult && p.predicted_home === p.actual_home && p.predicted_away === p.actual_away
+        const correct_score = hasResult && (
+          p.predicted_home === p.actual_home && p.predicted_away === p.actual_away &&
+          (p.actual_home_et === null || p.actual_home_et === undefined || (
+            p.predicted_home_et === p.actual_home_et && p.predicted_away_et === p.actual_away_et &&
+            (p.actual_home_pens === null || p.actual_home_pens === undefined || (
+              p.predicted_home_pens === p.actual_home_pens && p.predicted_away_pens === p.actual_away_pens
+            ))
+          ))
+        )
         const sc = STAGE_COLORS[p.stage] || STAGE_COLORS.group
         return (
           <div key={p.match_id} style={{
@@ -405,11 +600,11 @@ function MyPredictions({ data, loading }) {
               </div>
               <div style={{ fontSize: 12, color: C.muted }}>
                 Your pick: <span style={{ color: correct_score ? C.gold : C.text, fontWeight: 700 }}>
-                  {p.predicted_home} – {p.predicted_away}
+                  {formatWcScore(p.predicted_home, p.predicted_away, p.predicted_home_et, p.predicted_away_et, p.predicted_home_pens, p.predicted_away_pens)}
                 </span>
                 {hasResult && (
                   <> &nbsp;·&nbsp; Result: <span style={{ color: C.gold, fontWeight: 700 }}>
-                    {p.actual_home} – {p.actual_away}
+                    {formatWcScore(p.actual_home, p.actual_away, p.actual_home_et, p.actual_away_et, p.actual_home_pens, p.actual_away_pens)}
                   </span></>
                 )}
               </div>
@@ -437,6 +632,7 @@ export default function WorldCup({ user }) {
   const [saving, setSaving]     = useState(null)
   const [error, setError]       = useState('')
   const [filterStage, setFilterStage] = useState('all')
+  const [showRules, setShowRules]     = useState(false)
 
   const token = localStorage.getItem('token')
   const headers = { 'Content-Type':'application/json', Authorization:`Bearer ${token}` }
@@ -472,13 +668,21 @@ export default function WorldCup({ user }) {
   useEffect(() => { if (tab === 2) loadLeaderboard() }, [tab])
   useEffect(() => { if (tab === 1) loadMyPreds() }, [tab])
 
-  const handlePredict = async (matchId, homeGoals, awayGoals) => {
+  const handlePredict = async (matchId, homeGoals, awayGoals, homeGoalsEt = null, awayGoalsEt = null, homePens = null, awayPens = null) => {
     setSaving(matchId)
     setError('')
     try {
       const res = await fetch(apiUrl('/api/worldcup/predict'), {
         method:'POST', headers,
-        body: JSON.stringify({ match_id: matchId, home_goals: homeGoals, away_goals: awayGoals }),
+        body: JSON.stringify({
+          match_id: matchId,
+          home_goals: homeGoals,
+          away_goals: awayGoals,
+          home_goals_et: homeGoalsEt,
+          away_goals_et: awayGoalsEt,
+          home_pens: homePens,
+          away_pens: awayPens
+        }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.detail || 'Failed to save prediction'); return }
@@ -521,8 +725,25 @@ export default function WorldCup({ user }) {
         <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: 1, background:`linear-gradient(90deg,${C.gold},#fff,${C.gold})`, WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', marginBottom: 4 }}>
           2026 FIFA World Cup
         </div>
-        <div style={{ fontSize: 15, color: C.gold, fontWeight: 700, letterSpacing: 3, textTransform:'uppercase', marginBottom: 16 }}>
+        <div style={{ fontSize: 15, color: C.gold, fontWeight: 700, letterSpacing: 3, textTransform:'uppercase', marginBottom: 6 }}>
           Prediction Challenge
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={() => setShowRules(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: C.gold,
+              textDecoration: 'underline',
+              fontSize: '12px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              padding: 0,
+            }}
+          >
+            Check the prediction scoring rules here
+          </button>
         </div>
         {/* points guide */}
         <div style={{ display:'flex', justifyContent:'center', gap: 10, flexWrap:'wrap', marginBottom: 12 }}>
@@ -628,6 +849,140 @@ export default function WorldCup({ user }) {
 
         {/* ── Tab 2: Leaderboard ── */}
         {tab === 2 && <Leaderboard data={leaderboard} loading={loadingL} />}
+
+        {showRules && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.8)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1000,
+            padding: '1rem',
+            backdropFilter: 'blur(4px)'
+          }}>
+            <div style={{
+              background: '#1a1a24',
+              border: `2px solid ${C.gold}`,
+              borderRadius: '16px',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '1.5rem',
+              position: 'relative',
+              color: '#ffffff',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+              fontFamily: 'system-ui, -apple-system, sans-serif'
+            }}>
+              <button
+                onClick={() => setShowRules(false)}
+                style={{
+                  position: 'absolute',
+                  top: '12px', right: '12px',
+                  background: '#ffffff12',
+                  border: 'none',
+                  borderRadius: '50%',
+                  color: '#fff',
+                  width: '32px', height: '32px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', fontSize: '16px', fontWeight: 'bold'
+                }}
+              >
+                ✕
+              </button>
+              <h2 style={{ fontSize: '20px', fontWeight: '800', color: C.gold, marginBottom: '1rem', borderBottom: `1px solid ${C.gold}44`, paddingBottom: '0.5rem', marginTop: 0 }}>
+                🏆 Prediction Scoring Rules
+              </h2>
+              <div style={{ fontSize: '13px', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ background: '#ffffff08', borderRadius: '8px', padding: '10px 14px', borderLeft: `3px solid ${C.gold}` }}>
+                  <strong style={{ color: C.gold, fontSize: '14px' }}>✨ Dynamic Cumulative Points System</strong>
+                  <p style={{ marginTop: '0.35rem', marginBottom: 0 }}>
+                    Points are <strong>cumulative</strong>! This means if a knockout match goes to Extra Time (120 mins) or a Penalty Shootout, you can win points from <strong>each period</strong> (Full Time + Extra Time + Penalties) if your predictions for those phases match the actual outcomes.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 style={{ fontWeight: '700', fontSize: '14px', marginBottom: '0.3rem', color: C.gold, marginTop: 0 }}>1. Full Time (90 Mins FT)</h3>
+                  <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                    <li><strong>Correct Winner/Draw:</strong> <span style={{ color: C.gold, fontWeight: '700' }}>10 pts</span></li>
+                    <li><strong>Exact Score (Both Teams):</strong> <span style={{ color: C.gold, fontWeight: '700' }}>+20 pts</span></li>
+                    <li><strong>One Team's Goals Match:</strong> <span style={{ color: C.gold, fontWeight: '700' }}>+10 pts</span> (only if exact score is not achieved)</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 style={{ fontWeight: '700', fontSize: '14px', marginBottom: '0.3rem', color: C.gold, marginTop: 0 }}>2. Extra Time (120 Mins AET)</h3>
+                  <p style={{ margin: '0 0 0.3rem 0', color: C.muted }}><em>Only active for knockout matches that end in a draw at 90 mins.</em></p>
+                  <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                    <li><strong>Correct ET Outcome:</strong> <span style={{ color: C.gold, fontWeight: '700' }}>10 pts</span> (winner or draw at 120 mins)</li>
+                    <li><strong>Exact ET Score:</strong> <span style={{ color: C.gold, fontWeight: '700' }}>+15 pts</span></li>
+                    <li><strong>One Team's ET Goals Match:</strong> <span style={{ color: C.gold, fontWeight: '700' }}>+5 pts</span> (only if exact score is not achieved)</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 style={{ fontWeight: '700', fontSize: '14px', marginBottom: '0.3rem', color: C.gold, marginTop: 0 }}>3. Penalty Shootout</h3>
+                  <p style={{ margin: '0 0 0.3rem 0', color: C.muted }}><em>Only active if the match is still a draw after Extra Time (120 mins).</em></p>
+                  <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                    <li><strong>Correct Shootout Winner:</strong> <span style={{ color: C.gold, fontWeight: '700' }}>10 pts</span></li>
+                    <li><strong>Exact Shootout Score:</strong> <span style={{ color: C.gold, fontWeight: '700' }}>+10 pts</span></li>
+                  </ul>
+                </div>
+
+                <div style={{ background: '#ffffff08', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #3b82f6' }}>
+                  <strong style={{ fontSize: '14px' }}>📈 Round Multipliers</strong>
+                  <p style={{ marginTop: '0.35rem', marginBottom: 0 }}>
+                    The total points achieved for a match are multiplied based on the tournament stage:
+                  </p>
+                  <ul style={{ paddingLeft: '20px', marginTop: '0.3rem', marginBottom: 0 }}>
+                    <li>Group Stage: <strong>1x</strong></li>
+                    <li>Round of 32: <strong>2x</strong></li>
+                    <li>Round of 16: <strong>3x</strong></li>
+                    <li>Quarter-Finals: <strong>4x</strong></li>
+                    <li>Semi-Finals & Third Place: <strong>5x</strong></li>
+                    <li>Final: <strong>6x</strong></li>
+                  </ul>
+                </div>
+
+                <div style={{ background: 'rgba(34,197,94,0.15)', borderRadius: '8px', padding: '10px 14px', border: '1px solid #22c55e' }}>
+                  <strong style={{ color: '#22c55e' }}>🔍 Scoring Example:</strong>
+                  <p style={{ marginTop: '0.35rem', marginBottom: 0 }}>
+                    A Round of 16 match (3x multiplier) ends as <strong>1–1 (AET 2–2, Pens 4–3)</strong>.
+                    <br />
+                    If your prediction was <strong>1–1 (AET 2–2, Pens 4–3)</strong>:
+                    <br />
+                    • 90m: 10 (winner) + 20 (exact) = 30 pts
+                    <br />
+                    • 120m: 10 (winner) + 15 (exact) = 25 pts
+                    <br />
+                    • Pens: 10 (winner) + 10 (exact) = 20 pts
+                    <br />
+                    • Total: (30 + 25 + 20) = 75 pts × 3 = <strong>225 points!</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRules(false)}
+                style={{
+                  marginTop: '1.5rem',
+                  width: '100%',
+                  padding: '0.65rem',
+                  background: C.gold,
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#000',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Got it!
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

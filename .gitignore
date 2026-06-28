@@ -65,3 +65,4 @@ yarn-error.log*
 whatsapp-api-prod.http
 .coverage
 .aider*
+update_world_cup_r32.py

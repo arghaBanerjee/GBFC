@@ -1297,6 +1297,10 @@ def init_db():
                 match_id INTEGER NOT NULL,
                 predicted_home_goals INTEGER NOT NULL,
                 predicted_away_goals INTEGER NOT NULL,
+                predicted_home_goals_et INTEGER,
+                predicted_away_goals_et INTEGER,
+                predicted_home_pens INTEGER,
+                predicted_away_pens INTEGER,
                 points_awarded INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1309,6 +1313,10 @@ def init_db():
                 match_id INTEGER NOT NULL UNIQUE,
                 home_goals INTEGER NOT NULL,
                 away_goals INTEGER NOT NULL,
+                home_goals_et INTEGER,
+                away_goals_et INTEGER,
+                home_pens INTEGER,
+                away_pens INTEGER,
                 match_stage VARCHAR(30) NOT NULL DEFAULT 'group',
                 entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 entered_by VARCHAR(255)
@@ -1343,7 +1351,34 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not add auth session expiry column: {e}")
                 conn.rollback()
-            conn.commit()
+            # Add extra time and penalty columns to world_cup tables
+            try:
+                cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'world_cup_predictions'")
+                cols = [r[0] for r in cur.fetchall()]
+                new_pred_cols = [
+                    ("predicted_home_goals_et", "INTEGER"),
+                    ("predicted_away_goals_et", "INTEGER"),
+                    ("predicted_home_pens", "INTEGER"),
+                    ("predicted_away_pens", "INTEGER")
+                ]
+                for col_name, col_type in new_pred_cols:
+                    if col_name not in cols:
+                        cur.execute(f"ALTER TABLE world_cup_predictions ADD COLUMN {col_name} {col_type}")
+                
+                cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'world_cup_results'")
+                cols_res = [r[0] for r in cur.fetchall()]
+                new_res_cols = [
+                    ("home_goals_et", "INTEGER"),
+                    ("away_goals_et", "INTEGER"),
+                    ("home_pens", "INTEGER"),
+                    ("away_pens", "INTEGER")
+                ]
+                for col_name, col_type in new_res_cols:
+                    if col_name not in cols_res:
+                        cur.execute(f"ALTER TABLE world_cup_results ADD COLUMN {col_name} {col_type}")
+                conn.commit()
+            except Exception as e:
+                print(f"Postgres world_cup migration error: {e}")
 
             ensure_practice_session_ids(cur, conn)
 
@@ -1808,6 +1843,10 @@ def init_db():
                 match_id INTEGER NOT NULL,
                 predicted_home_goals INTEGER NOT NULL,
                 predicted_away_goals INTEGER NOT NULL,
+                predicted_home_goals_et INTEGER,
+                predicted_away_goals_et INTEGER,
+                predicted_home_pens INTEGER,
+                predicted_away_pens INTEGER,
                 points_awarded INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1818,6 +1857,10 @@ def init_db():
                 match_id INTEGER NOT NULL UNIQUE,
                 home_goals INTEGER NOT NULL,
                 away_goals INTEGER NOT NULL,
+                home_goals_et INTEGER,
+                away_goals_et INTEGER,
+                home_pens INTEGER,
+                away_pens INTEGER,
                 match_stage TEXT NOT NULL DEFAULT 'group',
                 entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 entered_by TEXT
@@ -1870,6 +1913,35 @@ def init_db():
                 cur.execute("ALTER TABLE notifications ADD COLUMN practice_session_id INTEGER")
             except sqlite3.OperationalError:
                 pass
+            # Add extra time and penalty columns to world_cup tables
+            try:
+                cur.execute("PRAGMA table_info(world_cup_predictions)")
+                cols = [r[1] for r in cur.fetchall()]
+                new_pred_cols = [
+                    ("predicted_home_goals_et", "INTEGER"),
+                    ("predicted_away_goals_et", "INTEGER"),
+                    ("predicted_home_pens", "INTEGER"),
+                    ("predicted_away_pens", "INTEGER")
+                ]
+                for col_name, col_type in new_pred_cols:
+                    if col_name not in cols:
+                        cur.execute(f"ALTER TABLE world_cup_predictions ADD COLUMN {col_name} {col_type}")
+                
+                cur.execute("PRAGMA table_info(world_cup_results)")
+                cols_res = [r[1] for r in cur.fetchall()]
+                new_res_cols = [
+                    ("home_goals_et", "INTEGER"),
+                    ("away_goals_et", "INTEGER"),
+                    ("home_pens", "INTEGER"),
+                    ("away_pens", "INTEGER")
+                ]
+                for col_name, col_type in new_res_cols:
+                    if col_name not in cols_res:
+                        cur.execute(f"ALTER TABLE world_cup_results ADD COLUMN {col_name} {col_type}")
+                conn.commit()
+            except Exception as e:
+                print(f"SQLite world_cup migration error: {e}")
+
             ensure_practice_session_ids(cur, conn)
             conn.commit()
 
@@ -2952,7 +3024,7 @@ def get_calendar_event_with_capacity_by_id(cur, session_id: int) -> Optional[dic
     session["option_a_text"] = (session.get("option_a_text") or "").strip() or None
     session["option_b_text"] = (session.get("option_b_text") or "").strip() or None
     # Ensure default values for optional fields to prevent 400 errors
-    session["session_cost"] = session.get("session_cost") or None
+    session["session_cost"] = session.get("session_cost") if session.get("session_cost") is not None else None
     session["cost_type"] = session.get("cost_type") or "Total"
     session["paid_by"] = session.get("paid_by") or None
     session["paid_by_name"] = session.get("paid_by_name") or None
@@ -7386,7 +7458,7 @@ def _wc_infer_stage(match_date: str, match_time: str = None) -> str:
     if d < date(2026, 6, 28):    return "group"
     if d == date(2026, 6, 28):
         # June 28 has group stage matches at 00:30/03:00 UTC, first R32 at 20:00 UTC
-        return "group" if t < "12:00" else "round_of_32"
+        return "group" if t < "08:00" else "round_of_32"
     if d <= date(2026, 7, 3):    return "round_of_32"
     if d == date(2026, 7, 4):
         # July 4 has last R32 at 02:30 UTC, R16 from 18:00 UTC onwards
@@ -7397,9 +7469,19 @@ def _wc_infer_stage(match_date: str, match_time: str = None) -> str:
     if d == date(2026, 7, 18):   return "third_place"
     return "final"
 
-def _wc_points(pred_home: int, pred_away: int, actual_home: int, actual_away: int, multiplier: int) -> int:
+def _wc_points(
+    pred_home: int, pred_away: int,
+    pred_home_et: int | None, pred_away_et: int | None,
+    pred_home_pens: int | None, pred_away_pens: int | None,
+    actual_home: int, actual_away: int,
+    actual_home_et: int | None, actual_away_et: int | None,
+    actual_home_pens: int | None, actual_away_pens: int | None,
+    multiplier: int
+) -> int:
     pts = 0
     def winner(h, a): return 'home' if h > a else ('away' if a > h else 'draw')
+    
+    # 1. Full Time (90m) Layer
     if winner(pred_home, pred_away) == winner(actual_home, actual_away):
         pts += 10
     h_ok = pred_home == actual_home
@@ -7408,6 +7490,39 @@ def _wc_points(pred_home: int, pred_away: int, actual_home: int, actual_away: in
         pts += 20
     elif h_ok or a_ok:
         pts += 10
+        
+    # 2. Extra Time (120m) Layer
+    # Only applies if actual match went to ET (actual 90m was a draw) 
+    # AND the user predicted ET (predicted 90m was a draw and they provided ET scores)
+    if actual_home == actual_away and pred_home == pred_away:
+        if (pred_home_et is not None and pred_away_et is not None and 
+            actual_home_et is not None and actual_away_et is not None):
+            
+            # Winner after 120 mins
+            if winner(pred_home_et, pred_away_et) == winner(actual_home_et, actual_away_et):
+                pts += 10
+            h_et_ok = pred_home_et == actual_home_et
+            a_et_ok = pred_away_et == actual_away_et
+            if h_et_ok and a_et_ok:
+                pts += 15
+            elif h_et_ok or a_et_ok:
+                pts += 5
+                
+            # 3. Penalty Shootout (Tie Breaker) Layer
+            # Only applies if actual match went to penalties (actual 120m was a draw)
+            # AND the user predicted penalties (predicted 120m was a draw and they provided penalty scores)
+            if actual_home_et == actual_away_et and pred_home_et == pred_away_et:
+                if (pred_home_pens is not None and pred_away_pens is not None and 
+                    actual_home_pens is not None and actual_away_pens is not None):
+                    
+                    # Winner of shootout (penalties can't end in a draw)
+                    if winner(pred_home_pens, pred_away_pens) == winner(actual_home_pens, actual_away_pens):
+                        pts += 10
+                    h_pen_ok = pred_home_pens == actual_home_pens
+                    a_pen_ok = pred_away_pens == actual_away_pens
+                    if h_pen_ok and a_pen_ok:
+                        pts += 10
+
     return pts * multiplier
 
 def _wc_match_row(row: dict, result: dict | None, prediction: dict | None) -> dict:
@@ -7423,10 +7538,21 @@ def _wc_match_row(row: dict, result: dict | None, prediction: dict | None) -> di
         "stage": stage,
         "stage_label": WC_STAGE_LABELS.get(stage, stage),
         "multiplier": WC_STAGE_MULTIPLIERS.get(stage, 1),
-        "result": {"home_goals": result["home_goals"], "away_goals": result["away_goals"]} if result else None,
+        "result": {
+            "home_goals": result["home_goals"],
+            "away_goals": result["away_goals"],
+            "home_goals_et": result.get("home_goals_et"),
+            "away_goals_et": result.get("away_goals_et"),
+            "home_pens": result.get("home_pens"),
+            "away_pens": result.get("away_pens")
+        } if result else None,
         "prediction": {
             "home_goals": prediction["predicted_home_goals"],
             "away_goals": prediction["predicted_away_goals"],
+            "home_goals_et": prediction.get("predicted_home_goals_et"),
+            "away_goals_et": prediction.get("predicted_away_goals_et"),
+            "home_pens": prediction.get("predicted_home_pens"),
+            "away_pens": prediction.get("predicted_away_pens"),
             "points_awarded": prediction["points_awarded"],
         } if prediction else None,
     }
@@ -7473,10 +7599,23 @@ def wc_submit_prediction(data: dict, current_user: dict = Depends(get_current_us
     match_id = data.get("match_id")
     home_goals = data.get("home_goals")
     away_goals = data.get("away_goals")
+    home_goals_et = data.get("home_goals_et")
+    away_goals_et = data.get("away_goals_et")
+    home_pens = data.get("home_pens")
+    away_pens = data.get("away_pens")
+
     if match_id is None or home_goals is None or away_goals is None:
         raise HTTPException(status_code=400, detail="match_id, home_goals and away_goals are required")
     if not isinstance(home_goals, int) or not isinstance(away_goals, int) or home_goals < 0 or away_goals < 0:
         raise HTTPException(status_code=400, detail="Goals must be non-negative integers")
+
+    def is_valid_score(val):
+        if val is None:
+            return True
+        return isinstance(val, int) and val >= 0
+
+    if not is_valid_score(home_goals_et) or not is_valid_score(away_goals_et) or not is_valid_score(home_pens) or not is_valid_score(away_pens):
+        raise HTTPException(status_code=400, detail="Extra time and penalty goals must be non-negative integers")
 
     with get_connection() as conn:
         cur = conn.cursor()
@@ -7490,7 +7629,6 @@ def wc_submit_prediction(data: dict, current_user: dict = Depends(get_current_us
         match = dict(match)
 
         # Prediction window closes at match kick-off
-        # Times are stored as BST (UTC+1); compare against UTC-aware now
         BST = timezone(timedelta(hours=1))
         match_dt_str = f"{match['date']} {match['time'] or '00:00'}"
         try:
@@ -7507,22 +7645,55 @@ def wc_submit_prediction(data: dict, current_user: dict = Depends(get_current_us
         if lock_row is None or not bool(lock_row["unlocked"]):
             raise HTTPException(status_code=403, detail="Predictions for this stage are not yet open")
 
+        # Clear downstream fields based on rules
+        if stage == 'group':
+            home_goals_et = None
+            away_goals_et = None
+            home_pens = None
+            away_pens = None
+        else:
+            if home_goals != away_goals:
+                home_goals_et = None
+                away_goals_et = None
+                home_pens = None
+                away_pens = None
+            else:
+                if home_goals_et is None or away_goals_et is None:
+                    home_goals_et = None
+                    away_goals_et = None
+                    home_pens = None
+                    away_pens = None
+                else:
+                    if home_goals_et != away_goals_et:
+                        home_pens = None
+                        away_pens = None
+                    else:
+                        if home_pens is not None and away_pens is not None:
+                            if home_pens == away_pens:
+                                raise HTTPException(status_code=400, detail="Penalty shootout predictions cannot end in a draw")
+
         # Upsert
         if USE_POSTGRES:
             cur.execute(
-                f"INSERT INTO world_cup_predictions (user_email, match_id, predicted_home_goals, predicted_away_goals, updated_at) "
-                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},CURRENT_TIMESTAMP) "
+                f"INSERT INTO world_cup_predictions (user_email, match_id, predicted_home_goals, predicted_away_goals, "
+                f"predicted_home_goals_et, predicted_away_goals_et, predicted_home_pens, predicted_away_pens, updated_at) "
+                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},CURRENT_TIMESTAMP) "
                 f"ON CONFLICT (user_email, match_id) DO UPDATE SET "
-                f"predicted_home_goals=EXCLUDED.predicted_home_goals, predicted_away_goals=EXCLUDED.predicted_away_goals, updated_at=CURRENT_TIMESTAMP",
-                (current_user["email"], match_id, home_goals, away_goals),
+                f"predicted_home_goals=EXCLUDED.predicted_home_goals, predicted_away_goals=EXCLUDED.predicted_away_goals, "
+                f"predicted_home_goals_et=EXCLUDED.predicted_home_goals_et, predicted_away_goals_et=EXCLUDED.predicted_away_goals_et, "
+                f"predicted_home_pens=EXCLUDED.predicted_home_pens, predicted_away_pens=EXCLUDED.predicted_away_pens, updated_at=CURRENT_TIMESTAMP",
+                (current_user["email"], match_id, home_goals, away_goals, home_goals_et, away_goals_et, home_pens, away_pens),
             )
         else:
             cur.execute(
-                f"INSERT INTO world_cup_predictions (user_email, match_id, predicted_home_goals, predicted_away_goals, updated_at) "
-                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},CURRENT_TIMESTAMP) "
+                f"INSERT INTO world_cup_predictions (user_email, match_id, predicted_home_goals, predicted_away_goals, "
+                f"predicted_home_goals_et, predicted_away_goals_et, predicted_home_pens, predicted_away_pens, updated_at) "
+                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},CURRENT_TIMESTAMP) "
                 f"ON CONFLICT (user_email, match_id) DO UPDATE SET "
-                f"predicted_home_goals=excluded.predicted_home_goals, predicted_away_goals=excluded.predicted_away_goals, updated_at=CURRENT_TIMESTAMP",
-                (current_user["email"], match_id, home_goals, away_goals),
+                f"predicted_home_goals=excluded.predicted_home_goals, predicted_away_goals=excluded.predicted_away_goals, "
+                f"predicted_home_goals_et=excluded.predicted_home_goals_et, predicted_away_goals_et=excluded.predicted_away_goals_et, "
+                f"predicted_home_pens=excluded.predicted_home_pens, predicted_away_pens=excluded.predicted_away_pens, updated_at=CURRENT_TIMESTAMP",
+                (current_user["email"], match_id, home_goals, away_goals, home_goals_et, away_goals_et, home_pens, away_pens),
             )
         conn.commit()
     return {"message": "Prediction saved"}
@@ -7534,9 +7705,22 @@ def wc_enter_result(match_id: int, data: dict, current_user: dict = Depends(get_
         raise HTTPException(status_code=403, detail="Admins only")
     home_goals = data.get("home_goals")
     away_goals = data.get("away_goals")
+    home_goals_et = data.get("home_goals_et")
+    away_goals_et = data.get("away_goals_et")
+    home_pens = data.get("home_pens")
+    away_pens = data.get("away_pens")
     match_stage = data.get("match_stage")
+
     if home_goals is None or away_goals is None:
         raise HTTPException(status_code=400, detail="home_goals and away_goals are required")
+
+    def is_valid_score(val):
+        if val is None:
+            return True
+        return isinstance(val, int) and val >= 0
+
+    if not is_valid_score(home_goals_et) or not is_valid_score(away_goals_et) or not is_valid_score(home_pens) or not is_valid_score(away_pens):
+        raise HTTPException(status_code=400, detail="Extra time and penalty goals must be non-negative integers")
 
     with get_connection() as conn:
         cur = conn.cursor()
@@ -7552,31 +7736,72 @@ def wc_enter_result(match_id: int, data: dict, current_user: dict = Depends(get_
         inferred_stage = match_stage or _wc_infer_stage(match["date"], match.get("time"))
         multiplier = WC_STAGE_MULTIPLIERS.get(inferred_stage, 1)
 
+        # Apply knockout rules to results
+        if inferred_stage == 'group':
+            home_goals_et = None
+            away_goals_et = None
+            home_pens = None
+            away_pens = None
+        else:
+            if home_goals != away_goals:
+                home_goals_et = None
+                away_goals_et = None
+                home_pens = None
+                away_pens = None
+            else:
+                if home_goals_et is None or away_goals_et is None:
+                    home_goals_et = None
+                    away_goals_et = None
+                    home_pens = None
+                    away_pens = None
+                else:
+                    if home_goals_et != away_goals_et:
+                        home_pens = None
+                        away_pens = None
+                    else:
+                        if home_pens is not None and away_pens is not None:
+                            if home_pens == away_pens:
+                                raise HTTPException(status_code=400, detail="Penalty shootout results cannot end in a draw")
+
         if USE_POSTGRES:
             cur.execute(
-                f"INSERT INTO world_cup_results (match_id, home_goals, away_goals, match_stage, entered_by) "
-                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER}) "
+                f"INSERT INTO world_cup_results (match_id, home_goals, away_goals, home_goals_et, away_goals_et, home_pens, away_pens, match_stage, entered_by) "
+                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER}) "
                 f"ON CONFLICT (match_id) DO UPDATE SET home_goals=EXCLUDED.home_goals, away_goals=EXCLUDED.away_goals, "
+                f"home_goals_et=EXCLUDED.home_goals_et, away_goals_et=EXCLUDED.away_goals_et, "
+                f"home_pens=EXCLUDED.home_pens, away_pens=EXCLUDED.away_pens, "
                 f"match_stage=EXCLUDED.match_stage, entered_at=CURRENT_TIMESTAMP, entered_by=EXCLUDED.entered_by",
-                (match_id, home_goals, away_goals, inferred_stage, current_user["email"]),
+                (match_id, home_goals, away_goals, home_goals_et, away_goals_et, home_pens, away_pens, inferred_stage, current_user["email"]),
             )
         else:
             cur.execute(
-                f"INSERT INTO world_cup_results (match_id, home_goals, away_goals, match_stage, entered_by) "
-                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER}) "
+                f"INSERT INTO world_cup_results (match_id, home_goals, away_goals, home_goals_et, away_goals_et, home_pens, away_pens, match_stage, entered_by) "
+                f"VALUES ({PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER},{PLACEHOLDER}) "
                 f"ON CONFLICT (match_id) DO UPDATE SET home_goals=excluded.home_goals, away_goals=excluded.away_goals, "
+                f"home_goals_et=excluded.home_goals_et, away_goals_et=excluded.away_goals_et, "
+                f"home_pens=excluded.home_pens, away_pens=excluded.away_pens, "
                 f"match_stage=excluded.match_stage, entered_at=CURRENT_TIMESTAMP, entered_by=excluded.entered_by",
-                (match_id, home_goals, away_goals, inferred_stage, current_user["email"]),
+                (match_id, home_goals, away_goals, home_goals_et, away_goals_et, home_pens, away_pens, inferred_stage, current_user["email"]),
             )
 
         # Recalculate points for all predictions on this match
         cur.execute(
-            f"SELECT id, user_email, predicted_home_goals, predicted_away_goals FROM world_cup_predictions WHERE match_id = {PLACEHOLDER}",
+            f"SELECT id, user_email, predicted_home_goals, predicted_away_goals, "
+            f"predicted_home_goals_et, predicted_away_goals_et, "
+            f"predicted_home_pens, predicted_away_pens FROM world_cup_predictions WHERE match_id = {PLACEHOLDER}",
             (match_id,),
         )
         for pred in cur.fetchall():
             p = dict(pred)
-            pts = _wc_points(p["predicted_home_goals"], p["predicted_away_goals"], home_goals, away_goals, multiplier)
+            pts = _wc_points(
+                p["predicted_home_goals"], p["predicted_away_goals"],
+                p.get("predicted_home_goals_et"), p.get("predicted_away_goals_et"),
+                p.get("predicted_home_pens"), p.get("predicted_away_pens"),
+                home_goals, away_goals,
+                home_goals_et, away_goals_et,
+                home_pens, away_pens,
+                multiplier
+            )
             cur.execute(
                 f"UPDATE world_cup_predictions SET points_awarded = {PLACEHOLDER} WHERE id = {PLACEHOLDER}",
                 (pts, p["id"]),
@@ -7621,9 +7846,13 @@ def wc_my_predictions(current_user: dict = Depends(get_current_user)):
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"SELECT wcp.match_id, wcp.predicted_home_goals, wcp.predicted_away_goals, wcp.points_awarded, "
+            f"SELECT wcp.match_id, wcp.predicted_home_goals, wcp.predicted_away_goals, "
+            f"wcp.predicted_home_goals_et, wcp.predicted_away_goals_et, "
+            f"wcp.predicted_home_pens, wcp.predicted_away_pens, wcp.points_awarded, "
             f"ps.date, ps.time, ps.location, ps.event_title, "
-            f"wcr.home_goals AS actual_home, wcr.away_goals AS actual_away, wcr.match_stage "
+            f"wcr.home_goals AS actual_home, wcr.away_goals AS actual_away, "
+            f"wcr.home_goals_et AS actual_home_et, wcr.away_goals_et AS actual_away_et, "
+            f"wcr.home_pens AS actual_home_pens, wcr.away_pens AS actual_away_pens, wcr.match_stage "
             f"FROM world_cup_predictions wcp "
             f"JOIN practice_sessions ps ON ps.id = wcp.match_id "
             f"LEFT JOIN world_cup_results wcr ON wcr.match_id = wcp.match_id "
@@ -7645,8 +7874,16 @@ def wc_my_predictions(current_user: dict = Depends(get_current_user)):
             "away_team": (r.get("event_title") or "").split(" vs ")[-1].strip(),
             "predicted_home": r["predicted_home_goals"],
             "predicted_away": r["predicted_away_goals"],
+            "predicted_home_et": r["predicted_home_goals_et"],
+            "predicted_away_et": r["predicted_away_goals_et"],
+            "predicted_home_pens": r["predicted_home_pens"],
+            "predicted_away_pens": r["predicted_away_pens"],
             "actual_home": r.get("actual_home"),
             "actual_away": r.get("actual_away"),
+            "actual_home_et": r.get("actual_home_et"),
+            "actual_away_et": r.get("actual_away_et"),
+            "actual_home_pens": r.get("actual_home_pens"),
+            "actual_away_pens": r.get("actual_away_pens"),
             "points_awarded": r.get("points_awarded"),
             "stage": stage,
             "stage_label": WC_STAGE_LABELS.get(stage, stage),

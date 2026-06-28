@@ -191,6 +191,13 @@ def test_reactivated_user_doesnt_see_old_selections():
         json={"email": "john@test.com", "full_name": "Jane Doe", "password": "newpassword"}
     )
     assert response.status_code == 200
+
+    # Admin approves Jane
+    approve_res = client.put(
+        "/api/users/john@test.com/approve",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert approve_res.status_code == 200
     
     # Jane logs in and checks her availability
     jane_token = login_user("john@test.com", "newpassword")

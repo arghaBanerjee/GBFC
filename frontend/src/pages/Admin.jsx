@@ -2603,9 +2603,16 @@ function WorldCupResultsTab({ token, apiUrl }) {
         const initial = {}
         data.forEach(m => {
           if (m.result) {
-            initial[m.id] = { home: String(m.result.home_goals), away: String(m.result.away_goals) }
+            initial[m.id] = {
+              home: String(m.result.home_goals),
+              away: String(m.result.away_goals),
+              homeEt: m.result.home_goals_et !== null && m.result.home_goals_et !== undefined ? String(m.result.home_goals_et) : '',
+              awayEt: m.result.away_goals_et !== null && m.result.away_goals_et !== undefined ? String(m.result.away_goals_et) : '',
+              homePens: m.result.home_pens !== null && m.result.home_pens !== undefined ? String(m.result.home_pens) : '',
+              awayPens: m.result.away_pens !== null && m.result.away_pens !== undefined ? String(m.result.away_pens) : ''
+            }
           } else {
-            initial[m.id] = { home: '', away: '' }
+            initial[m.id] = { home: '', away: '', homeEt: '', awayEt: '', homePens: '', awayPens: '' }
           }
         })
         setScores(initial)
@@ -2618,19 +2625,44 @@ function WorldCupResultsTab({ token, apiUrl }) {
   const handleSave = async (matchId) => {
     const s = scores[matchId]
     if (s?.home === '' || s?.away === '') return
+
+    const matchObj = matches.find(m => m.id === matchId)
+    const isKnockoutVal = matchObj && matchObj.stage !== 'group'
+    const hasEtResult = isKnockoutVal && s.home === s.away && s.homeEt !== '' && s.awayEt !== ''
+    const hasPensResult = hasEtResult && s.homeEt === s.awayEt && s.homePens !== '' && s.awayPens !== ''
+
+    if (hasPensResult && parseInt(s.homePens) === parseInt(s.awayPens)) {
+      setError('Penalty shootout results cannot end in a draw')
+      return
+    }
+
     setSaving(matchId)
     setError('')
     try {
       const res = await fetch(apiUrl(`/api/worldcup/results/${matchId}`), {
         method: 'POST',
         headers,
-        body: JSON.stringify({ home_goals: parseInt(s.home), away_goals: parseInt(s.away) }),
+        body: JSON.stringify({
+          home_goals: parseInt(s.home),
+          away_goals: parseInt(s.away),
+          home_goals_et: hasEtResult ? parseInt(s.homeEt) : null,
+          away_goals_et: hasEtResult ? parseInt(s.awayEt) : null,
+          home_pens: hasPensResult ? parseInt(s.homePens) : null,
+          away_pens: hasPensResult ? parseInt(s.awayPens) : null
+        }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.detail || 'Failed to save result'); return }
       setSavedIds(prev => new Set([...prev, matchId]))
       setMatches(prev => prev.map(m => m.id === matchId
-        ? { ...m, result: { home_goals: parseInt(s.home), away_goals: parseInt(s.away) } }
+        ? { ...m, result: {
+            home_goals: parseInt(s.home),
+            away_goals: parseInt(s.away),
+            home_goals_et: hasEtResult ? parseInt(s.homeEt) : null,
+            away_goals_et: hasEtResult ? parseInt(s.awayEt) : null,
+            home_pens: hasPensResult ? parseInt(s.homePens) : null,
+            away_pens: hasPensResult ? parseInt(s.awayPens) : null
+          } }
         : m
       ))
     } catch {
@@ -2717,9 +2749,20 @@ function WorldCupResultsTab({ token, apiUrl }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             {stageMatches.map(m => {
-              const s = scores[m.id] || { home: '', away: '' }
+              const s = scores[m.id] || { home: '', away: '', homeEt: '', awayEt: '', homePens: '', awayPens: '' }
               const hasResult = savedIds.has(m.id)
-              const canSave = s.home !== '' && s.away !== ''
+              const isKnockoutVal = m.stage !== 'group'
+              const isDraw90Val = s.home !== '' && s.away !== '' && parseInt(s.home) === parseInt(s.away)
+              const isDrawEtVal = isDraw90Val && s.homeEt !== '' && s.awayEt !== '' && parseInt(s.homeEt) === parseInt(s.awayEt)
+              const canSave = s.home !== '' && s.away !== '' && (
+                !isKnockoutVal || !isDraw90Val || (
+                  s.homeEt !== '' && s.awayEt !== '' && (
+                    !isDrawEtVal || (
+                      s.homePens !== '' && s.awayPens !== '' && parseInt(s.homePens) !== parseInt(s.awayPens)
+                    )
+                  )
+                )
+              )
               const isSaving = saving === m.id
 
               return (
@@ -2746,6 +2789,57 @@ function WorldCupResultsTab({ token, apiUrl }) {
                     </div>
                     <div style={{ fontWeight: '600', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.away_team}</div>
                   </div>
+
+                  {/* Row 1.1: Extra Time Result inputs */}
+                  {isKnockoutVal && isDraw90Val && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', marginTop: '0.5rem', marginBottom: '0.5rem', padding: '0.5rem', borderTop: '1px dashed var(--theme-border)', background: 'var(--theme-surface-alt)', borderRadius: '0.25rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--theme-text-muted)', textTransform: 'uppercase' }}>⏱️ Extra Time (120 Mins)</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <input
+                          type="number" min={0} max={30}
+                          value={s.homeEt}
+                          onChange={e => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && +v <= 30)) setScores(prev => ({ ...prev, [m.id]: { ...prev[m.id], homeEt: v } })) }}
+                          placeholder="—"
+                          style={{ width: '2.5rem', padding: '0.25rem', textAlign: 'center', fontWeight: '700', fontSize: '0.9rem', borderRadius: '0.25rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface)', color: 'var(--theme-text)' }}
+                        />
+                        <span style={{ fontWeight: '700', color: 'var(--theme-text-muted)' }}>–</span>
+                        <input
+                          type="number" min={0} max={30}
+                          value={s.awayEt}
+                          onChange={e => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && +v <= 30)) setScores(prev => ({ ...prev, [m.id]: { ...prev[m.id], awayEt: v } })) }}
+                          placeholder="—"
+                          style={{ width: '2.5rem', padding: '0.25rem', textAlign: 'center', fontWeight: '700', fontSize: '0.9rem', borderRadius: '0.25rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface)', color: 'var(--theme-text)' }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Row 1.2: Penalty Shootout Result inputs */}
+                  {isKnockoutVal && isDraw90Val && isDrawEtVal && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', marginBottom: '0.5rem', padding: '0.5rem', borderTop: '1px dashed var(--theme-border)', background: 'var(--theme-surface-alt)', borderRadius: '0.25rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--theme-text-muted)', textTransform: 'uppercase' }}>⚽ Penalty Shootout Result</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <input
+                          type="number" min={0} max={30}
+                          value={s.homePens}
+                          onChange={e => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && +v <= 30)) setScores(prev => ({ ...prev, [m.id]: { ...prev[m.id], homePens: v } })) }}
+                          placeholder="—"
+                          style={{ width: '2.5rem', padding: '0.25rem', textAlign: 'center', fontWeight: '700', fontSize: '0.9rem', borderRadius: '0.25rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface)', color: 'var(--theme-text)' }}
+                        />
+                        <span style={{ fontWeight: '700', color: 'var(--theme-text-muted)' }}>–</span>
+                        <input
+                          type="number" min={0} max={30}
+                          value={s.awayPens}
+                          onChange={e => { const v = e.target.value; if (v === '' || (/^\d+$/.test(v) && +v <= 30)) setScores(prev => ({ ...prev, [m.id]: { ...prev[m.id], awayPens: v } })) }}
+                          placeholder="—"
+                          style={{ width: '2.5rem', padding: '0.25rem', textAlign: 'center', fontWeight: '700', fontSize: '0.9rem', borderRadius: '0.25rem', border: '1px solid var(--theme-border)', background: 'var(--theme-surface)', color: 'var(--theme-text)' }}
+                        />
+                      </div>
+                      {s.homePens !== '' && s.awayPens !== '' && parseInt(s.homePens) === parseInt(s.awayPens) && (
+                        <div style={{ color: 'var(--theme-danger)', fontSize: '0.7rem', marginTop: '0.2rem' }}>⚠️ Penalties cannot end in a draw</div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Row 2: date + save button */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
