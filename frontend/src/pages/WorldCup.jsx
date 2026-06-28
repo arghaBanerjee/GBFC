@@ -728,37 +728,35 @@ export default function WorldCup({ user }) {
         <div style={{ fontSize: 15, color: C.gold, fontWeight: 700, letterSpacing: 3, textTransform:'uppercase', marginBottom: 6 }}>
           Prediction Challenge
         </div>
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 16, marginTop: 8 }}>
           <button
             onClick={() => setShowRules(true)}
             style={{
-              background: 'none',
+              background: `linear-gradient(135deg, ${C.gold} 0%, #eab308 100%)`,
               border: 'none',
-              color: C.gold,
-              textDecoration: 'underline',
-              fontSize: '12px',
+              color: '#000000',
+              borderRadius: '20px',
+              padding: '8px 18px',
+              fontSize: '13px',
+              fontWeight: '700',
               cursor: 'pointer',
-              fontWeight: '600',
-              padding: 0,
+              boxShadow: '0 4px 12px rgba(234, 179, 8, 0.35)',
+              transition: 'all 0.2s ease',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+            onMouseOver={e => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = '0 6px 16px rgba(234, 179, 8, 0.5)';
+            }}
+            onMouseOut={e => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(234, 179, 8, 0.35)';
             }}
           >
-            Check the prediction scoring rules here
+            <span>📜</span> Check the prediction scoring rules here
           </button>
-        </div>
-        {/* points guide */}
-        <div style={{ display:'flex', justifyContent:'center', gap: 10, flexWrap:'wrap', marginBottom: 12 }}>
-          {[
-            { icon:'🏅', text:'Correct winner', pts:'10 pts' },
-            { icon:'🎯', text:'Exact score (both goals)', pts:'20 pts' },
-            { icon:'⚽', text:'One team\'s goals', pts:'10 pts' },
-          ].map(g => (
-            <div key={g.text} style={{ background:'#ffffff12', border:`1px solid ${C.gold}44`, borderRadius:10, padding:'6px 12px', fontSize:12 }}>
-              <span>{g.icon}</span> {g.text} <span style={{ color: C.gold, fontWeight:700 }}>{g.pts}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ fontSize: 12, color: C.muted }}>
-          Points multiplied by round — upto <span style={{ color: C.gold, fontWeight:700 }}>180 pts</span> per prediction!
         </div>
         {upcomingCount > 0 && (
           <div style={{ marginTop: 12, background:`${C.gold}22`, border:`1px solid ${C.gold}`, borderRadius:10, display:'inline-block', padding:'6px 16px', fontSize:13, color: C.gold, fontWeight:600 }}>

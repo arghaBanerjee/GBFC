@@ -7856,7 +7856,7 @@ def wc_my_predictions(current_user: dict = Depends(get_current_user)):
             f"JOIN practice_sessions ps ON ps.id = wcp.match_id "
             f"LEFT JOIN world_cup_results wcr ON wcr.match_id = wcp.match_id "
             f"WHERE wcp.user_email = {PLACEHOLDER} "
-            f"ORDER BY ps.date ASC, ps.time ASC",
+            f"ORDER BY ps.date DESC, ps.time DESC, ps.id DESC",
             (current_user["email"],),
         )
         rows = [dict(r) for r in cur.fetchall()]
