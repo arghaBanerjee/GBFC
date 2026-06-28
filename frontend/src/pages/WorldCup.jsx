@@ -139,8 +139,6 @@ function MatchCard({ match, onPredict, saving }) {
   const [awayEt, setAwayEt] = useState(pred?.away_goals_et ?? '')
   const [homePens, setHomePens] = useState(pred?.home_pens ?? '')
   const [awayPens, setAwayPens] = useState(pred?.away_pens ?? '')
-  const [includeEt, setIncludeEt] = useState(pred?.home_goals_et !== null && pred?.home_goals_et !== undefined)
-  const [includePens, setIncludePens] = useState(pred?.home_pens !== null && pred?.home_pens !== undefined)
 
   useEffect(() => {
     setHome(pred?.home_goals ?? '')
@@ -149,9 +147,25 @@ function MatchCard({ match, onPredict, saving }) {
     setAwayEt(pred?.away_goals_et ?? '')
     setHomePens(pred?.home_pens ?? '')
     setAwayPens(pred?.away_pens ?? '')
-    setIncludeEt(pred?.home_goals_et !== null && pred?.home_goals_et !== undefined)
-    setIncludePens(pred?.home_pens !== null && pred?.home_pens !== undefined)
   }, [pred])
+
+  useEffect(() => {
+    const isDraw = home !== '' && away !== '' && parseInt(home) === parseInt(away)
+    if (!isDraw) {
+      setHomeEt('')
+      setAwayEt('')
+      setHomePens('')
+      setAwayPens('')
+    }
+  }, [home, away])
+
+  useEffect(() => {
+    const isDrawE = homeEt !== '' && awayEt !== '' && parseInt(homeEt) === parseInt(awayEt)
+    if (!isDrawE) {
+      setHomePens('')
+      setAwayPens('')
+    }
+  }, [homeEt, awayEt])
 
   const handleChange = (setter) => (e) => {
     const v = e.target.value
@@ -161,12 +175,12 @@ function MatchCard({ match, onPredict, saving }) {
   // Knockout condition
   const isKnockout = match.stage !== 'group'
   const isDraw90 = home !== '' && away !== '' && parseInt(home) === parseInt(away)
-  const isDrawEt = includeEt && homeEt !== '' && awayEt !== '' && parseInt(homeEt) === parseInt(awayEt)
+  const isDrawEt = isDraw90 && homeEt !== '' && awayEt !== '' && parseInt(homeEt) === parseInt(awayEt)
 
   const canSave = home !== '' && away !== '' && !locked && (
-    !isKnockout || !isDraw90 || !includeEt || (
+    !isKnockout || !isDraw90 || (
       homeEt !== '' && awayEt !== '' && (
-        !isDrawEt || !includePens || (
+        !isDrawEt || (
           homePens !== '' && awayPens !== '' && parseInt(homePens) !== parseInt(awayPens)
         )
       )
@@ -303,33 +317,8 @@ function MatchCard({ match, onPredict, saving }) {
             </div>
           </div>
 
-          {/* Extra Time Checkbox */}
-          {isKnockout && isDraw90 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', margin: '8px 0' }}>
-              <input
-                type="checkbox"
-                id={`et-chk-${match.id}`}
-                checked={includeEt}
-                onChange={e => {
-                  setIncludeEt(e.target.checked)
-                  if (!e.target.checked) {
-                    setIncludePens(false)
-                    setHomeEt('')
-                    setAwayEt('')
-                    setHomePens('')
-                    setAwayPens('')
-                  }
-                }}
-                style={{ cursor: 'pointer' }}
-              />
-              <label htmlFor={`et-chk-${match.id}`} style={{ fontSize: 12, color: C.text, fontWeight: 600, cursor: 'pointer' }}>
-                Predict Extra Time?
-              </label>
-            </div>
-          )}
-
           {/* Extra Time Inputs */}
-          {includeEt && isKnockout && isDraw90 && (
+          {isKnockout && isDraw90 && (
             <div style={{ marginTop: 12, borderTop: `1px dashed ${sc.border}44`, paddingTop: 12 }}>
               <div style={{ color: C.gold, fontSize: 11, fontWeight: 700, textAlign: 'center', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 ⏱️ Extra Time (120 Mins)
@@ -366,30 +355,8 @@ function MatchCard({ match, onPredict, saving }) {
             </div>
           )}
 
-          {/* Penalty Shootout Checkbox */}
-          {includeEt && isKnockout && isDraw90 && isDrawEt && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', margin: '8px 0' }}>
-              <input
-                type="checkbox"
-                id={`pens-chk-${match.id}`}
-                checked={includePens}
-                onChange={e => {
-                  setIncludePens(e.target.checked)
-                  if (!e.target.checked) {
-                    setHomePens('')
-                    setAwayPens('')
-                  }
-                }}
-                style={{ cursor: 'pointer' }}
-              />
-              <label htmlFor={`pens-chk-${match.id}`} style={{ fontSize: 12, color: C.text, fontWeight: 600, cursor: 'pointer' }}>
-                Predict Penalty Shootout?
-              </label>
-            </div>
-          )}
-
           {/* Penalty Shootout Inputs */}
-          {includePens && includeEt && isKnockout && isDraw90 && isDrawEt && (
+          {isKnockout && isDraw90 && isDrawEt && (
             <div style={{ marginTop: 12, borderTop: `1px dashed ${sc.border}44`, paddingTop: 12 }}>
               <div style={{ color: C.gold, fontSize: 11, fontWeight: 700, textAlign: 'center', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 ⚽ Penalty Shootout Score
@@ -438,10 +405,10 @@ function MatchCard({ match, onPredict, saving }) {
                   match.id,
                   parseInt(home),
                   parseInt(away),
-                  includeEt ? parseInt(homeEt) : null,
-                  includeEt ? parseInt(awayEt) : null,
-                  includePens ? parseInt(homePens) : null,
-                  includePens ? parseInt(awayPens) : null
+                  isDraw90 ? parseInt(homeEt) : null,
+                  isDraw90 ? parseInt(awayEt) : null,
+                  isDrawEt ? parseInt(homePens) : null,
+                  isDrawEt ? parseInt(awayPens) : null
                 )
               }
             }}
