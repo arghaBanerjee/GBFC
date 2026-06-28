@@ -1351,10 +1351,9 @@ def init_db():
             except Exception as e:
                 print(f"Warning: Could not add auth session expiry column: {e}")
                 conn.rollback()
-            # Add extra time and penalty columns to world_cup tables
             try:
                 cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'world_cup_predictions'")
-                cols = [r[0] for r in cur.fetchall()]
+                cols = [r["column_name"] if isinstance(r, dict) else r[0] for r in cur.fetchall()]
                 new_pred_cols = [
                     ("predicted_home_goals_et", "INTEGER"),
                     ("predicted_away_goals_et", "INTEGER"),
@@ -1366,7 +1365,7 @@ def init_db():
                         cur.execute(f"ALTER TABLE world_cup_predictions ADD COLUMN {col_name} {col_type}")
                 
                 cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'world_cup_results'")
-                cols_res = [r[0] for r in cur.fetchall()]
+                cols_res = [r["column_name"] if isinstance(r, dict) else r[0] for r in cur.fetchall()]
                 new_res_cols = [
                     ("home_goals_et", "INTEGER"),
                     ("away_goals_et", "INTEGER"),
