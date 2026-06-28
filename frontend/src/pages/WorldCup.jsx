@@ -321,7 +321,7 @@ function MatchCard({ match, onPredict, saving }) {
           {isKnockout && isDraw90 && (
             <div style={{ marginTop: 12, borderTop: `1px dashed ${sc.border}44`, paddingTop: 12 }}>
               <div style={{ color: C.gold, fontSize: 11, fontWeight: 700, textAlign: 'center', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                ⏱️ Extra Time (120 Mins)
+                ⏱️ Score After Extra Time (120 Mins)
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 32px 1fr', alignItems:'center', gap: 8, marginBottom: 10 }}>
                 <div style={{ textAlign:'center' }}>
@@ -879,7 +879,9 @@ export default function WorldCup({ user }) {
 
                 <div>
                   <h3 style={{ fontWeight: '700', fontSize: '14px', marginBottom: '0.3rem', color: C.gold, marginTop: 0 }}>2. Extra Time (120 Mins AET)</h3>
-                  <p style={{ margin: '0 0 0.3rem 0', color: C.muted }}><em>Only active for knockout matches that end in a draw at 90 mins.</em></p>
+                  <p style={{ margin: '0 0 0.3rem 0', color: C.muted }}>
+                    <em>Only active for knockout matches that end in a draw at 90 mins. <span style={{ color: C.gold, fontWeight: '700' }}>Note: AET is the Score After Extra Time (the final cumulative score at 120 mins).</span></em>
+                  </p>
                   <ul style={{ paddingLeft: '20px', margin: 0 }}>
                     <li><strong>Correct ET Outcome:</strong> <span style={{ color: C.gold, fontWeight: '700' }}>10 pts</span> (winner or draw at 120 mins)</li>
                     <li><strong>Exact ET Score:</strong> <span style={{ color: C.gold, fontWeight: '700' }}>+15 pts</span></li>
