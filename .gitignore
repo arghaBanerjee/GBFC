@@ -66,3 +66,4 @@ whatsapp-api-prod.http
 .coverage
 .aider*
 update_world_cup_r32.py
+update_world_cup_r16.py
