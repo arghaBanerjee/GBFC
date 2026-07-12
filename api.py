@@ -7480,9 +7480,36 @@ def _wc_points(
     pts = 0
     def winner(h, a): return 'home' if h > a else ('away' if a > h else 'draw')
     
-    # 1. Full Time (90m) Layer
-    if winner(pred_home, pred_away) == winner(actual_home, actual_away):
+    # Calculate overall winner
+    actual_winner = winner(actual_home, actual_away)
+    if actual_winner == 'draw' and actual_home_et is not None and actual_away_et is not None:
+        actual_winner = winner(actual_home_et, actual_away_et)
+        if actual_winner == 'draw' and actual_home_pens is not None and actual_away_pens is not None:
+            actual_winner = winner(actual_home_pens, actual_away_pens)
+
+    pred_winner = winner(pred_home, pred_away)
+    if pred_winner == 'draw' and pred_home_et is not None and pred_away_et is not None:
+        pred_winner = winner(pred_home_et, pred_away_et)
+        if pred_winner == 'draw' and pred_home_pens is not None and pred_away_pens is not None:
+            pred_winner = winner(pred_home_pens, pred_away_pens)
+
+    # 1. Overall Winner / Outcome Points
+    if pred_winner == actual_winner:
         pts += 10
+        
+    # 2. Draw Points (90m and 120m)
+    # If the match was a draw at 90m and they predicted a draw, they get 10 pts (unless it ended at 90m as a draw, in which case it is covered by the overall winner above)
+    if actual_home == actual_away and pred_home == pred_away:
+        if actual_home_et is not None:
+            pts += 10
+            
+    # Same for 120m draw
+    if (actual_home == actual_away and pred_home == pred_away and
+        actual_home_et == actual_away_et and pred_home_et == pred_away_et):
+        if actual_home_pens is not None:
+            pts += 10
+
+    # 3. Full Time (90m) Goals Layer
     h_ok = pred_home == actual_home
     a_ok = pred_away == actual_away
     if h_ok and a_ok:
@@ -7490,16 +7517,12 @@ def _wc_points(
     elif h_ok or a_ok:
         pts += 10
         
-    # 2. Extra Time (120m) Layer
+    # 4. Extra Time (120m) Goals Layer
     # Only applies if actual match went to ET (actual 90m was a draw) 
     # AND the user predicted ET (predicted 90m was a draw and they provided ET scores)
     if actual_home == actual_away and pred_home == pred_away:
         if (pred_home_et is not None and pred_away_et is not None and 
             actual_home_et is not None and actual_away_et is not None):
-            
-            # Winner after 120 mins
-            if winner(pred_home_et, pred_away_et) == winner(actual_home_et, actual_away_et):
-                pts += 10
             h_et_ok = pred_home_et == actual_home_et
             a_et_ok = pred_away_et == actual_away_et
             if h_et_ok and a_et_ok:
@@ -7507,20 +7530,17 @@ def _wc_points(
             elif h_et_ok or a_et_ok:
                 pts += 5
                 
-            # 3. Penalty Shootout (Tie Breaker) Layer
+            # 5. Penalty Shootout (Tie Breaker) Goals Layer
             # Only applies if actual match went to penalties (actual 120m was a draw)
             # AND the user predicted penalties (predicted 120m was a draw and they provided penalty scores)
             if actual_home_et == actual_away_et and pred_home_et == pred_away_et:
                 if (pred_home_pens is not None and pred_away_pens is not None and 
                     actual_home_pens is not None and actual_away_pens is not None):
-                    
-                    # Winner of shootout (penalties can't end in a draw)
-                    if winner(pred_home_pens, pred_away_pens) == winner(actual_home_pens, actual_away_pens):
-                        pts += 10
                     h_pen_ok = pred_home_pens == actual_home_pens
                     a_pen_ok = pred_away_pens == actual_away_pens
                     if h_pen_ok and a_pen_ok:
                         pts += 10
+
 
     return pts * multiplier
 

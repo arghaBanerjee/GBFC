@@ -5,7 +5,7 @@ Tests for World Cup Predictions with Extra Time and Penalty Shootout
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # Set test mode before importing anything else
 os.environ['USE_POSTGRES'] = 'false'
@@ -46,12 +46,13 @@ def setup_test_data():
             (USER_EMAIL, hash_password(USER_PASSWORD), "member", "WC User")
         )
         
-        # Ensure stage lock is unlocked for 'round_of_16'
-        cur.execute("INSERT OR REPLACE INTO world_cup_stage_locks (stage, unlocked) VALUES (?, ?)", ("round_of_16", 1))
+        # Ensure all stage locks are unlocked
+        for stage in ['group', 'round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'third_place', 'final']:
+            cur.execute("INSERT OR REPLACE INTO world_cup_stage_locks (stage, unlocked) VALUES (?, ?)", (stage, 1))
         
         # Seed a test knockout match (Round of 16)
         # We set date in the future so prediction window is open
-        future_date = "2026-07-06"
+        future_date = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%d")
         cur.execute("""
             INSERT INTO practice_sessions 
             (date, time, location, event_type, event_title, description, maximum_capacity, session_cost, cost_type, paid_by)
@@ -201,7 +202,8 @@ def test_world_cup_predictions_flow():
         "home_goals_et": 2,
         "away_goals_et": 2,
         "home_pens": 4,
-        "away_pens": 3
+        "away_pens": 3,
+        "match_stage": "round_of_16"
     }, headers=admin_headers)
     assert res.status_code == 200, f"Expected 200, got {res.status_code}"
     
@@ -216,13 +218,14 @@ def test_world_cup_predictions_flow():
         pts_awarded = cur.fetchone()[0]
         assert pts_awarded == 225, f"Expected 225 points, got {pts_awarded}"
     print("   ✅ Full exact match (Pens win) points verified (225 pts).")
-
+ 
     # Admin posts ET end result 1-1, 2-1 (no pens)
     res = client.post(f"/api/worldcup/results/{match_id}", json={
         "home_goals": 1,
         "away_goals": 1,
         "home_goals_et": 2,
-        "away_goals_et": 1
+        "away_goals_et": 1,
+        "match_stage": "round_of_16"
     }, headers=admin_headers)
     assert res.status_code == 200, f"Expected 200, got {res.status_code}"
 
@@ -230,13 +233,13 @@ def test_world_cup_predictions_flow():
     # User gets:
     # 90m: 1-1 vs 1-1 (30 pts)
     # ET: 2-2 vs 2-1 -> outcome wrong (draw vs home win), but predicted home goals (2) matches actual (2) (+5 pts). ET pts = 5.
-    # Pens: actual did not go to pens, so 0 pts.
-    # Total = (30 + 5 + 0) * 3 = 105 pts
+    # Overall Winner: Home team predicted (via Pens) and Home team wins -> +10 pts.
+    # Total = (30 + 5 + 10) * 3 = 135 pts
     with get_connection() as conn:
         cur = conn.cursor()
         cur.execute("SELECT points_awarded FROM world_cup_predictions WHERE match_id = ? AND user_email = ?", (match_id, USER_EMAIL))
         pts_awarded = cur.fetchone()[0]
-        assert pts_awarded == 105, f"Expected 105 points, got {pts_awarded}"
+        assert pts_awarded == 135, f"Expected 135 points, got {pts_awarded}"
     print("   ✅ ET win points verified (105 pts).")
 
     print("\n✅ ALL TESTS PASSED SUCCESSFULLY!")
