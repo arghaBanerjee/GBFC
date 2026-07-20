@@ -5,6 +5,8 @@ import '../styles/Admin.css'
 import Reports from './Reports'
 import { validateAdminTab } from '../utils/routeValidation'
 
+const WORLD_CUP_ENABLED = import.meta.env.VITE_WORLD_CUP_ENABLED === 'true'
+
 export default function Admin({ user, loading }) {
   const navigate = useNavigate()
   const { tab: routeTab } = useParams()
@@ -16,8 +18,8 @@ export default function Admin({ user, loading }) {
     { value: 'expense', label: 'Expense' },
     { value: 'reports', label: 'Reports' },
     ...(isSuperAdmin ? [{ value: 'notifications', label: 'Notifications' }] : []),
-  ...(isSuperAdmin ? [{ value: 'jobs', label: 'Jobs' }] : []),
-  { value: 'worldcup', label: '🏆 World Cup' },
+    ...(isSuperAdmin ? [{ value: 'jobs', label: 'Jobs' }] : []),
+    ...(WORLD_CUP_ENABLED ? [{ value: 'worldcup', label: '🏆 World Cup' }] : []),
   ]
 
   // Admin check: user_type is 'admin' OR email is 'super@admin.com'
@@ -27,8 +29,9 @@ export default function Admin({ user, loading }) {
   
   // Route validation
   const validatedTab = validateAdminTab(routeTab)
-  const activeTab = validatedTab || 'events'
+  const activeTab = (validatedTab === 'worldcup' && !WORLD_CUP_ENABLED) ? 'events' : (validatedTab || 'events')
   const setActiveTab = (tab) => navigate(`/admin/${tab}`)
+
 
   // Events
   const [events, setEvents] = useState([])

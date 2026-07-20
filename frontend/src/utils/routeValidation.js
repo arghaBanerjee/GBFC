@@ -2,7 +2,9 @@ import React from 'react'
 
 // Route validation middleware and utilities
 
-export const VALID_ADMIN_TABS = ['events', 'users', 'expense', 'reports', 'notifications', 'jobs', 'worldcup']
+const WORLD_CUP_ENABLED = import.meta.env.VITE_WORLD_CUP_ENABLED === 'true'
+
+export const VALID_ADMIN_TABS = ['events', 'users', 'expense', 'reports', 'notifications', 'jobs', ...(WORLD_CUP_ENABLED ? ['worldcup'] : [])]
 
 export const VALID_MATCH_TABS = ['upcoming', 'past']
 

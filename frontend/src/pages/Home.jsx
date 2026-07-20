@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 
-const WORLD_CUP_ENABLED = import.meta.env.VITE_WORLD_CUP_ENABLED !== 'false'
+const WORLD_CUP_ENABLED = import.meta.env.VITE_WORLD_CUP_ENABLED === 'true'
 
 export default function Home({ user }) {
   const navigate = useNavigate()
